@@ -1,11 +1,16 @@
-from flask import Blueprint, request, jsonify
-from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest
+from pathlib import Path
+
+from flask import Blueprint, request, jsonify, send_file
+from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
 from app.services.hybrid_search import (
     search_text,
     search_image,
     search_video_frames,
     multi_box_search,
+    search_similar_frames,
 )
+
+KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes" / "keyframes"
 
 search_bp = Blueprint("search", __name__)
 
@@ -67,6 +72,19 @@ def api_search_video():
     })
 
 
+@search_bp.route("/api/search/similar", methods=["POST"])
+def api_search_similar():
+    try:
+        data = SimilarFramesRequest(**request.get_json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    results = search_similar_frames(data.video_id, data.frame_index, data.topk)
+    return jsonify({
+        "results": results,
+        "total": len(results),
+    })
+
+
 @search_bp.route("/api/frames", methods=["POST"])
 def api_frames():
     try:
@@ -84,3 +102,12 @@ def api_frames():
         "results": results,
         "total": len(results),
     })
+
+
+@search_bp.route("/api/keyframes/<video_id>/<int:frame_index>")
+def serve_keyframe(video_id, frame_index):
+    level = video_id[:3]
+    path = KEYFRAMES_DIR / level / video_id / f"{frame_index:04d}.webp"
+    if path.exists():
+        return send_file(path, mimetype="image/webp")
+    return jsonify({"error": "frame not found"}), 404

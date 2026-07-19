@@ -16,7 +16,7 @@ def _enrich_frames(milvus_frames):
         f["title"] = meta.get("title", "")
         f["description"] = meta.get("description", "")
         f["keywords"] = meta.get("keywords", [])
-        f["thumbnail_url"] = meta.get("thumbnail_url", "")
+        f["thumbnail_url"] = f"/api/keyframes/{f['video_id']}/{f['frame_index']}"
         f["watch_url"] = meta.get("watch_url", "")
     # Deduplicate by (video_id, frame_index) — load_data.py may insert duplicates
     seen = set()
