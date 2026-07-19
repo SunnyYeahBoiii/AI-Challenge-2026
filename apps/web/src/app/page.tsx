@@ -50,7 +50,7 @@ export default function Home() {
           tags: tags.length > 0 ? tags : undefined,
           keywords: keywords.length > 0 ? keywords : undefined,
           topk: newFilter.topK,
-          enhance: true,
+          enhance: newFilter.enhance,
         });
         setFrames(data.results);
       }

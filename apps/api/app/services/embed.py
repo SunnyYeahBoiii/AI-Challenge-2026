@@ -62,8 +62,11 @@ def enhance_query(raw_query: str) -> str:
     client = _get_openai_client()
     if client is None:
         return raw_query
-    resp = client.responses.create(
-        model="gpt-4.1-nano",
-        input=f"Translate to English if needed, then rephrase as a descriptive scene sentence: {raw_query}",
-    )
-    return resp.output_text
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1-nano",
+            input=f"Translate to English if needed, then rephrase as a descriptive scene sentence: {raw_query}",
+        )
+        return resp.output_text
+    except Exception:
+        return raw_query

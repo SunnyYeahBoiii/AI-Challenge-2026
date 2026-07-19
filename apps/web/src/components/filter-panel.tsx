@@ -11,6 +11,7 @@ export interface SearchFilter {
   queries: BoxQuery[];
   sortBy: "frame_id" | "score";
   topK: number;
+  enhance?: boolean;
 }
 
 interface FilterPanelProps {
@@ -26,6 +27,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   ]);
   const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
   const [topK, setTopK] = useState(100);
+  const [enhance, setEnhance] = useState(false);
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -33,14 +35,14 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], sortBy, topK: 10000 });
+      onSearch({ videoId: videoId.trim(), queries: [], sortBy, topK: 10000, enhance });
     } else {
       const enabledQueries = queries.filter((q) => q.enabled && q.content);
       if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, sortBy, topK });
+        onSearch({ queries: enabledQueries, sortBy, topK, enhance });
       }
     }
-  }, [videoId, queries, sortBy, topK, onSearch]);
+  }, [videoId, queries, sortBy, topK, enhance, onSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
@@ -144,6 +146,21 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
               value={topK}
               onChange={(e) => setTopK(Number(e.target.value))}
             />
+          </div>
+          <div className="flex justify-between items-center mt-2">
+            <span className="font-label-sm text-label-sm text-on-surface-variant">AI Enhance</span>
+            <button
+              onClick={() => setEnhance(!enhance)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                enhance ? "bg-primary" : "bg-outline"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  enhance ? "translate-x-4" : ""
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>
