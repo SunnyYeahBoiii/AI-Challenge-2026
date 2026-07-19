@@ -70,8 +70,8 @@ def search_image(image_bytes, tags=None, keywords=None, topk=20):
     return frames[:topk]
 
 
-def search_video_frames(video_id):
-    """Get all frames for a video, sorted by frame_index."""
+def search_video_frames(video_id, frame_index=None, range=5):
+    """Get frames for a video, optionally filtered by position ± range around frame_index."""
     milvus = get_milvus_client()
     expr = f'video_id == "{video_id}"'
     try:
@@ -82,7 +82,12 @@ def search_video_frames(video_id):
         del f["vector_score"]
     frames = _enrich_frames(milvus_frames)
     frames.sort(key=lambda f: f["frame_index"])
-    return frames
+    if frame_index is None:
+        return frames
+    pos = next((i for i, f in enumerate(frames) if f["frame_index"] == frame_index), None)
+    if pos is None:
+        return frames
+    return frames[max(0, pos - range):pos + range + 1]
 
 
 def search_similar_frames(video_id, frame_index, topk=12):

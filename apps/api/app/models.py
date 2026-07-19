@@ -35,8 +35,16 @@ class MultiBoxRequest(BaseModel):
     enhance: bool = True
 
 
+class SimilarFramesRequest(BaseModel):
+    video_id: str
+    frame_index: int
+    topk: int = 12
+
+
 class VideoIdRequest(BaseModel):
     video_id: str
+    frame_index: int | None = None
+    range: int = 5
 
 
 class FrameResult(BaseModel):
