@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { Icon } from "./icon";
-import type { Frame } from "./results-panel";
+import type { FrameResult } from "@/lib/api";
 
 interface SubmissionConfirmationDialogProps {
-  frame: Frame;
+  frame: FrameResult;
   submissionType: "track" | "qa" | "kis";
   onClose: () => void;
 }
@@ -26,8 +26,8 @@ export function SubmissionConfirmationDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           frame_id: frame.id,
-          video_path: frame.video_path,
-          timestamp: frame.timestamp,
+          video_path: frame.video_id,
+          timestamp: frame.pts_time,
         }),
       });
       const data = await res.json();
@@ -70,12 +70,12 @@ export function SubmissionConfirmationDialog({
             </div>
             <div className="flex items-center gap-2">
               <span className="font-label-md text-label-md text-on-surface-variant">Video:</span>
-              <span className="font-mono-sm text-mono-sm text-on-surface">{frame.video_path}</span>
+              <span className="font-mono-sm text-mono-sm text-on-surface">{frame.video_id}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-label-md text-label-md text-on-surface-variant">Time:</span>
               <span className="font-mono-sm text-mono-sm text-on-surface">
-                {frame.timestamp?.toFixed(0) || "N/A"}ms
+                {frame.pts_time.toFixed(0)}ms
               </span>
             </div>
           </div>
