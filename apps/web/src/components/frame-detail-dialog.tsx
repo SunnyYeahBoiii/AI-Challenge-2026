@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { searchSimilarFrames, searchVideoFrames } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
@@ -19,11 +19,18 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
   const [similarLoading, setSimilarLoading] = useState(false);
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
+  const [fetchFrameIndex, setFetchFrameIndex] = useState(frame.frame_index);
   const [allFramesLoading, setAllFramesLoading] = useState(false);
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
 
+  const currentArrayIndex = useMemo(() => {
+    const idx = allFrames.findIndex((f) => f.frame_index === currentFrameIndex);
+    return idx >= 0 ? idx : 0;
+  }, [allFrames, currentFrameIndex]);
+
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { allFramesRef.current = allFrames; }, [allFrames]);
 
@@ -43,7 +50,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
     let cancelled = false;
     setAllFramesLoading(true);
     setAllFramesError(null);
-    searchVideoFrames(frame.video_id)
+    searchVideoFrames(frame.video_id, fetchFrameIndex, 5)
       .then((res) => {
         if (!cancelled) {
           setAllFrames(res.results);
@@ -57,14 +64,17 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
         }
       });
     return () => { cancelled = true; };
-  }, [frame.video_id]);
+  }, [frame.video_id, fetchFrameIndex]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [onClose]);
 
   return (
@@ -91,7 +101,15 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                 const closest = frames.reduce((prev, curr) =>
                   Math.abs(curr.pts_time - t) < Math.abs(prev.pts_time - t) ? curr : prev
                 );
-                setCurrentFrameIndex(closest.frame_index);
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(() => {
+                  setCurrentFrameIndex(closest.frame_index);
+                  const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
+                  const isNearEdge = pos <= 1 || pos >= frames.length - 2;
+                  if (isNearEdge) {
+                    setFetchFrameIndex(closest.frame_index);
+                  }
+                }, 300);
               }}
               onReady={() => {
                 videoRef.current?.seekTo(frame.pts_time);
@@ -130,20 +148,16 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
             <div className="flex items-center justify-center py-3 px-4 bg-[#111111] font-mono-sm text-mono-sm text-red-400">
               {allFramesError}
             </div>
-          ) : allFrames.length === 0 ? (
-            <div className="flex items-center justify-center py-3 px-4 bg-[#111111] font-mono-sm text-mono-sm text-gray-400">
-              No frames available
-            </div>
-          ) : (
+          ) : allFrames.length > 0 && (
             <>
               <div className="flex items-center justify-center gap-2 bg-[#111111] py-2 px-4 border-t border-white/5">
                 <span className="font-mono-sm text-mono-sm text-gray-400">
-                  Frame {currentFrameIndex + 1} / {allFrames.length}
+                  Frame {currentFrameIndex}
                 </span>
               </div>
               <FrameNavigator
                 frames={allFrames}
-                currentFrameIndex={currentFrameIndex}
+                currentArrayIndex={currentArrayIndex}
                 onFrameSelect={(f) => {
                   setCurrentFrameIndex(f.frame_index);
                   videoRef.current?.seekTo(f.pts_time);
