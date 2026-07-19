@@ -20,6 +20,11 @@ services:
       - "5000:5000"
     env_file:
       - ./apps/api/.env
+    depends_on:
+      milvus:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./apps/api/app:/app/app
     develop:
@@ -27,3 +32,43 @@ services:
         - action: sync
           path: ./apps/api/app
           target: /app/app
+
+  milvus:
+    image: milvusdb/milvus:v2.4-latest
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - ETCD_USE_EMBED=true
+      - COMMON_STORAGETYPE=local
+
+  elasticsearch:
+    image: elasticsearch:8.12.0
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+
+volumes:
+  milvus_data:
+  es_data:
