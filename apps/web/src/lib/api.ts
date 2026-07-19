@@ -93,9 +93,23 @@ export async function searchImage(
 }
 
 export async function searchVideoFrames(
-  videoId: string
+  videoId: string,
+  frameIndex?: number,
+  range?: number
 ): Promise<{ video_id: string; results: FrameResult[]; total: number }> {
-  const { data } = await api.post("/search/video", { video_id: videoId });
+  const body: Record<string, unknown> = { video_id: videoId };
+  if (frameIndex !== undefined) body.frame_index = frameIndex;
+  if (range !== undefined) body.range = range;
+  const { data } = await api.post("/search/video", body);
+  return data;
+}
+
+export async function searchSimilarFrames(
+  videoId: string,
+  frameIndex: number,
+  topk?: number
+): Promise<{ results: FrameResult[]; total: number }> {
+  const { data } = await api.post("/search/similar", { video_id: videoId, frame_index: frameIndex, topk });
   return data;
 }
 
