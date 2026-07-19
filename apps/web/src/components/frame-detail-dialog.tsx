@@ -229,7 +229,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                   ))
                 : similarFrames.map((sf) => (
                     <div
-                      key={sf.id}
+                      key={`${sf.video_id}-${sf.frame_index}`}
                       onClick={onClose}
                       className="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all relative group"
                       title={`Frame ${sf.frame_index} score ${(sf.score * 100).toFixed(0)}%`}

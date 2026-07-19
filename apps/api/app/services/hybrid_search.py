@@ -18,7 +18,15 @@ def _enrich_frames(milvus_frames):
         f["keywords"] = meta.get("keywords", [])
         f["thumbnail_url"] = meta.get("thumbnail_url", "")
         f["watch_url"] = meta.get("watch_url", "")
-    return milvus_frames
+    # Deduplicate by (video_id, frame_index) — load_data.py may insert duplicates
+    seen = set()
+    deduped = []
+    for f in milvus_frames:
+        key = (f["video_id"], f["frame_index"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(f)
+    return deduped
 
 
 def search_text(query="", tags=None, keywords=None, topk=20, enhance=True):
@@ -75,6 +83,26 @@ def search_video_frames(video_id):
     frames = _enrich_frames(milvus_frames)
     frames.sort(key=lambda f: f["frame_index"])
     return frames
+
+
+def search_similar_frames(video_id, frame_index, topk=12):
+    milvus = get_milvus_client()
+    embedding = milvus.get_frame_embedding(video_id, frame_index)
+    if embedding is None:
+        return []
+    milvus_frames = milvus.search(embedding, topk=topk + 1)
+    milvus_frames = [
+        f for f in milvus_frames
+        if not (f["video_id"] == video_id and f["frame_index"] == frame_index)
+    ][:topk]
+    for f in milvus_frames:
+        f["score"] = f.pop("vector_score")
+    frames = _enrich_frames(milvus_frames)
+    frames.sort(key=lambda f: f.get("score", 0), reverse=True)
+    return frames
+
+
+
 
 
 def _merge_temporal_sequences(per_box, window):

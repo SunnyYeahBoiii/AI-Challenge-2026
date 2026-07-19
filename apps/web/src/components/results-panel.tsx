@@ -71,7 +71,7 @@ export function ResultsPanel({
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
               {group.map((frame) => (
                 <div
-                  key={frame.id}
+                  key={`${frame.video_id}-${frame.frame_index}`}
                   className="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors"
                   onClick={() => onFrameSelect(frame)}
                 >
