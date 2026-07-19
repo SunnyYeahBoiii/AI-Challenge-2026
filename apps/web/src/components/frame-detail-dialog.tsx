@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
-import type { Frame } from "./results-panel";
+import type { FrameResult } from "@/lib/api";
 
 interface FrameDetailDialogProps {
-  frame: Frame;
+  frame: FrameResult;
   onClose: () => void;
-  onSubmit: (frame: Frame) => void;
+  onSubmit: (frame: FrameResult) => void;
 }
 
 export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialogProps) {
@@ -40,7 +40,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
             <video
               ref={videoRef}
               className="w-full h-full object-contain"
-              src={frame.frameLink}
+              src={frame.thumbnail_url}
               controls
               onLoadedData={() => setVideoLoaded(true)}
             />
@@ -48,16 +48,16 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
             <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md rounded px-3 py-2 font-mono-sm text-mono-sm text-gray-200 border border-white/10 flex flex-col gap-1">
               <div className="flex justify-between gap-4">
                 <span>Frame</span>
-                <span className="text-white font-medium">{frame.frameNum}</span>
+                <span className="text-white font-medium">{frame.frame_index}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>Video</span>
-                <span className="text-white font-medium">{frame.video_path}</span>
+                <span className="text-white font-medium">{frame.video_id}</span>
               </div>
-              {frame.timestamp && (
+              {frame.pts_time && (
                 <div className="flex justify-between gap-4">
                   <span>Time</span>
-                  <span className="text-white font-medium">{frame.timestamp.toFixed(0)}ms</span>
+                  <span className="text-white font-medium">{frame.pts_time.toFixed(0)}ms</span>
                 </div>
               )}
             </div>
@@ -66,7 +66,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
           {/* Submission Controls */}
           <div className="flex-grow p-6 flex flex-col gap-4 overflow-y-auto">
             <h2 className="font-headline-sm text-headline-sm text-white">
-              Frame {frame.frameNum} from {frame.video_path}
+              Frame {frame.frame_index} from {frame.video_id}
             </h2>
 
             {/* Mode Toggles */}
@@ -98,13 +98,13 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
                 placeholder="Video ID"
-                defaultValue={frame.video_path}
+                defaultValue={frame.video_id}
               />
               <input
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
                 placeholder="Time (ms)"
-                defaultValue={frame.timestamp?.toFixed(0) || ""}
+                defaultValue={frame.pts_time.toFixed(0)}
               />
             </div>
 
