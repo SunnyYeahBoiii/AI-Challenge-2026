@@ -203,7 +203,7 @@ def load():
     print(f"\nFound {len(videos)} videos to process.\n")
 
     total_frames = 0
-    milvus_buffer: list[list] = []  # [video_id, frame_index, shot_idx, start, end, pts, fps, embedding]
+    milvus_buffer: list[dict] = []
     es_buffer: list[dict] = []
 
     t0 = time.time()
@@ -247,16 +247,16 @@ def load():
                 row_info = csv_lookup.get(frame_num, {})
 
                 milvus_buffer.append(
-                    [
-                        video_id,
-                        frame_num,
-                        row_info.get("shot_idx", 0),
-                        row_info.get("start_time", 0.0),
-                        row_info.get("end_time", 0.0),
-                        row_info.get("pts_time", 0.0),
-                        row_info.get("fps", 0.0),
-                        embeddings[j].tolist(),
-                    ]
+                    {
+                        "video_id": video_id,
+                        "frame_index": frame_num,
+                        "shot_idx": row_info.get("shot_idx", 0),
+                        "start_time": row_info.get("start_time", 0.0),
+                        "end_time": row_info.get("end_time", 0.0),
+                        "pts_time": row_info.get("pts_time", 0.0),
+                        "fps": row_info.get("fps", 0.0),
+                        "embedding": embeddings[j].tolist(),
+                    }
                 )
 
             # Flush Milvus buffer
@@ -285,6 +285,15 @@ def load():
         _bulk_insert_es(es, es_buffer)
 
     col.flush()
+
+    # Create index for search
+    index_params = {
+        "metric_type": "IP",
+        "index_type": "IVF_FLAT",
+        "params": {"nlist": 128},
+    }
+    col.create_index("embedding", index_params)
+    print(f"Created IVF_FLAT index on 'embedding' (metric=IP).")
     col.load()
 
     elapsed = time.time() - t0
