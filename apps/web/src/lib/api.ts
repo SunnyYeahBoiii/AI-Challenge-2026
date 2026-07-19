@@ -1,4 +1,6 @@
-const API_BASE = "/api";
+import axios from "axios";
+
+const api = axios.create({ baseURL: "/api" });
 
 // ====== Backend-matching types ======
 
@@ -73,13 +75,8 @@ export interface MultiBoxRequest {
 // ====== Search API ======
 
 export async function searchText(req: SearchTextRequest): Promise<{ results: FrameResult[]; total: number }> {
-  const res = await fetch(`${API_BASE}/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`Search failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/search", req);
+  return data;
 }
 
 export async function searchImage(
@@ -91,33 +88,22 @@ export async function searchImage(
   if (params?.tags?.length) params.tags.forEach((t) => form.append("tags", t));
   if (params?.keywords?.length) params.keywords.forEach((k) => form.append("keywords", k));
   if (params?.topk) form.append("topk", String(params.topk));
-  const res = await fetch(`${API_BASE}/search/image`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(`Image search failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/search/image", form);
+  return data;
 }
 
 export async function searchVideoFrames(
   videoId: string
 ): Promise<{ video_id: string; results: FrameResult[]; total: number }> {
-  const res = await fetch(`${API_BASE}/search/video`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ video_id: videoId }),
-  });
-  if (!res.ok) throw new Error(`Video frames search failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/search/video", { video_id: videoId });
+  return data;
 }
 
 export async function multiBoxSearch(
   req: MultiBoxRequest
 ): Promise<{ results: FrameResult[]; total: number }> {
-  const res = await fetch(`${API_BASE}/frames`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`Multi-box search failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/frames", req);
+  return data;
 }
 
 // ====== Videos API ======
@@ -125,19 +111,13 @@ export async function multiBoxSearch(
 export async function listVideos(
   params?: { q?: string; tags?: string[]; size?: number }
 ): Promise<{ videos: VideoResult[]; total: number }> {
-  const sp = new URLSearchParams();
-  if (params?.q) sp.set("q", params.q);
-  if (params?.tags?.length) sp.set("tags", params.tags.join(","));
-  if (params?.size) sp.set("size", String(params.size));
-  const res = await fetch(`${API_BASE}/videos?${sp.toString()}`);
-  if (!res.ok) throw new Error(`List videos failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.get("/videos", { params });
+  return data;
 }
 
 export async function getVideo(videoId: string): Promise<VideoResult> {
-  const res = await fetch(`${API_BASE}/videos/${encodeURIComponent(videoId)}`);
-  if (!res.ok) throw new Error(`Get video failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.get(`/videos/${encodeURIComponent(videoId)}`);
+  return data;
 }
 
 // ====== Embed API ======
@@ -146,13 +126,8 @@ export async function embedText(
   text: string,
   enhance?: boolean
 ): Promise<{ vector: number[]; dim: number; text: string; enhanced: boolean }> {
-  const res = await fetch(`${API_BASE}/embed/text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, enhance }),
-  });
-  if (!res.ok) throw new Error(`Embed text failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/embed/text", { text, enhance });
+  return data;
 }
 
 export async function embedImage(
@@ -160,15 +135,13 @@ export async function embedImage(
 ): Promise<{ vector: number[]; dim: number; filename: string }> {
   const form = new FormData();
   form.append("image", file);
-  const res = await fetch(`${API_BASE}/embed/image`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(`Embed image failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.post("/embed/image", form);
+  return data;
 }
 
 // ====== Health API ======
 
 export async function healthCheck(): Promise<HealthStatus> {
-  const res = await fetch(`${API_BASE}/health`);
-  if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
-  return res.json();
+  const { data } = await api.get("/health");
+  return data;
 }
