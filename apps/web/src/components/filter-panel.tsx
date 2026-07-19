@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Icon } from "./icon";
 import { QueryBox, type BoxQuery } from "./query-box";
+import { listVideos } from "@/lib/api";
+import type { VideoResult } from "@/lib/api";
 
 export interface SearchFilter {
   videoId?: string;
@@ -24,6 +26,10 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   ]);
   const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
   const [topK, setTopK] = useState(100);
+  const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
+  const [searchingVideos, setSearchingVideos] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
@@ -35,6 +41,34 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       }
     }
   }, [videoId, queries, sortBy, topK, onSearch]);
+
+  useEffect(() => {
+    if (videoId.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchingVideos(true);
+      try {
+        const data = await listVideos({ q: videoId.trim(), size: 10 });
+        setSuggestions(data.videos);
+        setShowSuggestions(data.videos.length > 0);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearchingVideos(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [videoId]);
+
+  const selectVideo = (video: VideoResult) => {
+    setVideoId(video.video_id);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    onSearch({ videoId: video.video_id, queries: [], sortBy, topK: 10000 });
+  };
 
   const addQuery = () => {
     setQueries((prev) => [
@@ -56,16 +90,34 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       {/* Top Section */}
       <div className="p-container-padding pb-2 border-b border-outline-variant">
         {/* Video ID Search */}
-        <div className="mb-4">
+        <div className="mb-4 relative">
           <label className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
             <Icon name="movie" size={16} /> Video ID Search
           </label>
           <input
+            ref={videoInputRef}
             className="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary bg-transparent px-0 py-1.5 font-body-sm text-body-sm outline-none transition-colors placeholder:text-outline"
-            placeholder="Enter Video ID [e.g., K01_V001]"
+            placeholder="Type to search videos..."
             value={videoId}
             onChange={(e) => setVideoId(e.target.value)}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           />
+          {/* Autocomplete dropdown */}
+          {showSuggestions && (
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {suggestions.map((v) => (
+                <button
+                  key={v.video_id}
+                  className="w-full text-left px-3 py-2 hover:bg-surface-container-high border-b border-outline-variant last:border-b-0 transition-colors flex flex-col gap-0.5"
+                  onClick={() => selectVideo(v)}
+                >
+                  <span className="font-label-sm text-label-sm text-on-surface">{v.video_id}</span>
+                  <span className="font-body-xs text-body-xs text-on-surface-variant truncate">{v.title || v.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Query Search Mode */}
