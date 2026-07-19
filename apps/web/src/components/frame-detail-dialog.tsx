@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
+import { searchSimilarFrames, searchVideoFrames } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
+import { VideoPlayer } from "./video-player";
+import type { VideoPlayerHandle } from "./video-player";
+import { FrameNavigator } from "./frame-navigator";
 
 interface FrameDetailDialogProps {
   frame: FrameResult;
@@ -11,8 +15,49 @@ interface FrameDetailDialogProps {
 }
 
 export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialogProps) {
-  const [videoLoaded, setVideoLoaded] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [similarFrames, setSimilarFrames] = useState<FrameResult[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
+  const [allFramesLoading, setAllFramesLoading] = useState(false);
+  const [allFramesError, setAllFramesError] = useState<string | null>(null);
+
+  const videoRef = useRef<VideoPlayerHandle>(null);
+  const allFramesRef = useRef<FrameResult[]>([]);
+
+  useEffect(() => { allFramesRef.current = allFrames; }, [allFrames]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSimilarLoading(true);
+    searchSimilarFrames(frame.video_id, frame.frame_index).then((res) => {
+      if (!cancelled) {
+        setSimilarFrames(res.results);
+        setSimilarLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [frame.video_id, frame.frame_index]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAllFramesLoading(true);
+    setAllFramesError(null);
+    searchVideoFrames(frame.video_id)
+      .then((res) => {
+        if (!cancelled) {
+          setAllFrames(res.results);
+          setAllFramesLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAllFramesError(err.message || "Failed to load frames");
+          setAllFramesLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [frame.video_id]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -37,36 +82,80 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
         <div className="w-[60%] flex flex-col bg-[#111111] text-white border-r border-outline-variant">
           {/* Video Section */}
           <div className="relative w-full aspect-video bg-black flex-shrink-0">
-            <video
+            <VideoPlayer
               ref={videoRef}
-              className="w-full h-full object-contain"
-              src={frame.thumbnail_url}
-              controls
-              onLoadedData={() => setVideoLoaded(true)}
+              watchUrl={frame.watch_url}
+              onTimeUpdate={(t) => {
+                const frames = allFramesRef.current;
+                if (frames.length === 0) return;
+                const closest = frames.reduce((prev, curr) =>
+                  Math.abs(curr.pts_time - t) < Math.abs(prev.pts_time - t) ? curr : prev
+                );
+                setCurrentFrameIndex(closest.frame_index);
+              }}
+              onReady={() => {
+                videoRef.current?.seekTo(frame.pts_time);
+              }}
             />
             {/* Metadata Overlay */}
             <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md rounded px-3 py-2 font-mono-sm text-mono-sm text-gray-200 border border-white/10 flex flex-col gap-1">
               <div className="flex justify-between gap-4">
                 <span>Frame</span>
-                <span className="text-white font-medium">{frame.frame_index}</span>
+                <span className="text-white font-medium">{currentFrameIndex}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>Video</span>
                 <span className="text-white font-medium">{frame.video_id}</span>
               </div>
-              {frame.pts_time && (
-                <div className="flex justify-between gap-4">
-                  <span>Time</span>
-                  <span className="text-white font-medium">{frame.pts_time.toFixed(0)}ms</span>
-                </div>
-              )}
+              {(() => {
+                const currentFrame = allFrames.find(f => f.frame_index === currentFrameIndex);
+                const t = currentFrame?.pts_time ?? frame.pts_time;
+                if (!t) return null;
+                return (
+                  <div className="flex justify-between gap-4">
+                    <span>Time</span>
+                    <span className="text-white font-medium">{t.toFixed(0)}ms</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
+          {/* Frame Navigator */}
+          {allFramesLoading ? (
+            <div className="flex items-center justify-center py-3 px-4 bg-[#111111]">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-600 border-t-white" />
+            </div>
+          ) : allFramesError ? (
+            <div className="flex items-center justify-center py-3 px-4 bg-[#111111] font-mono-sm text-mono-sm text-red-400">
+              {allFramesError}
+            </div>
+          ) : allFrames.length === 0 ? (
+            <div className="flex items-center justify-center py-3 px-4 bg-[#111111] font-mono-sm text-mono-sm text-gray-400">
+              No frames available
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-center gap-2 bg-[#111111] py-2 px-4 border-t border-white/5">
+                <span className="font-mono-sm text-mono-sm text-gray-400">
+                  Frame {currentFrameIndex + 1} / {allFrames.length}
+                </span>
+              </div>
+              <FrameNavigator
+                frames={allFrames}
+                currentFrameIndex={currentFrameIndex}
+                onFrameSelect={(f) => {
+                  setCurrentFrameIndex(f.frame_index);
+                  videoRef.current?.seekTo(f.pts_time);
+                }}
+              />
+            </>
+          )}
+
           {/* Submission Controls */}
-          <div className="flex-grow p-6 flex flex-col gap-4 overflow-y-auto">
+          <div className="flex-grow p-6 flex flex-col gap-4 overflow-y-auto border-t border-white/5">
             <h2 className="font-headline-sm text-headline-sm text-white">
-              Frame {frame.frame_index} from {frame.video_id}
+              Frame {currentFrameIndex} from {frame.video_id}
             </h2>
 
             {/* Mode Toggles */}
@@ -127,17 +216,36 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
               Similar Frames
             </h3>
           </div>
-          <div className="p-4 overflow-y-auto h-full bg-surface-container-low">
+            <div className="p-4 overflow-y-auto h-full bg-surface-container-low">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {/* Placeholder similar frames */}
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all relative"
-                >
-                  <div className="w-full h-full bg-surface-container animate-pulse" />
-                </div>
-              ))}
+              {similarLoading
+                ? Array.from({ length: 9 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="aspect-video bg-surface rounded overflow-hidden border border-outline-variant relative"
+                    >
+                      <div className="w-full h-full bg-surface-container animate-pulse" />
+                    </div>
+                  ))
+                : similarFrames.map((sf) => (
+                    <div
+                      key={sf.id}
+                      onClick={onClose}
+                      className="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all relative group"
+                      title={`Frame ${sf.frame_index} score ${(sf.score * 100).toFixed(0)}%`}
+                    >
+                      <img
+                        className="w-full h-full object-cover"
+                        src={sf.thumbnail_url}
+                        alt={`Frame ${sf.frame_index}`}
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                        <span className="text-mono-sm font-mono-sm text-white/90">
+                          #{sf.frame_index}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
             </div>
           </div>
         </div>
