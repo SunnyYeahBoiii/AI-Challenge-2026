@@ -2,26 +2,13 @@
 
 import { useMemo } from "react";
 import { Icon } from "./icon";
-
-export interface Frame {
-  id: string;
-  frameNum: number;
-  timestamp: number | null;
-  frameLink: string;
-  videoLink: string;
-  description: string | null;
-  tags: string[];
-  keywords_ocr: string[];
-  keywords_asr: string[];
-  score: number;
-  video_path: string;
-}
+import type { FrameResult } from "@/lib/api";
 
 interface ResultsPanelProps {
-  frames: Frame[];
+  frames: FrameResult[];
   viewMode: "grouped" | "continuous";
-  onFrameSelect: (frame: Frame) => void;
-  onFrameDetail: (frame: Frame) => void;
+  onFrameSelect: (frame: FrameResult) => void;
+  onFrameDetail: (frame: FrameResult) => void;
   isLoading?: boolean;
 }
 
@@ -34,9 +21,9 @@ export function ResultsPanel({
 }: ResultsPanelProps) {
   const groupedFrames = useMemo(() => {
     if (viewMode === "continuous") return [frames];
-    const groups = new Map<string, Frame[]>();
+    const groups = new Map<string, FrameResult[]>();
     frames.forEach((frame) => {
-      const key = frame.video_path;
+      const key = frame.video_id;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(frame);
     });
@@ -90,8 +77,8 @@ export function ResultsPanel({
                 >
                   <img
                     className="w-full h-full object-cover"
-                    src={frame.frameLink}
-                    alt={`Frame ${frame.frameNum}`}
+                    src={frame.thumbnail_url}
+                    alt={`Frame ${frame.frame_index}`}
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

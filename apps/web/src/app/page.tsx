@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { FilterPanel, type SearchFilter } from "@/components/filter-panel";
-import { ResultsPanel, type Frame } from "@/components/results-panel";
+import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { Icon } from "@/components/icon";
+import type { FrameResult } from "@/lib/api";
+import { searchText, searchVideoFrames, healthCheck } from "@/lib/api";
 
 export default function Home() {
   const [filter, setFilter] = useState<SearchFilter | null>(null);
-  const [frames, setFrames] = useState<Frame[]>([]);
+  const [frames, setFrames] = useState<FrameResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
-  const [submissionFrame, setSubmissionFrame] = useState<Frame | null>(null);
+  const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
+  const [submissionFrame, setSubmissionFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
+  const [healthStatus, setHealthStatus] = useState<string>("loading");
 
   // Submission state
   const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">("kis");
@@ -24,23 +27,33 @@ export default function Home() {
   const [videoId, setVideoId] = useState("");
   const [timeMs, setTimeMs] = useState("");
 
+  useEffect(() => {
+    healthCheck()
+      .then((h) => setHealthStatus(h.status))
+      .catch(() => setHealthStatus("error"));
+  }, []);
+
   const handleSearch = useCallback(async (newFilter: SearchFilter) => {
     setFilter(newFilter);
     setIsLoading(true);
     try {
-      const params = new URLSearchParams();
       if (newFilter.videoId) {
-        params.set("video_id", newFilter.videoId);
-      }
-      if (newFilter.queries.length > 0) {
+        const data = await searchVideoFrames(newFilter.videoId);
+        setFrames(data.results);
+      } else {
         const enabledQueries = newFilter.queries.filter((q) => q.enabled && q.content);
-        params.set("queries", enabledQueries.map((q) => q.content).join(","));
+        const text = enabledQueries.map((q) => q.content).join(",");
+        const tags = [...new Set(enabledQueries.flatMap((q) => q.tags ?? []))];
+        const keywords = [...new Set(enabledQueries.flatMap((q) => q.keywords ?? []))];
+        const data = await searchText({
+          text,
+          tags: tags.length > 0 ? tags : undefined,
+          keywords: keywords.length > 0 ? keywords : undefined,
+          topk: newFilter.topK,
+          enhance: true,
+        });
+        setFrames(data.results);
       }
-      params.set("topk", String(newFilter.topK));
-
-      const res = await fetch(`/api/search?${params.toString()}`);
-      const data = await res.json();
-      setFrames(data.results || []);
     } catch (error) {
       console.error("Search failed:", error);
       setFrames([]);
@@ -56,14 +69,14 @@ export default function Home() {
     setSubmissionFrame(null);
   }, []);
 
-  const handleFrameSelect = useCallback((frame: Frame) => {
+  const handleFrameSelect = useCallback((frame: FrameResult) => {
     setSubmissionFrame(frame);
     setFrameId(frame.id);
-    setVideoId(frame.video_path);
-    setTimeMs(frame.timestamp?.toFixed(0) || "");
+    setVideoId(frame.video_id);
+    setTimeMs(frame.pts_time.toFixed(0));
   }, []);
 
-  const handleFrameDetail = useCallback((frame: Frame) => {
+  const handleFrameDetail = useCallback((frame: FrameResult) => {
     setSelectedFrame(frame);
   }, []);
 
@@ -171,6 +184,16 @@ export default function Home() {
               <Icon name="settings" size={18} />
               DRES Settings
             </button>
+            <div className="flex items-center gap-1.5 ml-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  healthStatus === "healthy" ? "bg-green-500" : healthStatus === "degraded" ? "bg-yellow-500" : "bg-gray-400"
+                }`}
+              />
+              <span className="font-label-sm text-label-sm text-on-surface-variant">
+                {healthStatus === "healthy" ? "API OK" : healthStatus === "degraded" ? "Degraded" : "..."}
+              </span>
+            </div>
           </div>
         </header>
 
