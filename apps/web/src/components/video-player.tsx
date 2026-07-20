@@ -55,12 +55,14 @@ export interface VideoPlayerHandle {
 
 interface VideoPlayerProps {
   watchUrl: string;
+  initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onReady?: () => void;
   onStateChange?: (state: number) => void;
 }
 
-function extractVideoId(url: string): string | null {
+function extractVideoId(url: string | undefined): string | null {
+  if (!url) return null;
   const m = url.match(
     /(?:v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/,
   );
@@ -87,7 +89,7 @@ function useYouTubeApi(): boolean {
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ watchUrl, onTimeUpdate, onReady, onStateChange }, ref) => {
+  ({ watchUrl, initialTime, onTimeUpdate, onReady, onStateChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<YTPlayer | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -95,8 +97,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const cbs = useRef({ onTimeUpdate, onReady, onStateChange });
-    cbs.current = { onTimeUpdate, onReady, onStateChange };
+    const cbs = useRef({ onTimeUpdate, onReady, onStateChange, initialTime });
+    cbs.current = { onTimeUpdate, onReady, onStateChange, initialTime };
 
     const videoId = extractVideoId(watchUrl);
 
@@ -109,26 +111,32 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const player = new window.YT!.Player(containerRef.current, {
         videoId,
         playerVars: {
-          autoplay: 1,
+          autoplay: 0,
           controls: 1,
           rel: 0,
           modestbranding: 1,
+          start: Math.floor(cbs.current.initialTime ?? 0),
         },
         events: {
           onReady: () => {
             setLoading(false);
+            const t = cbs.current.initialTime;
+            if (t !== undefined) {
+              setTimeout(() => {
+                player.seekTo(t, true);
+              }, 0);
+            }
             cbs.current.onReady?.();
           },
           onStateChange: (e) => {
             cbs.current.onStateChange?.(e.data);
-            if (
-              e.data === window.YT!.PlayerState.PLAYING &&
-              !intervalRef.current
-            ) {
-              intervalRef.current = setInterval(() => {
-                const t = playerRef.current?.getCurrentTime();
-                if (t !== undefined) cbs.current.onTimeUpdate?.(t);
-              }, 250);
+            if (e.data === window.YT!.PlayerState.PLAYING) {
+              if (!intervalRef.current) {
+                intervalRef.current = setInterval(() => {
+                  const t = playerRef.current?.getCurrentTime();
+                  if (t !== undefined) cbs.current.onTimeUpdate?.(t);
+                }, 250);
+              }
             } else if (
               e.data === window.YT!.PlayerState.PAUSED ||
               e.data === window.YT!.PlayerState.ENDED
