@@ -26,6 +26,7 @@ class BoxQuery(BaseModel):
     keywords: list[str] = []
     key_match_mode: Literal["and", "or"] = "and"
     enhance: bool | None = None
+    topk: int = 20
 
 
 class MultiBoxRequest(BaseModel):

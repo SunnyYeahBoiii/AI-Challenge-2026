@@ -63,6 +63,7 @@ export interface MultiBoxQuery {
   keywords?: string[];
   key_match_mode?: "and" | "or";
   enhance?: boolean | null;
+  topk?: number;
 }
 
 export interface MultiBoxRequest {
