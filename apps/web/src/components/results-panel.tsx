@@ -73,7 +73,10 @@ export function ResultsPanel({
                 <div
                   key={`${frame.video_id}-${frame.frame_index}`}
                   className="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors"
-                  onClick={() => onFrameSelect(frame)}
+                  onClick={() => {
+                    onFrameSelect(frame);
+                    onFrameDetail(frame);
+                  }}
                 >
                   <img
                     className="w-full h-full object-cover"
