@@ -25,20 +25,20 @@ export function TagInput({ tags, onChange, placeholder = "Add tag..." }: TagInpu
   };
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/30 text-on-primary-container text-xs"
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/30 text-on-surface font-label-sm text-label-sm"
         >
           {tag}
           <button
             type="button"
             onClick={() => removeTag(tag)}
-            className="hover:text-error transition-colors"
+            className="text-on-surface-variant hover:text-error transition-colors"
             aria-label={`Remove ${tag}`}
           >
-            <Icon name="close" size={12} />
+            <Icon name="close" size={14} />
           </button>
         </span>
       ))}
@@ -48,7 +48,7 @@ export function TagInput({ tags, onChange, placeholder = "Add tag..." }: TagInpu
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={tags.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[80px] bg-transparent border-none outline-none text-sm placeholder:text-outline"
+        className="flex-1 min-w-[100px] bg-transparent border-none outline-none font-body-sm text-body-sm placeholder:text-outline"
       />
     </div>
   );
