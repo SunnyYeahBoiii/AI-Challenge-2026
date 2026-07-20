@@ -35,6 +35,16 @@ class MilvusClient:
             })
         return frames
 
+    def get_frame_embedding(self, video_id: str, frame_index: int):
+        expr = f'video_id == "{video_id}" and frame_index == {frame_index}'
+        results = self.col.query(
+            expr=expr,
+            output_fields=["embedding"],
+        )
+        if not results:
+            return None
+        return results[0]["embedding"]
+
     def is_connected(self):
         try:
             from pymilvus import utility
