@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 
@@ -11,16 +13,33 @@ export interface BoxQuery {
   enabled: boolean;
   tags?: string[];
   keywords?: string[];
+  topK?: number;
+  enhance?: boolean;
 }
 
 interface QueryBoxProps {
   query: BoxQuery;
+  index: number;
   onUpdate: (updates: Partial<BoxQuery>) => void;
   onRemove: () => void;
   canRemove: boolean;
 }
 
-export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps) {
+export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryBoxProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: query.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
   const [showTags, setShowTags] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,9 +56,13 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
   };
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0">
+    <div ref={setNodeRef} style={style} className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0 relative">
+      {/* Index badge */}
+      <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded bg-primary text-on-primary flex items-center justify-center font-label-xs text-label-xs">
+        {index + 1}
+      </div>
       {/* Header */}
-      <div className="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright rounded-t-lg">
+      <div className="flex justify-between items-center p-2 pl-7 border-b border-surface-variant bg-surface-bright rounded-t-lg">
         {/* Toggle */}
         <div className="relative inline-block w-[36px] h-[20px]">
           <input
@@ -52,7 +75,11 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
         </div>
         {/* Actions */}
         <div className="flex gap-1">
-          <button className="text-outline hover:text-on-surface transition-colors p-1">
+          <button
+            className="text-outline hover:text-on-surface transition-colors p-1 cursor-grab active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
             <Icon name="drag_indicator" size={16} />
           </button>
           <button
@@ -121,6 +148,34 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
             />
           </div>
         )}
+      </div>
+
+      {/* Top K & AI Enhance */}
+      <div className="flex justify-between items-center px-3 py-2 border-t border-surface-variant">
+        <div className="flex items-center gap-2">
+          <span className="font-label-sm text-label-sm text-on-surface-variant">Top K</span>
+          <input
+            className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono-sm text-mono-sm outline-none focus:border-primary text-right"
+            type="number"
+            value={query.topK ?? 100}
+            onChange={(e) => onUpdate({ topK: Number(e.target.value) })}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-label-sm text-label-sm text-on-surface-variant">AI Enhance</span>
+          <button
+            onClick={() => onUpdate({ enhance: !query.enhance })}
+            className={`relative w-9 h-5 rounded-full transition-colors ${
+              query.enhance ? "bg-primary" : "bg-outline"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                query.enhance ? "translate-x-4" : ""
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Footer - Expandable Tags/Keywords */}
