@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Icon } from "./icon";
 import { QueryBox, type BoxQuery } from "./query-box";
 import { listVideos } from "@/lib/api";
@@ -10,8 +13,6 @@ export interface SearchFilter {
   videoId?: string;
   queries: BoxQuery[];
   sortBy: "frame_id" | "score";
-  topK: number;
-  enhance?: boolean;
 }
 
 interface FilterPanelProps {
@@ -23,26 +24,39 @@ interface FilterPanelProps {
 export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
-    { id: "1", type: "text", content: "", enabled: true },
+    { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
   ]);
   const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
-  const [topK, setTopK] = useState(100);
-  const [enhance, setEnhance] = useState(false);
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setQueries((prev) => {
+        const oldIndex = prev.findIndex((q) => q.id === active.id);
+        const newIndex = prev.findIndex((q) => q.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
+  }, []);
+
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], sortBy, topK: 10000, enhance });
+      onSearch({ videoId: videoId.trim(), queries: [], sortBy });
     } else {
       const enabledQueries = queries.filter((q) => q.enabled && q.content);
       if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, sortBy, topK, enhance });
+        onSearch({ queries: enabledQueries, sortBy });
       }
     }
-  }, [videoId, queries, sortBy, topK, enhance, onSearch]);
+  }, [videoId, queries, sortBy, onSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
@@ -69,13 +83,13 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], sortBy, topK: 10000 });
+    onSearch({ videoId: video.video_id, queries: [], sortBy });
   };
 
   const addQuery = () => {
     setQueries((prev) => [
       ...prev,
-      { id: Date.now().toString(), type: "text", content: "", enabled: true },
+      { id: Date.now().toString(), type: "text", content: "", enabled: true, topK: 100, enhance: false },
     ]);
   };
 
@@ -138,30 +152,6 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
               <option value="score">Score</option>
             </select>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">Top K</span>
-            <input
-              className="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono-sm text-mono-sm outline-none focus:border-primary text-right"
-              type="number"
-              value={topK}
-              onChange={(e) => setTopK(Number(e.target.value))}
-            />
-          </div>
-          <div className="flex justify-between items-center mt-2">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">AI Enhance</span>
-            <button
-              onClick={() => setEnhance(!enhance)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${
-                enhance ? "bg-primary" : "bg-outline"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  enhance ? "translate-x-4" : ""
-                }`}
-              />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -176,17 +166,22 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
             <Icon name="add" size={18} />
           </button>
         </div>
-        <div className="flex flex-col gap-stack-gap">
-          {queries.map((query) => (
-            <QueryBox
-              key={query.id}
-              query={query}
-              onUpdate={(updates) => updateQuery(query.id, updates)}
-              onRemove={() => removeQuery(query.id)}
-              canRemove={queries.length > 1}
-            />
-          ))}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-stack-gap">
+              {queries.map((query, index) => (
+                <QueryBox
+                  key={query.id}
+                  query={query}
+                  index={index}
+                  onUpdate={(updates) => updateQuery(query.id, updates)}
+                  onRemove={() => removeQuery(query.id)}
+                  canRemove={queries.length > 1}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       {/* Action Buttons */}
