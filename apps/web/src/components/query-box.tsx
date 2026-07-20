@@ -37,7 +37,7 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
   };
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col">
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0">
       {/* Header */}
       <div className="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright rounded-t-lg">
         {/* Toggle */}
@@ -127,13 +127,20 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
       <div className="bg-surface-bright rounded-b-lg border-t border-surface-variant">
         <button
           onClick={() => setShowTags(!showTags)}
-          className="w-full px-2 py-1.5 flex items-center gap-2 border-b border-surface-variant cursor-pointer hover:bg-surface-container-high transition-colors"
+          className="w-full px-3 py-2 flex items-center gap-2 border-b border-surface-variant cursor-pointer hover:bg-surface-container-high transition-colors"
         >
           <Icon name="sell" size={14} className="text-outline" />
-          <span className="font-label-sm text-label-sm text-on-surface-variant">Tags</span>
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            Tags {query.tags && query.tags.length > 0 && `(${query.tags.length})`}
+          </span>
+          <Icon
+            name={showTags ? "expand_less" : "expand_more"}
+            size={16}
+            className="text-outline ml-auto"
+          />
         </button>
         {showTags && (
-          <div className="p-2">
+          <div className="p-3 border-b border-surface-variant">
             <TagInput
               tags={query.tags || []}
               onChange={(tags) => onUpdate({ tags })}
@@ -143,13 +150,20 @@ export function QueryBox({ query, onUpdate, onRemove, canRemove }: QueryBoxProps
         )}
         <button
           onClick={() => setShowKeywords(!showKeywords)}
-          className="w-full px-2 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-surface-container-high transition-colors rounded-b-lg"
+          className="w-full px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-surface-container-high transition-colors rounded-b-lg"
         >
           <Icon name="key" size={14} className="text-outline" />
-          <span className="font-label-sm text-label-sm text-on-surface-variant">Keywords</span>
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            Keywords {query.keywords && query.keywords.length > 0 && `(${query.keywords.length})`}
+          </span>
+          <Icon
+            name={showKeywords ? "expand_less" : "expand_more"}
+            size={16}
+            className="text-outline ml-auto"
+          />
         </button>
         {showKeywords && (
-          <div className="p-2">
+          <div className="p-3">
             <TagInput
               tags={query.keywords || []}
               onChange={(keywords) => onUpdate({ keywords })}
