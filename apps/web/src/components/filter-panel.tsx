@@ -88,7 +88,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   };
 
   return (
-    <aside className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen overflow-y-auto w-sidebar-width flex-shrink-0 z-10 custom-scrollbar">
+    <aside className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-sidebar-width flex-shrink-0 z-10 overflow-hidden">
       {/* Top Section */}
       <div className="p-container-padding pb-2 border-b border-outline-variant">
         {/* Video ID Search */}
@@ -166,8 +166,8 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       </div>
 
       {/* Queries List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low">
-        <div className="flex justify-between items-center px-1">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low">
+        <div className="flex justify-between items-center px-1 shrink-0">
           <h3 className="font-label-md text-label-md text-on-surface">Queries</h3>
           <button
             onClick={addQuery}
@@ -176,15 +176,17 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
             <Icon name="add" size={18} />
           </button>
         </div>
-        {queries.map((query) => (
-          <QueryBox
-            key={query.id}
-            query={query}
-            onUpdate={(updates) => updateQuery(query.id, updates)}
-            onRemove={() => removeQuery(query.id)}
-            canRemove={queries.length > 1}
-          />
-        ))}
+        <div className="flex flex-col gap-stack-gap">
+          {queries.map((query) => (
+            <QueryBox
+              key={query.id}
+              query={query}
+              onUpdate={(updates) => updateQuery(query.id, updates)}
+              onRemove={() => removeQuery(query.id)}
+              canRemove={queries.length > 1}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Action Buttons */}
