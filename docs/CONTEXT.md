@@ -43,3 +43,7 @@ _Avoid_: vector database, ANN
 **Elasticsearch**:
 Full-text search database. Stores OCR text, ASR text, and frame metadata. Used for keyword filtering and metadata enrichment.
 _Avoid_: ES, search engine
+
+**pts_time**:
+The timestamp of a Frame within its Video, in **seconds** (float). Not milliseconds. Used for video seeking and DRES submission.
+_Avoid_: treating as ms, dividing by 1000

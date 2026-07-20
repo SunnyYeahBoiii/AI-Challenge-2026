@@ -75,7 +75,7 @@ export function SubmissionConfirmationDialog({
             <div className="flex items-center gap-2">
               <span className="font-label-md text-label-md text-on-surface-variant">Time:</span>
               <span className="font-mono-sm text-mono-sm text-on-surface">
-                {frame.pts_time.toFixed(0)}ms
+                {frame.pts_time.toFixed(1)}s
               </span>
             </div>
           </div>

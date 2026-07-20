@@ -12,9 +12,10 @@ interface FrameDetailDialogProps {
   frame: FrameResult;
   onClose: () => void;
   onSubmit: (frame: FrameResult) => void;
+  onFrameNavigate?: (frame: FrameResult) => void;
 }
 
-export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialogProps) {
+export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }: FrameDetailDialogProps) {
   const [similarFrames, setSimilarFrames] = useState<FrameResult[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
@@ -31,6 +32,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isManualNavRef = useRef(false);
 
   useEffect(() => { allFramesRef.current = allFrames; }, [allFrames]);
 
@@ -95,7 +97,9 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
             <VideoPlayer
               ref={videoRef}
               watchUrl={frame.watch_url}
+              initialTime={frame.pts_time}
               onTimeUpdate={(t) => {
+                if (isManualNavRef.current) return;
                 const frames = allFramesRef.current;
                 if (frames.length === 0) return;
                 const closest = frames.reduce((prev, curr) =>
@@ -111,9 +115,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                   }
                 }, 300);
               }}
-              onReady={() => {
-                videoRef.current?.seekTo(frame.pts_time);
-              }}
+              onReady={() => {}}
             />
             {/* Metadata Overlay */}
             <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md rounded px-3 py-2 font-mono-sm text-mono-sm text-gray-200 border border-white/10 flex flex-col gap-1">
@@ -132,7 +134,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                 return (
                   <div className="flex justify-between gap-4">
                     <span>Time</span>
-                    <span className="text-white font-medium">{t.toFixed(0)}ms</span>
+                    <span className="text-white font-medium">{t.toFixed(1)}s</span>
                   </div>
                 );
               })()}
@@ -159,8 +161,16 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                 frames={allFrames}
                 currentArrayIndex={currentArrayIndex}
                 onFrameSelect={(f) => {
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  isManualNavRef.current = true;
                   setCurrentFrameIndex(f.frame_index);
                   videoRef.current?.seekTo(f.pts_time);
+                  const pos = allFrames.findIndex(frame => frame.frame_index === f.frame_index);
+                  const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
+                  if (isNearEdge) {
+                    setFetchFrameIndex(f.frame_index);
+                  }
+                  setTimeout(() => { isManualNavRef.current = false; }, 500);
                 }}
               />
             </>
@@ -206,8 +216,8 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
               <input
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
-                placeholder="Time (ms)"
-                defaultValue={frame.pts_time.toFixed(0)}
+                placeholder="Time (s)"
+                defaultValue={frame.pts_time.toFixed(1)}
               />
             </div>
 
@@ -244,7 +254,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit }: FrameDetailDialo
                 : similarFrames.map((sf) => (
                     <div
                       key={`${sf.video_id}-${sf.frame_index}`}
-                      onClick={onClose}
+                      onClick={() => onFrameNavigate ? onFrameNavigate(sf) : onClose()}
                       className="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all relative group"
                       title={`Frame ${sf.frame_index} score ${(sf.score * 100).toFixed(0)}%`}
                     >

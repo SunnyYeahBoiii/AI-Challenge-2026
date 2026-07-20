@@ -8,7 +8,7 @@ import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { Icon } from "@/components/icon";
 import type { FrameResult } from "@/lib/api";
-import { searchText, searchVideoFrames, healthCheck } from "@/lib/api";
+import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
 
 export default function Home() {
   const [filter, setFilter] = useState<SearchFilter | null>(null);
@@ -25,7 +25,7 @@ export default function Home() {
   const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">("kis");
   const [frameId, setFrameId] = useState("");
   const [videoId, setVideoId] = useState("");
-  const [timeMs, setTimeMs] = useState("");
+  const [timeSec, setTimeSec] = useState("");
 
   useEffect(() => {
     healthCheck()
@@ -42,15 +42,16 @@ export default function Home() {
         setFrames(data.results);
       } else {
         const enabledQueries = newFilter.queries.filter((q) => q.enabled && q.content);
-        const text = enabledQueries.map((q) => q.content).join(",");
-        const tags = [...new Set(enabledQueries.flatMap((q) => q.tags ?? []))];
-        const keywords = [...new Set(enabledQueries.flatMap((q) => q.keywords ?? []))];
-        const data = await searchText({
-          text,
-          tags: tags.length > 0 ? tags : undefined,
-          keywords: keywords.length > 0 ? keywords : undefined,
-          topk: newFilter.topK,
-          enhance: newFilter.enhance,
+        const boxQueries = enabledQueries.map((q) => ({
+          text: q.type === "text" ? q.content : undefined,
+          image: q.type === "image" ? q.content : undefined,
+          tags: q.tags?.length ? q.tags : undefined,
+          keywords: q.keywords?.length ? q.keywords : undefined,
+          topk: q.topK ?? 100,
+          enhance: q.enhance ?? false,
+        }));
+        const data = await multiBoxSearch({
+          box_queries: boxQueries,
         });
         setFrames(data.results);
       }
@@ -73,7 +74,7 @@ export default function Home() {
     setSubmissionFrame(frame);
     setFrameId(frame.id);
     setVideoId(frame.video_id);
-    setTimeMs(frame.pts_time.toFixed(0));
+    setTimeSec(frame.pts_time.toFixed(1));
   }, []);
 
   const handleFrameDetail = useCallback((frame: FrameResult) => {
@@ -162,9 +163,9 @@ export default function Home() {
               <input
                 className="w-40 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono-sm text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors"
                 type="text"
-                placeholder="Time (ms)"
-                value={timeMs}
-                onChange={(e) => setTimeMs(e.target.value)}
+                placeholder="Time (s)"
+                value={timeSec}
+                onChange={(e) => setTimeSec(e.target.value)}
               />
             </div>
           </div>
@@ -216,6 +217,10 @@ export default function Home() {
             setSubmissionFrame(frame);
             setSelectedFrame(null);
             setShowSubmitConfirm(true);
+          }}
+          onFrameNavigate={(frame) => {
+            setSelectedFrame(frame);
+            handleFrameSelect(frame);
           }}
         />
       )}
