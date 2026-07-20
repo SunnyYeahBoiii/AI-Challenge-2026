@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import type { DragStartEvent, DragEndEvent, Modifier } from "@dnd-kit/core";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Icon } from "./icon";
 import { QueryBox, type BoxQuery } from "./query-box";
@@ -31,12 +31,23 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const isDraggingRef = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  const restrictToVerticalAxis: Modifier = ({ transform }) => ({
+    ...transform,
+    x: 0,
+  });
+
+  const handleDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    isDraggingRef.current = false;
     const { active, over } = event;
     if (over && active.id !== over.id) {
       setQueries((prev) => {
@@ -45,6 +56,23 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
         return arrayMove(prev, oldIndex, newIndex);
       });
     }
+  }, []);
+
+  useEffect(() => {
+    const preventHorizontalScroll = (e: WheelEvent) => {
+      if (isDraggingRef.current && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+      }
+    };
+    const preventTouchScroll = (e: TouchEvent) => {
+      if (isDraggingRef.current) e.preventDefault();
+    };
+    document.addEventListener("wheel", preventHorizontalScroll, { passive: false, capture: true });
+    document.addEventListener("touchmove", preventTouchScroll, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener("wheel", preventHorizontalScroll, { capture: true } as EventListenerOptions);
+      document.removeEventListener("touchmove", preventTouchScroll, { capture: true } as EventListenerOptions);
+    };
   }, []);
 
   const handleSearch = useCallback(() => {
@@ -166,7 +194,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
             <Icon name="add" size={18} />
           </button>
         </div>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col gap-stack-gap">
               {queries.map((query, index) => (
