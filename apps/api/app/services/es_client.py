@@ -4,7 +4,7 @@ from elasticsearch import Elasticsearch
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "")
 ES_PASS = os.getenv("ES_PASS", "")
-ES_INDEX = "videos"
+ES_INDEX = "video_texts"
 
 
 class ESClient:
@@ -20,7 +20,7 @@ class ESClient:
             must.append({
                 "multi_match": {
                     "query": query,
-                    "fields": ["title^3", "description^2", "keywords"],
+                    "fields": ["ocr_text^3", "asr_text^2"],
                     "fuzziness": "AUTO",
                 }
             })
@@ -46,7 +46,7 @@ class ESClient:
     def filter_videos_by_keywords(self, video_ids, keywords, mode="and"):
         if not keywords or not video_ids:
             return video_ids
-        should = [{"term": {"keywords": kw}} for kw in keywords]
+        should = [{"term": {"tags": kw}} for kw in keywords]
         body = {
             "query": {"bool": {"should": should, "minimum_should_match": 1 if mode == "or" else len(should)}},
             "_source": ["video_id"],
