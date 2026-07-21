@@ -1,52 +1,52 @@
+from __future__ import annotations
+
 import io
+import logging
 import os
+from typing import Any, cast
 
-import numpy as np
-import open_clip
-import torch
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
-EMBEDDING_DIM = 1024
-_device = "cuda" if torch.cuda.is_available() else "cpu"
-_model = None
-_tokenizer = None
-_preprocess = None
+from app.services.model_registry import FloatArray, get_model_registry
+
+LOGGER = logging.getLogger(__name__)
 
 
-def _load_model():
-    global _model, _tokenizer, _preprocess
-    if _model is None:
-        _model, _, _preprocess = open_clip.create_model_and_transforms(
-            "ViT-H-14", pretrained="dfn5b"
-        )
-        _tokenizer = open_clip.get_tokenizer("ViT-H-14")
-        _model = _model.to(_device).eval()
-    return _model, _tokenizer, _preprocess
+def _selected_model_id(model_id: str | None) -> str:
+    if model_id:
+        return model_id
+    enabled = get_model_registry().enabled_specs()
+    if not enabled:
+        raise RuntimeError("no embedding models are enabled")
+    return enabled[0].model_id
 
 
-def embed_text(texts: list[str]) -> np.ndarray:
-    model, tokenizer, _ = _load_model()
-    tokens = tokenizer(texts).to(_device)
-    with torch.no_grad():
-        features = model.encode_text(tokens)
-        features = features / features.norm(dim=-1, keepdim=True)
-    return features.cpu().numpy().astype(np.float32)
+def embed_text(texts: list[str], model_id: str | None = None) -> FloatArray:
+    """Encode text with one configured model for debugging or legacy callers."""
+    selected_model = _selected_model_id(model_id)
+    return get_model_registry().get(selected_model).encode_texts(texts)
 
 
-def embed_image(image_bytes: bytes) -> np.ndarray:
-    model, _, preprocess = _load_model()
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    batch = preprocess(img).unsqueeze(0).to(_device)
-    with torch.no_grad():
-        features = model.encode_image(batch)
-        features = features / features.norm(dim=-1, keepdim=True)
-    return features.cpu().numpy().astype(np.float32)[0]
+def decode_image(image_bytes: bytes) -> Image.Image:
+    """Decode user-provided image bytes into an isolated RGB image."""
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            return image.convert("RGB").copy()
+    except (OSError, UnidentifiedImageError) as error:
+        raise ValueError("invalid image payload") from error
 
 
-_client = None
+def embed_image(image_bytes: bytes, model_id: str | None = None) -> FloatArray:
+    """Encode an image with one configured model for debugging or legacy callers."""
+    selected_model = _selected_model_id(model_id)
+    image = decode_image(image_bytes)
+    return cast(FloatArray, get_model_registry().get(selected_model).encode_images([image])[0])
 
 
-def _get_openai_client():
+_client: Any | None = None
+
+
+def _get_openai_client() -> Any | None:
     global _client
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
@@ -59,14 +59,20 @@ def _get_openai_client():
 
 
 def enhance_query(raw_query: str) -> str:
+    """Translate and expand a Query while explicitly preserving discriminative details."""
     client = _get_openai_client()
     if client is None:
         return raw_query
+    prompt = (
+        "Translate the retrieval query to English when needed and rewrite it as one concise "
+        "visual scene description. Preserve every named entity, count, color, spatial relation, "
+        "visible text, spoken phrase, action order, negation, and uncertainty. Do not invent new "
+        f"details. Query: {raw_query}"
+    )
     try:
-        resp = client.responses.create(
-            model="gpt-4.1-nano",
-            input=f"Translate to English if needed, then rephrase as a descriptive scene sentence: {raw_query}",
-        )
-        return resp.output_text
-    except Exception:
+        response = client.responses.create(model="gpt-4.1-nano", input=prompt)
+        enhanced = str(response.output_text).strip()
+        return enhanced or raw_query
+    except Exception as error:
+        LOGGER.warning("Query enhancement failed; using original Query: %s", error)
         return raw_query

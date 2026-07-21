@@ -10,6 +10,7 @@ interface ResultsPanelProps {
   onFrameSelect: (frame: FrameResult) => void;
   onFrameDetail: (frame: FrameResult) => void;
   isLoading?: boolean;
+  error?: string | null;
 }
 
 export function ResultsPanel({
@@ -18,6 +19,7 @@ export function ResultsPanel({
   onFrameSelect,
   onFrameDetail,
   isLoading,
+  error,
 }: ResultsPanelProps) {
   const groupedFrames = useMemo(() => {
     if (viewMode === "continuous") return [frames];
@@ -45,15 +47,15 @@ export function ResultsPanel({
     );
   }
 
-  if (frames.length === 0) {
+  if (error || frames.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center max-w-md">
           <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface mb-2">
-            Start Searching
+            {error ? "Search Failed" : "Start Searching"}
           </h2>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Use the filters on the left and press &quot;Enter&quot; to see results.
+            {error ?? "Use the filters on the left and press \"Enter\" to see results."}
           </p>
         </div>
       </div>
@@ -88,6 +90,7 @@ export function ResultsPanel({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        onFrameSelect(frame);
                         onFrameDetail(frame);
                       }}
                       className="text-white"

@@ -67,6 +67,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
         <div className="relative inline-block w-[36px] h-[20px]">
           <input
             type="checkbox"
+            aria-label={`Enable query ${index + 1}`}
             checked={query.enabled}
             onChange={(e) => onUpdate({ enabled: e.target.checked })}
             className="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0"
@@ -76,6 +77,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
         {/* Actions */}
         <div className="flex gap-1">
           <button
+            aria-label={`Reorder query ${index + 1}`}
             className="text-outline hover:text-on-surface transition-colors p-1 cursor-grab active:cursor-grabbing"
             {...attributes}
             {...listeners}
@@ -83,6 +85,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
             <Icon name="drag_indicator" size={16} />
           </button>
           <button
+            aria-label={query.type === "text" ? "Switch to image query" : "Switch to text query"}
             onClick={() => {
               if (query.type === "text") {
                 onUpdate({ type: "image", content: "" });
@@ -97,6 +100,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           </button>
           {canRemove && (
             <button
+              aria-label={`Delete query ${index + 1}`}
               onClick={onRemove}
               className="text-error opacity-70 hover:opacity-100 transition-colors p-1"
             >
@@ -157,13 +161,20 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           <input
             className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono-sm text-mono-sm outline-none focus:border-primary text-right"
             type="number"
+            aria-label={`Top K for query ${index + 1}`}
+            min={1}
+            max={1000}
             value={query.topK ?? 100}
             onChange={(e) => onUpdate({ topK: Number(e.target.value) })}
+            onBlur={() =>
+              onUpdate({ topK: Math.min(1000, Math.max(1, query.topK || 100)) })
+            }
           />
         </div>
         <div className="flex items-center gap-2">
           <span className="font-label-sm text-label-sm text-on-surface-variant">AI Enhance</span>
           <button
+            aria-label={`${query.enhance ? "Disable" : "Enable"} AI enhancement for query ${index + 1}`}
             onClick={() => onUpdate({ enhance: !query.enhance })}
             className={`relative w-9 h-5 rounded-full transition-colors ${
               query.enhance ? "bg-primary" : "bg-outline"

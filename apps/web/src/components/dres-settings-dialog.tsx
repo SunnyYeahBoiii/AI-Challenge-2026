@@ -32,13 +32,14 @@ export function DresSettingsDialog({ onClose }: DresSettingsDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/80 backdrop-blur-sm">
-      <div className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-lg border border-outline-variant">
+      <div role="dialog" aria-modal="true" aria-labelledby="dres-settings-title" className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-lg border border-outline-variant">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-outline-variant">
-          <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">
+          <h2 id="dres-settings-title" className="font-headline-sm text-headline-sm text-on-surface font-bold">
             DRES Settings
           </h2>
           <button
+            aria-label="Close DRES settings"
             onClick={onClose}
             className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full p-1 transition-colors"
           >
@@ -49,8 +50,9 @@ export function DresSettingsDialog({ onClose }: DresSettingsDialogProps) {
         {/* Content */}
         <div className="p-4 flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label className="font-label-md text-label-md text-on-surface-variant">Username</label>
+            <label htmlFor="dres-username" className="font-label-md text-label-md text-on-surface-variant">Username</label>
             <input
+              id="dres-username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -59,8 +61,9 @@ export function DresSettingsDialog({ onClose }: DresSettingsDialogProps) {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="font-label-md text-label-md text-on-surface-variant">Password</label>
+            <label htmlFor="dres-password" className="font-label-md text-label-md text-on-surface-variant">Password</label>
             <input
+              id="dres-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

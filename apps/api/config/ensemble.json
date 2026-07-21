@@ -1,0 +1,38 @@
+{
+  "models": [
+    {
+      "id": "dfn5b",
+      "adapter": "open_clip",
+      "model_name": "ViT-H-14",
+      "pretrained": "dfn5b",
+      "dimension": 1024,
+      "collection": "data_frames",
+      "weight": 1.0,
+      "enabled": true
+    },
+    {
+      "id": "siglip2-so400m-384",
+      "adapter": "huggingface",
+      "model_name": "google/siglip2-so400m-patch14-384",
+      "revision": "4b932c136d59bab7c5c54c5c4278b5519169087f",
+      "dimension": 1152,
+      "collection": "data_frames_siglip2_so400m_384",
+      "text_padding": "max_length",
+      "text_max_length": 64,
+      "weight": 1.0,
+      "enabled": false
+    },
+    {
+      "id": "metaclip2-worldwide-huge",
+      "adapter": "huggingface",
+      "model_name": "facebook/metaclip-2-worldwide-huge-quickgelu",
+      "revision": "c30deeca36da4422753d39c51552123bc4b5505e",
+      "dimension": 1024,
+      "collection": "data_frames_metaclip2_worldwide_huge",
+      "text_padding": "max_length",
+      "text_max_length": 77,
+      "weight": 1.0,
+      "enabled": false
+    }
+  ]
+}

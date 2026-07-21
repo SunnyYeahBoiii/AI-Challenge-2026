@@ -6,19 +6,29 @@ const api = axios.create({ baseURL: "/api" });
 
 export interface FrameResult {
   id: string;
+  frame_uid?: string;
   video_id: string;
   frame_index: number;
+  frame_idx?: number;
   shot_idx: number;
   start_time: number;
   end_time: number;
   pts_time: number;
   fps: number;
   score: number;
+  fusion_score?: number;
+  model_ranks?: Record<string, number>;
+  model_scores?: Record<string, number>;
   title: string;
   description: string;
   keywords: string[];
   thumbnail_url: string;
   watch_url: string;
+}
+
+/** Organizer-facing original-video Frame index, never the Milvus primary key. */
+export function competitionFrameIndex(frame: FrameResult): number {
+  return frame.frame_idx ?? frame.frame_index;
 }
 
 export interface VideoResult {
@@ -40,9 +50,36 @@ export interface HealthStatus {
   status: string;
   milvus: string;
   elasticsearch: string;
+  models?: Record<string, string>;
 }
 
 // ====== Request types ======
+
+export interface EnsembleOptions {
+  model_ids?: string[];
+  model_weights?: Record<string, number>;
+  candidate_topk?: number;
+  rrf_k?: number;
+  preserve_original_query?: boolean;
+  diversity_time_seconds?: number;
+  max_per_video?: number;
+  allow_partial_models?: boolean;
+}
+
+export interface EnsembleMeta {
+  queryVariants: string[];
+  sources: string[];
+  models: string[];
+  errors: Record<string, string>;
+  rrfK: number;
+  candidateTopK: number;
+}
+
+export interface FrameSearchResponse {
+  results: FrameResult[];
+  total: number;
+  meta?: EnsembleMeta;
+}
 
 export interface SearchTextRequest {
   text: string;
@@ -53,6 +90,7 @@ export interface SearchTextRequest {
   keyword_source?: "all" | "ocr" | "asr";
   topk?: number;
   enhance?: boolean;
+  ensemble?: EnsembleOptions;
 }
 
 export interface MultiBoxQuery {
@@ -75,21 +113,38 @@ export interface MultiBoxRequest {
 
 // ====== Search API ======
 
-export async function searchText(req: SearchTextRequest): Promise<{ results: FrameResult[]; total: number }> {
+export async function searchText(req: SearchTextRequest): Promise<FrameSearchResponse> {
   const { data } = await api.post("/search", req);
   return data;
 }
 
 export async function searchImage(
   file: File,
-  params?: { tags?: string[]; keywords?: string[]; topk?: number }
-): Promise<{ results: FrameResult[]; total: number }> {
+  params?: { tags?: string[]; keywords?: string[]; topk?: number; ensemble?: EnsembleOptions }
+): Promise<FrameSearchResponse> {
   const form = new FormData();
   form.append("image", file);
   if (params?.tags?.length) params.tags.forEach((t) => form.append("tags", t));
   if (params?.keywords?.length) params.keywords.forEach((k) => form.append("keywords", k));
   if (params?.topk) form.append("topk", String(params.topk));
+  if (params?.ensemble) form.append("ensemble", JSON.stringify(params.ensemble));
   const { data } = await api.post("/search/image", form);
+  return data;
+}
+
+/** Search from a Query plus a selected feedback image in each model's joint space. */
+export async function searchComposed(
+  text: string,
+  file: File,
+  params?: { textWeight?: number; topk?: number; ensemble?: EnsembleOptions }
+): Promise<FrameSearchResponse> {
+  const form = new FormData();
+  form.append("text", text);
+  form.append("image", file);
+  form.append("text_weight", String(params?.textWeight ?? 0.75));
+  if (params?.topk) form.append("topk", String(params.topk));
+  if (params?.ensemble) form.append("ensemble", JSON.stringify(params.ensemble));
+  const { data } = await api.post("/search/composed", form);
   return data;
 }
 

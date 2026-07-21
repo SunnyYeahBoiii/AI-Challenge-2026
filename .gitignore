@@ -5,6 +5,8 @@ __pycache__/
 *.egg-info/
 .venv/
 *.egg
+.coverage
+htmlcov/
 dist/
 build/
 .next/
@@ -20,5 +22,8 @@ out/
 .DS_Store
 Thumbs.db
 .turbo/
+.cache/
 docker-compose.override.yml
 /data/
+/dogfood-output/
+/tmp/

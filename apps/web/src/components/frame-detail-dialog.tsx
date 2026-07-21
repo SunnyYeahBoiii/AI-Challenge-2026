@@ -3,21 +3,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { searchSimilarFrames, searchVideoFrames } from "@/lib/api";
-import type { FrameResult } from "@/lib/api";
+import { competitionFrameIndex, type FrameResult } from "@/lib/api";
 import { VideoPlayer } from "./video-player";
 import type { VideoPlayerHandle } from "./video-player";
 import { FrameNavigator } from "./frame-navigator";
 
 interface FrameDetailDialogProps {
   frame: FrameResult;
+  submissionType: "track" | "qa" | "kis";
+  onSubmissionTypeChange: (type: "track" | "qa" | "kis") => void;
   onClose: () => void;
   onSubmit: (frame: FrameResult) => void;
   onFrameNavigate?: (frame: FrameResult) => void;
 }
 
-export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }: FrameDetailDialogProps) {
+export function FrameDetailDialog({
+  frame,
+  submissionType,
+  onSubmissionTypeChange,
+  onClose,
+  onSubmit,
+  onFrameNavigate,
+}: FrameDetailDialogProps) {
   const [similarFrames, setSimilarFrames] = useState<FrameResult[]>([]);
-  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarLoading, setSimilarLoading] = useState(true);
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
   const [fetchFrameIndex, setFetchFrameIndex] = useState(frame.frame_index);
@@ -28,6 +37,10 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
     const idx = allFrames.findIndex((f) => f.frame_index === currentFrameIndex);
     return idx >= 0 ? idx : 0;
   }, [allFrames, currentFrameIndex]);
+  const currentFrame = useMemo(
+    () => allFrames.find((candidate) => candidate.frame_index === currentFrameIndex) ?? frame,
+    [allFrames, currentFrameIndex, frame],
+  );
 
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
@@ -38,20 +51,21 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
 
   useEffect(() => {
     let cancelled = false;
-    setSimilarLoading(true);
-    searchSimilarFrames(frame.video_id, frame.frame_index).then((res) => {
-      if (!cancelled) {
-        setSimilarFrames(res.results);
-        setSimilarLoading(false);
-      }
-    });
+    searchSimilarFrames(frame.video_id, frame.frame_index)
+      .then((res) => {
+        if (!cancelled) setSimilarFrames(res.results);
+      })
+      .catch(() => {
+        if (!cancelled) setSimilarFrames([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSimilarLoading(false);
+      });
     return () => { cancelled = true; };
   }, [frame.video_id, frame.frame_index]);
 
   useEffect(() => {
     let cancelled = false;
-    setAllFramesLoading(true);
-    setAllFramesError(null);
     searchVideoFrames(frame.video_id, fetchFrameIndex, 5)
       .then((res) => {
         if (!cancelled) {
@@ -68,6 +82,13 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
     return () => { cancelled = true; };
   }, [frame.video_id, fetchFrameIndex]);
 
+  const requestFrameWindow = (frameIndex: number) => {
+    if (frameIndex === fetchFrameIndex) return;
+    setAllFramesLoading(true);
+    setAllFramesError(null);
+    setFetchFrameIndex(frameIndex);
+  };
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -81,9 +102,10 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/80 backdrop-blur-sm">
-      <div className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex overflow-hidden relative border border-outline-variant">
+      <div role="dialog" aria-modal="true" aria-labelledby="frame-detail-title" className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex overflow-hidden relative border border-outline-variant">
         {/* Close Button */}
         <button
+          aria-label="Close frame details"
           onClick={onClose}
           className="absolute top-4 right-4 z-50 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full p-1 transition-colors"
         >
@@ -111,7 +133,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
                   const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
                   const isNearEdge = pos <= 1 || pos >= frames.length - 2;
                   if (isNearEdge) {
-                    setFetchFrameIndex(closest.frame_index);
+                    requestFrameWindow(closest.frame_index);
                   }
                 }, 300);
               }}
@@ -168,7 +190,7 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
                   const pos = allFrames.findIndex(frame => frame.frame_index === f.frame_index);
                   const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
                   if (isNearEdge) {
-                    setFetchFrameIndex(f.frame_index);
+                    requestFrameWindow(f.frame_index);
                   }
                   setTimeout(() => { isManualNavRef.current = false; }, 500);
                 }}
@@ -178,22 +200,23 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
 
           {/* Submission Controls */}
           <div className="flex-grow p-6 flex flex-col gap-4 overflow-y-auto border-t border-white/5">
-            <h2 className="font-headline-sm text-headline-sm text-white">
+            <h2 id="frame-detail-title" className="font-headline-sm text-headline-sm text-white">
               Frame {currentFrameIndex} from {frame.video_id}
             </h2>
 
             {/* Mode Toggles */}
             <div className="flex items-center gap-6">
-              {["Track", "QA", "KIS"].map((mode) => (
+              {(["track", "qa", "kis"] as const).map((mode) => (
                 <label key={mode} className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="radio"
                     name="detail-mode"
-                    defaultChecked={mode === "KIS"}
+                    checked={submissionType === mode}
+                    onChange={() => onSubmissionTypeChange(mode)}
                     className="form-radio text-primary-container border-outline-variant bg-transparent w-4 h-4"
                   />
                   <span className="font-label-md text-label-md text-gray-300 group-hover:text-white transition-colors">
-                    {mode}
+                    {mode.toUpperCase()}
                   </span>
                 </label>
               ))}
@@ -204,27 +227,32 @@ export function FrameDetailDialog({ frame, onClose, onSubmit, onFrameNavigate }:
               <input
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
-                placeholder="Frame ID"
-                defaultValue={frame.id}
+                placeholder="Original Frame Index"
+                key={`frame-${currentFrame.frame_index}`}
+                defaultValue={competitionFrameIndex(currentFrame)}
+                readOnly
               />
               <input
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
                 placeholder="Video ID"
-                defaultValue={frame.video_id}
+                defaultValue={currentFrame.video_id}
+                readOnly
               />
               <input
                 className="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
                 type="text"
                 placeholder="Time (s)"
-                defaultValue={frame.pts_time.toFixed(1)}
+                key={`time-${currentFrame.frame_index}`}
+                defaultValue={currentFrame.pts_time.toFixed(1)}
+                readOnly
               />
             </div>
 
             {/* Submit */}
             <div className="mt-auto pt-4">
               <button
-                onClick={() => onSubmit(frame)}
+                onClick={() => onSubmit(currentFrame)}
                 className="w-full bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded font-label-md text-label-md font-bold transition-all"
               >
                 Submit

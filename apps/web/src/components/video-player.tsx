@@ -70,20 +70,19 @@ function extractVideoId(url: string | undefined): string | null {
 }
 
 function useYouTubeApi(): boolean {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(
+    () => typeof window !== "undefined" && Boolean(window.YT?.Player),
+  );
 
   useEffect(() => {
-    if (window.YT?.Player) {
-      setReady(true);
-      return;
-    }
+    if (ready) return;
     if (!document.querySelector('script[src*="iframe_api"]')) {
       const s = document.createElement("script");
       s.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(s);
     }
     window.onYouTubeIframeAPIReady = () => setReady(true);
-  }, []);
+  }, [ready]);
 
   return ready;
 }
@@ -98,15 +97,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [loading, setLoading] = useState(true);
 
     const cbs = useRef({ onTimeUpdate, onReady, onStateChange, initialTime });
-    cbs.current = { onTimeUpdate, onReady, onStateChange, initialTime };
+    useEffect(() => {
+      cbs.current = { onTimeUpdate, onReady, onStateChange, initialTime };
+    }, [onTimeUpdate, onReady, onStateChange, initialTime]);
 
     const videoId = extractVideoId(watchUrl);
 
     useEffect(() => {
       if (!apiReady || !videoId || !containerRef.current) return;
-
-      setLoading(true);
-      setError(null);
 
       const player = new window.YT!.Player(containerRef.current, {
         videoId,

@@ -133,6 +133,12 @@ def connect_elasticsearch() -> Elasticsearch:
 
 def ensure_es_index(es: Elasticsearch) -> None:
     if es.indices.exists(index=ES_INDEX):
+        # Add the exact-match tag mapping before the first updated document is indexed.
+        # Elasticsearch cannot change a dynamically inferred text field to keyword later.
+        es.indices.put_mapping(
+            index=ES_INDEX,
+            body={"properties": {"tags": {"type": "keyword"}}},
+        )
         print(f"Index '{ES_INDEX}' exists.")
         return
 
@@ -146,6 +152,7 @@ def ensure_es_index(es: Elasticsearch) -> None:
                 "frame_path": {"type": "keyword"},
                 "ocr_text": {"type": "text"},
                 "asr_text": {"type": "text"},
+                "tags": {"type": "keyword"},
                 "timestamp": {"type": "float"},
             }
         }
@@ -300,6 +307,7 @@ def load_batch(
                 "frame_path": frame_path,
                 "ocr_text": normalize_text(record.get("ocr_text", "")),
                 "asr_text": normalize_text(record.get("audio_text", "")),
+                "tags": sorted({tag.casefold() for tag in tags if tag.strip()}),
                 "timestamp": pts_time,
             }
         )

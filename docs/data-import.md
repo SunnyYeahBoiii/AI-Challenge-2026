@@ -1,5 +1,9 @@
 # Data Import Guide
 
+> This document describes the legacy single-model import. New multi-model development must
+> use [Inference and Ensemble Pipeline](inference-ensemble.md), which adds canonical
+> `frame_uid`, checksummed artifacts, resumable inference and one collection per model.
+
 How to load keyframe data into Milvus (embeddings) and Elasticsearch (metadata) for the FrameSeeker search system.
 
 ## Prerequisites

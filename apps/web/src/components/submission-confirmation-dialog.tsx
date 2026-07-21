@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "./icon";
-import type { FrameResult } from "@/lib/api";
+import { competitionFrameIndex, type FrameResult } from "@/lib/api";
 
 interface SubmissionConfirmationDialogProps {
   frame: FrameResult;
@@ -17,6 +17,7 @@ export function SubmissionConfirmationDialog({
 }: SubmissionConfirmationDialogProps) {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [response, setResponse] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
 
   const handleSubmit = async () => {
     setStatus("loading");
@@ -25,9 +26,10 @@ export function SubmissionConfirmationDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          frame_id: frame.id,
+          frame_id: competitionFrameIndex(frame),
           video_path: frame.video_id,
           timestamp: frame.pts_time,
+          answer: submissionType === "qa" ? answer.trim() : undefined,
         }),
       });
       const data = await res.json();
@@ -41,13 +43,14 @@ export function SubmissionConfirmationDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/80 backdrop-blur-sm">
-      <div className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-outline-variant">
+      <div role="dialog" aria-modal="true" aria-labelledby="submission-title" className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-outline-variant">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-outline-variant">
-          <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">
+          <h2 id="submission-title" className="font-headline-sm text-headline-sm text-on-surface font-bold">
             Confirm Submission
           </h2>
           <button
+            aria-label="Close submission dialog"
             onClick={onClose}
             className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full p-1 transition-colors"
           >
@@ -66,7 +69,9 @@ export function SubmissionConfirmationDialog({
             </div>
             <div className="flex items-center gap-2">
               <span className="font-label-md text-label-md text-on-surface-variant">Frame:</span>
-              <span className="font-mono-sm text-mono-sm text-on-surface">{frame.id}</span>
+              <span className="font-mono-sm text-mono-sm text-on-surface">
+                {competitionFrameIndex(frame)}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-label-md text-label-md text-on-surface-variant">Video:</span>
@@ -79,6 +84,20 @@ export function SubmissionConfirmationDialog({
               </span>
             </div>
           </div>
+
+          {submissionType === "qa" && (
+            <label className="flex flex-col gap-1">
+              <span className="font-label-md text-label-md text-on-surface-variant">
+                Answer:
+              </span>
+              <textarea
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                className="min-h-24 rounded border border-outline-variant bg-surface-container-low px-3 py-2 font-body-md text-body-md outline-none focus:border-primary"
+                placeholder="Enter the VQA answer"
+              />
+            </label>
+          )}
 
           {/* Response */}
           {response && (
@@ -98,7 +117,7 @@ export function SubmissionConfirmationDialog({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={status === "loading"}
+            disabled={status === "loading" || (submissionType === "qa" && !answer.trim())}
             className="px-4 py-2 rounded bg-primary-container text-on-primary-container font-label-md text-label-md hover:bg-opacity-90 transition-colors disabled:opacity-50"
           >
             {status === "loading" ? "Submitting..." : "Submit"}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { DragStartEvent, DragEndEvent, Modifier } from "@dnd-kit/core";
+import type { DragEndEvent, Modifier } from "@dnd-kit/core";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Icon } from "./icon";
@@ -26,7 +26,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   const [queries, setQueries] = useState<BoxQuery[]>([
     { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
   ]);
-  const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
+  const [sortBy, setSortBy] = useState<"frame_id" | "score">("score");
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +79,9 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     if (videoId.trim()) {
       onSearch({ videoId: videoId.trim(), queries: [], sortBy });
     } else {
-      const enabledQueries = queries.filter((q) => q.enabled && q.content);
+      const enabledQueries = queries.filter(
+        (q) => q.enabled && (q.type === "text" ? q.content.trim() : q.content),
+      );
       if (enabledQueries.length > 0) {
         onSearch({ queries: enabledQueries, sortBy });
       }
@@ -87,25 +89,39 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   }, [videoId, queries, sortBy, onSearch]);
 
   useEffect(() => {
-    if (videoId.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
+    if (videoId.trim().length < 2) return;
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setSearchingVideos(true);
+      setShowSuggestions(true);
       try {
         const data = await listVideos({ q: videoId.trim(), size: 10 });
-        setSuggestions(data.videos);
-        setShowSuggestions(data.videos.length > 0);
+        if (!cancelled) {
+          setSuggestions(data.videos);
+          setShowSuggestions(data.videos.length > 0);
+        }
       } catch {
-        setSuggestions([]);
+        if (!cancelled) setSuggestions([]);
       } finally {
-        setSearchingVideos(false);
+        if (!cancelled) setSearchingVideos(false);
       }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [videoId]);
+
+  const handleClear = () => {
+    setVideoId("");
+    setQueries([
+      { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
+    ]);
+    setSortBy("score");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    onClear();
+  };
 
   const selectVideo = (video: VideoResult) => {
     setVideoId(video.video_id);
@@ -135,21 +151,34 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       <div className="p-container-padding pb-2 border-b border-outline-variant">
         {/* Video ID Search */}
         <div className="mb-4 relative">
-          <label className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
+          <label htmlFor="video-id-search" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
             <Icon name="movie" size={16} /> Video ID Search
           </label>
           <input
             ref={videoInputRef}
+            id="video-id-search"
             className="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary bg-transparent px-0 py-1.5 font-body-sm text-body-sm outline-none transition-colors placeholder:text-outline"
             placeholder="Type to search videos..."
             value={videoId}
-            onChange={(e) => setVideoId(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setVideoId(value);
+              if (value.trim().length < 2) {
+                setSuggestions([]);
+                setShowSuggestions(false);
+              }
+            }}
             onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           />
           {/* Autocomplete dropdown */}
           {showSuggestions && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {searchingVideos && (
+                <div className="px-3 py-2 font-body-xs text-body-xs text-on-surface-variant">
+                  Searching videos...
+                </div>
+              )}
               {suggestions.map((v) => (
                 <button
                   key={v.video_id}
@@ -170,8 +199,9 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
             <Icon name="search" size={16} /> Query Search Mode
           </label>
           <div className="flex justify-between items-center mb-2">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">Sort By</span>
+            <label htmlFor="result-sort" className="font-label-sm text-label-sm text-on-surface-variant">Sort By</label>
             <select
+              id="result-sort"
               className="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-label-sm text-label-sm outline-none focus:border-primary"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as "frame_id" | "score")}
@@ -215,7 +245,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       {/* Action Buttons */}
       <div className="p-4 border-t border-outline-variant bg-surface-container-lowest flex gap-2">
         <button
-          onClick={onClear}
+          onClick={handleClear}
           className="flex-1 bg-surface-container hover:bg-surface-variant border border-outline-variant text-on-surface font-label-md text-label-md py-2 rounded transition-colors"
         >
           Clear

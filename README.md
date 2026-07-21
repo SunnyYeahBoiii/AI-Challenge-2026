@@ -7,8 +7,8 @@ AI-powered video and image search application. Users input text or image queries
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| Backend | Python 3.11, Flask, OpenCLIP (DFN5B-CLIP-ViT-H-14-384) |
-| Vector DB | Milvus Cloud (183K+ embeddings) |
+| Backend | Python 3.11, Flask, OpenCLIP/Transformers model registry, RRF ensemble |
+| Vector DB | One Milvus collection per embedding model |
 | Search DB | Elasticsearch Cloud (367K+ documents) |
 | Monorepo | Turborepo, pnpm |
 | Container | Docker Compose |
@@ -51,7 +51,7 @@ pnpm install
 # Set up Python backend
 cd apps/api
 cp .env.example .env        # Fill in your credentials
-uv sync                      # Create venv and install deps
+uv sync --extra models --extra dev  # API, model adapters and verification tools
 cd ../..
 
 # Start everything
@@ -87,6 +87,12 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
 | `ES_USER` | Elasticsearch username | Elastic Cloud dashboard |
 | `ES_PASS` | Elasticsearch password | Elastic Cloud dashboard |
 | `OPENAI_API_KEY` | OpenAI API key (for query enhancement) | OpenAI dashboard |
+| `ENSEMBLE_CONFIG_PATH` | Versioned model/collection configuration | Repository config |
+| `KEYFRAMES_DIR` | Canonical keyframe root (`/data/keyframes/keyframes` in Docker) | Local dataset |
+| `GUNICORN_WORKERS` | API worker count; keep at 1 unless GPU memory permits more | Runtime sizing |
+| `DRES_BASE_URL` | Organizer-provided DRES server URL | Competition organizer |
+| `DRES_EVALUATION_ID` | Active DRES evaluation ID | Competition organizer |
+| `DRES_SESSION_TOKEN` | Optional pre-issued DRES session token | DRES profile |
 | `SECRET_KEY` | Flask secret key | Generate any random string |
 
 ## Project Structure
@@ -109,11 +115,14 @@ AI-Challenge-2026/
 | `GET` | `/api/health` | Health check |
 | `POST` | `/api/search` | Text-based vector search |
 | `POST` | `/api/search/image` | Image-based vector search |
+| `POST` | `/api/search/composed` | Text + selected-image feedback search |
 | `POST` | `/api/frames` | Multi-query search with BoxQuery |
+| `GET` | `/api/models` | List enabled ensemble models |
 | `GET` | `/api/videos` | List video metadata |
 | `POST` | `/api/embed/text` | Generate text embeddings |
 | `POST` | `/api/embed/image` | Generate image embeddings |
-| `POST` | `/api/dres/submit/kis` | Submit KIS answer to DRES |
+| `POST` | `/api/dres/login` | Authenticate to DRES v2 |
+| `POST` | `/api/dres/submit/{kis,qa,track}` | Submit an answer to DRES v2 |
 
 ## Reproducing on Another Machine
 
@@ -122,6 +131,12 @@ AI-Challenge-2026/
 3. Copy `apps/api/.env.example` → `apps/api/.env` and fill in credentials
 4. Run `docker compose up --build` (Docker) or `pnpm dev` (local)
 5. Verify: open http://localhost:3000, check http://localhost:5000/api/health
+
+## Inference and Ensemble
+
+See [docs/inference-ensemble.md](docs/inference-ensemble.md) for canonical Frame manifests,
+multi-model image inference, checksummed artifacts, per-model Milvus loading, RRF/WRRF,
+composed image feedback and reproducible Recall@K/MRR/mAP ablations.
 
 ## Acknowledgments
 

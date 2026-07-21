@@ -1,8 +1,8 @@
 services:
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:5000
     ports:
@@ -19,7 +19,15 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - ./apps/api/.env
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      MILVUS_URI: http://milvus:19530
+      ES_URL: http://elasticsearch:9200
+      KEYFRAMES_DIR: /data/keyframes/keyframes
+      HF_HOME: /models/huggingface
+      TORCH_HOME: /models/torch
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
     depends_on:
       milvus:
         condition: service_healthy
@@ -27,6 +35,8 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api/app:/app/app
+      - ./data:/data:ro
+      - model_cache:/models
     develop:
       watch:
         - action: sync
@@ -92,3 +102,4 @@ services:
 volumes:
   milvus_data:
   es_data:
+  model_cache:
