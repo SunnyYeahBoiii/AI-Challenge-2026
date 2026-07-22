@@ -69,6 +69,11 @@ class DresClient:
         return self._request("GET", "/api/v2/client/evaluation/list",
                              query={"session": session_id})
 
+    def list_media_items(self) -> list:
+        session_id = self._ensure_session()
+        return self._request("GET", "/api/v2/client/mediaItem/list",
+                             query={"session": session_id, "collection": ""})
+
     def submit(self, evaluation_id: str, video_id: str, time_ms: int) -> dict:
         session_id = self._ensure_session()
         body = {

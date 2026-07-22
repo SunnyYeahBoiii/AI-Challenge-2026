@@ -34,6 +34,16 @@ def evaluations():
     return jsonify({"evaluations": active, "total": len(active)})
 
 
+@dres_bp.route("/api/dres/media-items", methods=["GET"])
+def media_items():
+    try:
+        items = dres_client.list_media_items()
+    except DresError as e:
+        return _err(e)
+    sample = items[:50] if isinstance(items, list) else items
+    return jsonify({"items": sample, "total": len(items) if isinstance(items, list) else 0})
+
+
 @dres_bp.route("/api/dres/submit/<task_type>", methods=["POST"])
 def submit(task_type):
     payload = request.get_json(silent=True) or {}
