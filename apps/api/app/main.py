@@ -13,11 +13,13 @@ def create_app() -> Flask:
     from app.routes.videos import videos_bp
     from app.routes.embed import embed_bp
     from app.routes.health import health_bp
+    from app.routes.dres import dres_bp
 
     app.register_blueprint(search_bp)
     app.register_blueprint(videos_bp)
     app.register_blueprint(embed_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(dres_bp)
 
     return app
 

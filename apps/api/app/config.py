@@ -17,3 +17,7 @@ class Config:
     DEFAULT_TOP_K = 20
     MAX_TOP_K = 100
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+
+    DRES_URL = os.getenv("DRES_URL", "")
+    DRES_USERNAME = os.getenv("DRES_USERNAME", "")
+    DRES_PASSWORD = os.getenv("DRES_PASSWORD", "")
