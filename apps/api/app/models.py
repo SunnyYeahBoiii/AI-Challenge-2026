@@ -34,6 +34,7 @@ class MultiBoxRequest(BaseModel):
     temporal_window_seconds: float = 120.0
     topk: int = 200
     enhance: bool = True
+    mode: Literal["parallel", "sequential"] = "parallel"
 
 
 class SimilarFramesRequest(BaseModel):

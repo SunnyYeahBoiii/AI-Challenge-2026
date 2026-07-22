@@ -97,6 +97,7 @@ def api_frames():
         temporal_window=data.temporal_window_seconds,
         topk=data.topk,
         enhance=data.enhance,
+        mode=data.mode,
     )
     return jsonify({
         "results": results,

@@ -143,37 +143,124 @@ def _merge_temporal_sequences(per_box, window):
     return results
 
 
-def multi_box_search(box_queries, temporal_window=120.0, topk=200, enhance=True):
-    """Multi-box temporal search."""
-    if not box_queries:
-        return []
+def _search_single_box(box, topk, enhance):
+    """Run a single box query and return frames."""
+    text = box.get("text", "")
+    image = box.get("image", "")
+    if text:
+        return search_text(
+            query=text,
+            tags=box.get("tags"),
+            keywords=box.get("keywords"),
+            topk=box.get("topk", topk),
+            enhance=box.get("enhance") if box.get("enhance") is not None else enhance,
+        )
+    elif image:
+        import base64
+        image_bytes = base64.b64decode(image)
+        return search_image(
+            image_bytes=image_bytes,
+            tags=box.get("tags"),
+            keywords=box.get("keywords"),
+            topk=box.get("topk", topk),
+        )
+    return []
 
-    per_box = []
-    for box in box_queries:
-        text = box.get("text", "")
-        image = box.get("image", "")
-        if text:
-            frames = search_text(
-                query=text,
-                tags=box.get("tags"),
-                keywords=box.get("keywords"),
-                topk=box.get("topk", topk),
-                enhance=box.get("enhance") if box.get("enhance") is not None else enhance,
-            )
-            per_box.append(frames)
-        elif image:
-            import base64
-            image_bytes = base64.b64decode(image)
-            frames = search_image(
-                image_bytes=image_bytes,
-                tags=box.get("tags"),
-                keywords=box.get("keywords"),
-                topk=box.get("topk", topk),
-            )
-            per_box.append(frames)
+
+def _parallel_search(box_queries, topk, enhance):
+    """Run all queries in parallel, union results, deduplicate, rank by score."""
+    per_box = [_search_single_box(box, topk, enhance) for box in box_queries]
 
     if len(per_box) <= 1:
         return per_box[0] if per_box else []
 
-    results = _merge_temporal_sequences(per_box, temporal_window)
+    merged = {}
+    for frames in per_box:
+        for f in frames:
+            key = (f.get("video_id"), f.get("frame_index"))
+            if key not in merged:
+                merged[key] = f
+            else:
+                existing = merged[key]
+                if f.get("vector_score", 0) > existing.get("vector_score", 0):
+                    merged[key] = f
+
+    results = list(merged.values())
+    results.sort(key=lambda f: f.get("vector_score", 0), reverse=True)
     return results[:topk]
+
+
+def _sequential_search(box_queries, topk, enhance):
+    """Run queries sequentially: each subsequent query filters within previous results."""
+    if not box_queries:
+        return []
+
+    current_frames = _search_single_box(box_queries[0], topk, enhance)
+
+    for box in box_queries[1:]:
+        if not current_frames:
+            break
+
+        text = box.get("text", "")
+        image = box.get("image", "")
+
+        if text:
+            vec = embed_text([text])[0].tolist() if text else None
+            if vec:
+                milvus = get_milvus_client()
+                frame_filter = _build_frame_filter(current_frames)
+                re_ranked = milvus.search(vec, topk=len(current_frames), expr=frame_filter)
+                current_frames = _apply_metadata_filter(re_ranked, box)
+            else:
+                current_frames = _apply_metadata_filter(current_frames, box)
+        elif image:
+            import base64
+            image_bytes = base64.b64decode(image)
+            vec = embed_image(image_bytes).tolist()
+            milvus = get_milvus_client()
+            frame_filter = _build_frame_filter(current_frames)
+            re_ranked = milvus.search(vec, topk=len(current_frames), expr=frame_filter)
+            current_frames = _apply_metadata_filter(re_ranked, box)
+        else:
+            current_frames = _apply_metadata_filter(current_frames, box)
+
+    return current_frames[:topk]
+
+
+def _build_frame_filter(frames):
+    """Build Milvus expr filter for a list of frames."""
+    conditions = []
+    for f in frames:
+        vid = f.get("video_id", "")
+        idx = f.get("frame_index", 0)
+        conditions.append(f'(video_id == "{vid}" and frame_index == {idx})')
+    return " or ".join(conditions)
+
+
+def _apply_metadata_filter(frames, box):
+    """Filter frames by tags and keywords from a box query."""
+    tags = box.get("tags", [])
+    keywords = box.get("keywords", [])
+
+    if tags:
+        video_ids = list({f["video_id"] for f in frames})
+        matched_ids = es_client.filter_videos_by_keywords(video_ids, tags, mode="and")
+        frames = [f for f in frames if f["video_id"] in matched_ids]
+
+    if keywords:
+        video_ids = list({f["video_id"] for f in frames})
+        matched_ids = es_client.filter_videos_by_keywords(video_ids, keywords, mode="and")
+        frames = [f for f in frames if f["video_id"] in matched_ids]
+
+    return frames
+
+
+def multi_box_search(box_queries, temporal_window=120.0, topk=200, enhance=True, mode="parallel"):
+    """Multi-box search with parallel or sequential mode."""
+    if not box_queries:
+        return []
+
+    if mode == "sequential":
+        return _sequential_search(box_queries, topk, enhance)
+
+    return _parallel_search(box_queries, topk, enhance)

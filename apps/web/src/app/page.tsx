@@ -52,6 +52,7 @@ export default function Home() {
         }));
         const data = await multiBoxSearch({
           box_queries: boxQueries,
+          mode: newFilter.mode,
         });
         setFrames(data.results);
       }

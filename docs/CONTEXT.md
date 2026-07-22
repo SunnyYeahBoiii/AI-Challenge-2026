@@ -20,6 +20,10 @@ _Avoid_: search, request
 A multi-modal search query with an id, type (text or image), content, and weight. Multiple BoxQueries can be combined for complex searches.
 _Avoid_: multi-query, search box
 
+**Query Mode**:
+The execution strategy for multiple BoxQueries. `parallel` runs all queries simultaneously and unions results. `sequential` runs queries in order, each filtering within the previous results.
+_Avoid_: search mode, execution mode
+
 **Cosine Similarity**:
 The relevance score between a query embedding and a frame embedding. Higher = more relevant. Used for ranking individual frames.
 _Avoid_: score, distance, similarity score

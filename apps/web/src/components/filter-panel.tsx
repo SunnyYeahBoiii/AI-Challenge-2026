@@ -13,6 +13,7 @@ export interface SearchFilter {
   videoId?: string;
   queries: BoxQuery[];
   sortBy: "frame_id" | "score";
+  mode: "parallel" | "sequential";
 }
 
 interface FilterPanelProps {
@@ -27,6 +28,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
   ]);
   const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
+  const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -77,14 +79,14 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], sortBy });
+      onSearch({ videoId: videoId.trim(), queries: [], sortBy, mode });
     } else {
       const enabledQueries = queries.filter((q) => q.enabled && q.content);
       if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, sortBy });
+        onSearch({ queries: enabledQueries, sortBy, mode });
       }
     }
-  }, [videoId, queries, sortBy, onSearch]);
+  }, [videoId, queries, sortBy, mode, onSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
@@ -111,7 +113,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], sortBy });
+    onSearch({ videoId: video.video_id, queries: [], sortBy, mode });
   };
 
   const addQuery = () => {
@@ -179,6 +181,31 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
               <option value="frame_id">Frame ID</option>
               <option value="score">Score</option>
             </select>
+          </div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="font-label-sm text-label-sm text-on-surface-variant">Query Mode</span>
+            <div className="flex bg-surface-container-lowest border border-outline-variant rounded overflow-hidden">
+              <button
+                onClick={() => setMode("parallel")}
+                className={`px-2 py-1 font-label-xs text-label-xs transition-colors ${
+                  mode === "parallel"
+                    ? "bg-primary text-on-primary"
+                    : "hover:bg-surface-container-high text-on-surface-variant"
+                }`}
+              >
+                Parallel
+              </button>
+              <button
+                onClick={() => setMode("sequential")}
+                className={`px-2 py-1 font-label-xs text-label-xs transition-colors ${
+                  mode === "sequential"
+                    ? "bg-primary text-on-primary"
+                    : "hover:bg-surface-container-high text-on-surface-variant"
+                }`}
+              >
+                Sequential
+              </button>
+            </div>
           </div>
         </div>
       </div>

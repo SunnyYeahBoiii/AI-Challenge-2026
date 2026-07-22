@@ -71,6 +71,7 @@ export interface MultiBoxRequest {
   temporal_window_seconds?: number;
   topk?: number;
   enhance?: boolean;
+  mode?: "parallel" | "sequential";
 }
 
 // ====== Search API ======
