@@ -70,26 +70,35 @@ The client (`app/services/dres_client.py`) follows the documented 3-step flow:
 |--------|------|---------|
 | `POST` | `/api/dres/session` | Force login, return `{sessionId, username, role}` |
 | `GET`  | `/api/dres/evaluations` | List active evaluations: `{evaluations: [{id, status}], total}` |
-| `POST` | `/api/dres/submit` | Submit one answer; body `{evaluationId, videoId, timeMs}` |
+| `POST` | `/api/dres/submit/<task_type>` | Submit one answer; `task_type` ∈ `kis`/`qa`/`track` |
 
 ### Submit example
 
+Frontend payload (`task_type` from URL, `timestamp` is `pts_time` in seconds):
 ```bash
-curl -X POST http://localhost:5000/api/dres/submit \
+curl -X POST http://localhost:5000/api/dres/submit/kis \
   -H "Content-Type: application/json" \
-  -d '{"evaluationId":"abc123","videoId":"L21_V001","timeMs":45230}'
+  -d '{"frame_id":"abc","video_path":"L21_V001","timestamp":45.23}'
+```
+
+If `evaluationId` is omitted in the body, the route auto-picks the first ACTIVE evaluation from DRES. You can also pass it explicitly:
+```bash
+curl -X POST http://localhost:5000/api/dres/submit/kis \
+  -H "Content-Type: application/json" \
+  -d '{"frame_id":"abc","video_path":"L21_V001","timestamp":45.23,"evaluationId":"abc123"}'
 ```
 
 Response on success:
 ```json
-{ "status": true, "submission": "CORRECT", "description": "Submission correct, well done!" }
+{ "status": true, "submission": "CORRECT", "description": "Submission correct, well done!",
+  "evaluationId": "abc123", "taskType": "kis", "frameId": "abc" }
 ```
 
 Response on duplicate or invalid input: HTTP 502 with `{"error": "DRES 409: ..."}`.
 
 ## Timestamp Convention
 
-Per `CONTEXT.md`, our internal `pts_time` is in **seconds** (float). DRES requires **milliseconds** (integer string). The route accepts `timeMs` directly — callers must convert `pts_time * 1000` before submitting. Frontend submit helpers should do this conversion, not the API.
+Per `CONTEXT.md`, our internal `pts_time` is in **seconds** (float). DRES requires **milliseconds** (integer string). The route accepts `timestamp` in seconds (frontend) or `timeMs` in milliseconds (raw DRES format) and converts to ms before calling DRES. Pass either form; seconds is the preferred contract from the frontend.
 
 ## Error Handling
 

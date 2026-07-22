@@ -29,16 +29,31 @@ def evaluations():
     return jsonify({"evaluations": active, "total": len(active)})
 
 
-@dres_bp.route("/api/dres/submit", methods=["POST"])
-def submit():
+@dres_bp.route("/api/dres/submit/<task_type>", methods=["POST"])
+def submit(task_type):
     payload = request.get_json(silent=True) or {}
+    video_path = payload.get("video_path") or payload.get("videoId")
+    timestamp = payload.get("timestamp", payload.get("timeMs"))
+    frame_id = payload.get("frame_id")
+    if not video_path or timestamp is None:
+        return jsonify({"error": "video_path and timestamp required"}), 400
     evaluation_id = payload.get("evaluationId")
-    video_id = payload.get("videoId")
-    time_ms = payload.get("timeMs")
-    if not evaluation_id or not video_id or time_ms is None:
-        return jsonify({"error": "evaluationId, videoId, timeMs required"}), 400
+    if not evaluation_id:
+        try:
+            evals = dres_client.list_evaluations()
+        except DresError as e:
+            return jsonify({"error": str(e)}), 502
+        active = [e for e in evals if e.get("status") == "ACTIVE"]
+        if not active:
+            return jsonify({"error": "no active evaluation"}), 404
+        evaluation_id = active[0]["id"]
+    time_ms = int(float(timestamp) * 1000) if isinstance(timestamp, (int, float)) else int(timestamp)
     try:
-        result = dres_client.submit(evaluation_id, video_id, int(time_ms))
+        result = dres_client.submit(evaluation_id, video_path, time_ms)
     except DresError as e:
         return jsonify({"error": str(e)}), 502
+    result["evaluationId"] = evaluation_id
+    result["taskType"] = task_type
+    if frame_id is not None:
+        result["frameId"] = frame_id
     return jsonify(result)
