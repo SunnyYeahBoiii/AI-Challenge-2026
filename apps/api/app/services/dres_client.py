@@ -6,7 +6,20 @@ from app.config import Config
 
 
 class DresError(Exception):
-    pass
+    def __init__(self, status_code: int, body: dict | str, message: str = ""):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(message or f"DRES {status_code}: {body}")
+
+
+def _parse_body(raw: bytes) -> dict | str:
+    text = raw.decode("utf-8", errors="ignore").strip()
+    if not text:
+        return ""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 class DresClient:
@@ -32,10 +45,10 @@ class DresClient:
                 payload = resp.read().decode("utf-8")
                 return json.loads(payload) if payload else {}
         except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            raise DresError(f"DRES {e.code}: {detail}") from e
+            parsed = _parse_body(e.read())
+            raise DresError(e.code, parsed) from e
         except urllib.error.URLError as e:
-            raise DresError(f"DRES unreachable: {e.reason}") from e
+            raise DresError(0, str(e.reason), message=f"DRES unreachable: {e.reason}") from e
 
     def login(self) -> dict:
         result = self._request("POST", "/api/v2/login",
