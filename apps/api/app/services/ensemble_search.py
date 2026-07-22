@@ -12,6 +12,7 @@ from app.services.fusion import RankedSource, diversify_frames, reciprocal_rank_
 from app.services.model_registry import FloatArray, ModelRegistry, ModelSpec
 
 FrameData = dict[str, Any]
+TOP1_LINEAR_FEEDBACK_PROFILE = "top1_2025"
 
 
 class EnsembleSearchError(RuntimeError):
@@ -34,6 +35,7 @@ class VectorSearchBackend(Protocol):
 class EnsembleSearchOptions:
     """Per-request controls for candidate retrieval and fusion."""
 
+    profile: str | None = None
     model_ids: tuple[str, ...] | None = None
     model_weights: Mapping[str, float] = field(default_factory=dict)
     candidate_top_k: int = 200
@@ -68,6 +70,9 @@ class EnsembleSearchResponse:
     errors: dict[str, str]
     rrf_k: int
     candidate_top_k: int
+    composition_modes: dict[str, str] = field(default_factory=dict)
+    composition_input: dict[str, str] = field(default_factory=dict)
+    profile: str | None = None
 
     def meta(self) -> dict[str, object]:
         return {
@@ -77,6 +82,9 @@ class EnsembleSearchResponse:
             "errors": self.errors,
             "rrfK": self.rrf_k,
             "candidateTopK": self.candidate_top_k,
+            "compositionModes": self.composition_modes,
+            "compositionInput": self.composition_input,
+            "profile": self.profile,
         }
 
 
@@ -139,6 +147,8 @@ class EnsembleSearchService:
         models: list[str],
         errors: dict[str, str],
         options: EnsembleSearchOptions,
+        composition_modes: Mapping[str, str] | None = None,
+        composition_input: Mapping[str, str] | None = None,
     ) -> EnsembleSearchResponse:
         if not sources:
             raise EnsembleSearchError(f"all embedding models failed: {errors}")
@@ -158,6 +168,9 @@ class EnsembleSearchService:
             errors=errors,
             rrf_k=options.rrf_k,
             candidate_top_k=options.candidate_top_k,
+            composition_modes=dict(composition_modes or {}),
+            composition_input=dict(composition_input or {}),
+            profile=options.profile,
         )
 
     def search_text(
@@ -183,6 +196,15 @@ class EnsembleSearchService:
                     raise EnsembleSearchError(
                         f"{spec.model_id} returned shape {embeddings.shape}; "
                         f"expected {(len(variants), spec.dimension)}"
+                    )
+                if not np.isfinite(embeddings).all():
+                    raise EnsembleSearchError(
+                        f"{spec.model_id} returned non-finite text embeddings"
+                    )
+                text_norms = np.linalg.norm(embeddings, axis=1)
+                if not np.isfinite(text_norms).all() or np.any(text_norms <= 1e-12):
+                    raise EnsembleSearchError(
+                        f"{spec.model_id} returned zero-norm or invalid text embeddings"
                     )
                 model_weight = self._model_weight(spec, options)
                 source_weight = model_weight / len(variants)
@@ -229,7 +251,23 @@ class EnsembleSearchService:
         errors: dict[str, str] = {}
         for spec in self._specs(options):
             try:
-                embedding = self._registry.get(spec.model_id).encode_images([image])[0]
+                embeddings = self._registry.get(spec.model_id).encode_images([image])
+                expected_shape = (1, spec.dimension)
+                if embeddings.shape != expected_shape:
+                    raise EnsembleSearchError(
+                        f"{spec.model_id} returned shape {embeddings.shape}; "
+                        f"expected {expected_shape}"
+                    )
+                if not np.isfinite(embeddings).all():
+                    raise EnsembleSearchError(
+                        f"{spec.model_id} returned non-finite image embeddings"
+                    )
+                image_norms = np.linalg.norm(embeddings, axis=1)
+                if not np.isfinite(image_norms).all() or np.any(image_norms <= 1e-12):
+                    raise EnsembleSearchError(
+                        f"{spec.model_id} returned zero-norm or invalid image embeddings"
+                    )
+                embedding = embeddings[0]
                 ranking = self._vector_backend.search(
                     spec,
                     embedding.tolist(),
@@ -259,9 +297,10 @@ class EnsembleSearchService:
 
     def search_composed(
         self,
-        query: str,
+        feedback_text: str,
         image: object,
         *,
+        original_query: str | None = None,
         text_weight: float,
         options: EnsembleSearchOptions,
         expression: str | None = None,
@@ -269,26 +308,58 @@ class EnsembleSearchService:
         """Compose text and image feedback inside each model space, then fuse rankings."""
         if not math.isfinite(text_weight) or not 0.0 <= text_weight <= 1.0:
             raise EnsembleSearchError("text_weight must be between 0 and 1")
-        query = query.strip()
-        if not query:
-            raise EnsembleSearchError("text query is required")
-        variants = self._query_variants(query, options)
+        feedback_text = feedback_text.strip()
+        original_query = (original_query or "").strip()
+        if not feedback_text:
+            raise EnsembleSearchError("feedback text is required")
+        context_query = " ".join(
+            part for part in (original_query, feedback_text) if part
+        )
+        # The Top-1 system linearly combines the textual refinement itself with
+        # the selected image. Top-2 instead preserves the original text in its
+        # native joint image-text input. Keep those published paths distinct.
+        composition_query = (
+            feedback_text
+            if options.profile == TOP1_LINEAR_FEEDBACK_PROFILE
+            else context_query
+        )
+        variants = self._query_variants(composition_query, options)
         composed_query = variants[-1]
         sources: list[RankedSource] = []
         models: list[str] = []
         errors: dict[str, str] = {}
+        composition_modes: dict[str, str] = {}
         for spec in self._specs(options):
             try:
                 model = self._registry.get(spec.model_id)
-                text_embedding = self._encode_texts(spec, [composed_query])[0]
-                image_embedding = model.encode_images([image])[0]
-                if text_embedding.shape != image_embedding.shape:
-                    raise EnsembleSearchError(
-                        f"incompatible text/image embeddings for {spec.model_id}"
+                native_embedding = model.encode_composed([image], [composed_query])
+                if native_embedding is not None:
+                    expected_shape = (1, spec.dimension)
+                    if native_embedding.shape != expected_shape:
+                        raise EnsembleSearchError(
+                            f"{spec.model_id} native composed encoder returned shape "
+                            f"{native_embedding.shape}, expected {expected_shape}"
+                        )
+                    embedding = native_embedding[0]
+                    source_id = f"{spec.model_id}:joint-composed"
+                    composition_mode = "joint_image_text"
+                else:
+                    text_embedding = self._encode_texts(spec, [composed_query])[0]
+                    image_embedding = model.encode_images([image])[0]
+                    if text_embedding.shape != image_embedding.shape:
+                        raise EnsembleSearchError(
+                            f"incompatible text/image embeddings for {spec.model_id}"
+                        )
+                    if text_embedding.shape != (spec.dimension,):
+                        raise EnsembleSearchError(
+                            f"{spec.model_id} composed encoders returned shape "
+                            f"{text_embedding.shape}, expected {(spec.dimension,)}"
+                        )
+                    embedding = (text_weight * text_embedding) + (
+                        (1.0 - text_weight) * image_embedding
                     )
-                embedding = (text_weight * text_embedding) + (
-                    (1.0 - text_weight) * image_embedding
-                )
+                    source_id = f"{spec.model_id}:composed"
+                    composition_mode = "linear_text_image"
                 norm = float(np.linalg.norm(embedding))
                 if not math.isfinite(norm) or norm <= 1e-12:
                     raise EnsembleSearchError(
@@ -303,21 +374,29 @@ class EnsembleSearchService:
                 )
                 sources.append(
                     RankedSource(
-                        f"{spec.model_id}:composed",
+                        source_id,
                         ranking,
                         self._model_weight(spec, options),
                     )
                 )
                 models.append(spec.model_id)
+                composition_modes[spec.model_id] = composition_mode
             except Exception as error:
                 errors[spec.model_id] = str(error)
                 if not options.allow_partial_models:
                     raise EnsembleSearchError(str(error)) from error
         return self._response(
-            query=query,
+            query=composition_query,
             variants=variants,
             sources=sources,
             models=models,
             errors=errors,
             options=options,
+            composition_modes=composition_modes,
+            composition_input={
+                "originalQuery": original_query,
+                "feedbackText": feedback_text,
+                "contextQuery": context_query,
+                "encodedText": composed_query,
+            },
         )

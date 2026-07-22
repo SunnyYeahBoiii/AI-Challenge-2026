@@ -7,7 +7,7 @@ AI-powered video and image search application. Users input text or image queries
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| Backend | Python 3.11, Flask, OpenCLIP/Transformers model registry, RRF ensemble |
+| Backend | Python 3.11, Flask, BEiT-3/MetaCLIP2/Perception/BGE-VL, RRF ensemble |
 | Vector DB | One Milvus collection per embedding model |
 | Search DB | Elasticsearch Cloud (367K+ documents) |
 | Monorepo | Turborepo, pnpm |
@@ -140,6 +140,9 @@ composed image feedback and reproducible Recall@K/MRR/mAP ablations.
 
 ## Acknowledgments
 
+- [BEiT-3](https://github.com/microsoft/unilm/tree/master/beit3) — Image-text retrieval
+- [BGE-VL](https://huggingface.co/BAAI/BGE-VL-large) — Joint image-text retrieval
+- [Perception Encoder](https://github.com/facebookresearch/perception_models) — Image-text retrieval
 - [OpenCLIP](https://github.com/mlfoundations/open_clip) — Text and image embeddings
 - [Milvus](https://milvus.io/) — Vector similarity search
 - [Elasticsearch](https://www.elastic.co/) — Full-text search

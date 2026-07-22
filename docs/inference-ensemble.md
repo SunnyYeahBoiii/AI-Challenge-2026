@@ -6,22 +6,35 @@ retrieval, RRF fusion and offline ablation workflow.
 ## 1. Model configuration
 
 Models are declared in `apps/api/config/ensemble.json`. The DFN5B entry points to the
-legacy `data_frames` collection so current deployments remain readable. SigLIP2 and
-MetaCLIP2 are included but disabled until their galleries have been encoded and indexed.
+legacy `data_frames` collection so current deployments remain readable. SigLIP2,
+MetaCLIP2, BEiT-3 Large, BGE-VL-Large and Perception Encoder are included but disabled
+until their galleries have been encoded and indexed.
 
 Each entry fixes:
 
-- model id and adapter (`open_clip` or `huggingface`);
+- model id and adapter (`open_clip`, `huggingface`, `beit3`, `bge_vl` or `perception`);
 - checkpoint/model name and optional revision;
 - embedding dimension;
 - Milvus collection;
 - RRF weight;
 - enabled state.
 
-The optional Hugging Face checkpoints are pinned to immutable repository revisions. The
-MetaCLIP2 adapter requires Transformers 4.56.2 or newer. SigLIP2 is Apache-2.0; the
-configured MetaCLIP2 checkpoint is CC-BY-NC-4.0, so confirm that the competition and any
-later deployment qualify before enabling it.
+The optional Hugging Face checkpoints are pinned to immutable repository revisions.
+BGE-VL-Large uses revision `40fb48217f521df22a2a5bf15edd52ed1146ef05`. BEiT-3 uses
+Microsoft's official 384x384 COCO retrieval checkpoint and official SentencePiece model.
+Both files are checked against pinned SHA-256 values before loading; the artifact manifest
+records those hashes, tokenizer URL and image size. BEiT-3 and BGE-VL are MIT-licensed.
+SigLIP2 is Apache-2.0; the configured MetaCLIP2 checkpoint is
+CC-BY-NC-4.0, so confirm that the competition and any later deployment qualify before
+enabling it.
+
+Perception uses `PE-Core-L14-336` (1024 dimensions, 336 px) through the OpenCLIP/timm
+conversion pinned at revision `8eff41b3f687e50a323662c2dda5eb3588c6dd35`; the 2.68 GB
+checkpoint is verified against SHA-256
+`b1fff7093c32a01d98a2d82098f9adf788b30f0efee639916520b3e4302f786b`. Its official
+mean/std, bilinear interpolation and squash resize settings are applied. The two AIC
+papers name Perception Encoder but do not disclose the exact PE variant/checkpoint. This
+is therefore FrameSeeker's reproducible reconstruction, not a claimed unpublished detail.
 
 Do not enable a model before its collection contains the same canonical Frame set as the
 other enabled models. Do not compare a text embedding from one model to an image gallery
@@ -91,9 +104,41 @@ uv run python scripts/embed_keyframes.py \
   --shard-size 10000
 ```
 
-Add `--model siglip2-so400m-384` after installing the optional dependencies. Use `--resume`
-after an interrupted job. Every flushed shard updates `manifest.json`, allowing restart at
-the last durable shard.
+Run the Top-2 visual models independently so VRAM is released between them:
+
+```bash
+uv run python scripts/embed_keyframes.py \
+  --input ../../data/manifests/frames.jsonl \
+  --images-root ../../data \
+  --output ../../data/ensemble-embeddings \
+  --model beit3-large-coco-retrieval-384 \
+  --batch-size 8
+
+uv run python scripts/embed_keyframes.py \
+  --input ../../data/manifests/frames.jsonl \
+  --images-root ../../data \
+  --output ../../data/ensemble-embeddings \
+  --model bge-vl-large \
+  --batch-size 16
+
+uv run python scripts/embed_keyframes.py \
+  --input ../../data/manifests/frames.jsonl \
+  --images-root ../../data \
+  --output ../../data/ensemble-embeddings \
+  --model metaclip2-worldwide-huge \
+  --batch-size 8
+
+uv run python scripts/embed_keyframes.py \
+  --input ../../data/manifests/frames.jsonl \
+  --images-root ../../data \
+  --output ../../data/ensemble-embeddings \
+  --model perception-core-l14-336 \
+  --batch-size 8
+```
+
+Use `--resume` after an interrupted job. Every flushed shard updates `manifest.json`,
+allowing restart at the last durable shard. Tune the conservative batch sizes upward
+only after measuring available VRAM.
 
 Each model artifact contains:
 
@@ -106,8 +151,9 @@ ensemble-embeddings/<model-id>/
   records-00001.jsonl
 ```
 
-The manifest records model identity, dimension, collection, counts and SHA-256 checksums.
-The script refuses to overwrite a non-empty artifact directory without `--resume`.
+The manifest records model/checkpoint identity, preprocessing identity, dimension,
+collection, counts and SHA-256 checksums. The script refuses to overwrite a non-empty
+artifact directory without `--resume`.
 
 ## 4. Load each gallery into Milvus
 
@@ -115,7 +161,7 @@ Dry-run validation first:
 
 ```bash
 uv run python scripts/load_ensemble_embeddings.py \
-  ../../data/ensemble-embeddings/siglip2-so400m-384/manifest.json \
+  ../../data/ensemble-embeddings/beit3-large-coco-retrieval-384/manifest.json \
   --dry-run
 ```
 
@@ -123,7 +169,7 @@ Then load/upsert:
 
 ```bash
 uv run python scripts/load_ensemble_embeddings.py \
-  ../../data/ensemble-embeddings/siglip2-so400m-384/manifest.json
+  ../../data/ensemble-embeddings/beit3-large-coco-retrieval-384/manifest.json
 ```
 
 The loader verifies checksums and shapes before writing. It refuses to load the new column
@@ -151,6 +197,24 @@ change the config.
 }
 ```
 
+After all matching galleries have been loaded and the four models enabled, reproduce the
+published model selections with a named profile:
+
+```json
+{
+  "text": "a person drops a pink bear keychain near a fruit stall",
+  "topk": 20,
+  "ensemble": {
+    "profile": "top2_2025",
+    "candidate_topk": 500
+  }
+}
+```
+
+`top1_2025` selects BEiT-3 + MetaCLIP2 + Perception. `top2_2025` selects BEiT-3 +
+BGE-VL-Large + MetaCLIP2 + Perception for text/image retrieval. The Top-2 paper does not
+publish its RRF smoothing constant; FrameSeeker records `k=60` as a reproducible default.
+
 The response keeps `results` for frontend compatibility and adds `meta` with model ids,
 source ids, Query variants and partial-model errors. Every Frame includes `fusion_score`,
 `model_ranks` and `model_scores` when ensemble retrieval is used.
@@ -174,18 +238,30 @@ Weights must come from validation. Keep all weights at `1.0` for the baseline.
 
 `POST /api/search/composed` is multipart form data:
 
-- `text`: current Query;
+- `original_text`: original Query intent;
+- `feedback_text`: requested change to the selected Frame;
+- `text`: legacy single-text input, supported when the two fields above are absent;
 - `image`: user-selected relevant Frame;
 - `text_weight`: default `0.75`;
 - `topk`: final result count;
 - `ensemble`: optional JSON object with the controls above.
 
-For every model, FrameSeeker computes:
+For the Top-1 profile, BEiT-3, MetaCLIP2 and Perception encode the feedback text
+without prepending the original query, then compute the published baseline:
 
 `f_composed = text_weight * f_text + (1 - text_weight) * f_image`
 
-Retrieval happens in that model's gallery, then RRF combines the model rankings. Embeddings
-are never mixed across models.
+The `top2_2025` composed profile selects BGE-VL-Large, reconstructs the text as
+`original query + feedback text`, and calls the model's native joint input
+`{"image": selected_frame, "text": reconstructed_query}`. This preserves the original
+context described in the paper instead of searching from feedback text alone. The response
+records `originalQuery`, `feedbackText`, `contextQuery`, and the actual `encodedText` in
+`meta.compositionInput`, plus the encoder path in
+`meta.compositionModes`.
+
+Custom model selections remain supported: BGE-VL uses the native 768-dimensional joint
+embedding, while other dual encoders use the linear fallback. Retrieval always happens in
+the matching model gallery; embeddings from different models are never mixed.
 
 ## 7. Reproducible evaluation and ablation
 

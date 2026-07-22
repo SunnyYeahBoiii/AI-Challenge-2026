@@ -130,6 +130,10 @@ def _validate_manifest_model(manifest: Mapping[str, Any], spec: ModelSpec) -> No
         "dimension": spec.dimension,
         "text_padding": spec.text_padding,
         "text_max_length": spec.text_max_length,
+        "tokenizer_url": spec.tokenizer_url,
+        "image_size": spec.image_size,
+        "pretrained_sha256": spec.pretrained_sha256,
+        "tokenizer_sha256": spec.tokenizer_sha256,
     }
     for field, expected_value in expected.items():
         actual_value = raw_model.get(field)

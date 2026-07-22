@@ -56,6 +56,7 @@ export interface HealthStatus {
 // ====== Request types ======
 
 export interface EnsembleOptions {
+  profile?: string;
   model_ids?: string[];
   model_weights?: Record<string, number>;
   candidate_topk?: number;
@@ -73,12 +74,24 @@ export interface EnsembleMeta {
   errors: Record<string, string>;
   rrfK: number;
   candidateTopK: number;
+  compositionModes?: Record<string, "linear_text_image" | "joint_image_text">;
+  compositionInput?: {
+    originalQuery: string;
+    feedbackText: string;
+    contextQuery: string;
+    encodedText: string;
+  };
+  profile?: string | null;
 }
 
 export interface FrameSearchResponse {
   results: FrameResult[];
   total: number;
   meta?: EnsembleMeta;
+  query?: string;
+  originalQuery?: string;
+  feedbackText?: string;
+  textWeight?: number;
 }
 
 export interface SearchTextRequest {
@@ -134,12 +147,23 @@ export async function searchImage(
 
 /** Search from a Query plus a selected feedback image in each model's joint space. */
 export async function searchComposed(
-  text: string,
+  feedbackText: string,
   file: File,
-  params?: { textWeight?: number; topk?: number; ensemble?: EnsembleOptions }
+  params?: {
+    originalText?: string;
+    textWeight?: number;
+    topk?: number;
+    ensemble?: EnsembleOptions;
+  }
 ): Promise<FrameSearchResponse> {
   const form = new FormData();
-  form.append("text", text);
+  if (params?.originalText !== undefined) {
+    form.append("original_text", params.originalText);
+    form.append("feedback_text", feedbackText);
+  } else {
+    // Backwards-compatible single-text composed retrieval.
+    form.append("text", feedbackText);
+  }
   form.append("image", file);
   form.append("text_weight", String(params?.textWeight ?? 0.75));
   if (params?.topk) form.append("topk", String(params.topk));

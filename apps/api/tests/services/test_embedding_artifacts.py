@@ -44,6 +44,19 @@ def test_frame_record_preserves_original_frame_mapping() -> None:
     assert record.as_metadata()["youtube_url"] == "https://example.test/watch?v=V1"
 
 
+def test_frame_record_accepts_explicit_index_for_non_numeric_filename() -> None:
+    record = FrameRecord.from_mapping(
+        {
+            "frame_path": "keyframes/V1/selected-frame.png",
+            "video_id": "V1",
+            "frame_index": 7,
+        }
+    )
+
+    assert record.frame_index == 7
+    assert record.frame_uid == "V1:00000007"
+
+
 def test_iter_input_records_supports_json_and_jsonl(tmp_path: Path) -> None:
     record = {"file_path": "keyframes/L01/L01_V001/0001.webp"}
     json_path = tmp_path / "frames.json"
@@ -230,6 +243,43 @@ def test_resume_rejects_different_checkpoint_identity(tmp_path: Path) -> None:
             replace(spec, revision="different"),
             resume=True,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("tokenizer_url", "https://example.test/other.spm"),
+        ("image_size", 224),
+        ("pretrained_sha256", "c" * 64),
+    ],
+)
+def test_resume_rejects_different_preprocessing_identity(
+    tmp_path: Path, field: str, replacement: object
+) -> None:
+    spec = ModelSpec(
+        "fake",
+        "fake",
+        "fake/model",
+        2,
+        "frames_fake",
+        tokenizer_url="https://example.test/tokenizer.spm",
+        image_size=384,
+    )
+    writer = EmbeddingArtifactWriter(tmp_path, spec, shard_size=1)
+    writer.append(
+        [FrameRecord.from_mapping({"frame_path": "root/V1/0001.webp"})],
+        np.ones((1, spec.dimension), dtype=np.float32),
+    )
+    writer.finalize()
+
+    with pytest.raises(ValueError, match=field):
+        if field == "tokenizer_url":
+            changed = replace(spec, tokenizer_url=str(replacement))
+        elif field == "image_size":
+            changed = replace(spec, image_size=int(str(replacement)))
+        else:
+            changed = replace(spec, pretrained_sha256=str(replacement))
+        EmbeddingArtifactWriter(tmp_path, changed, resume=True)
 
 
 def test_artifact_reader_rejects_manifest_checksum_and_shape_corruption(tmp_path: Path) -> None:

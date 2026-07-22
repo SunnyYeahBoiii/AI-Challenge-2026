@@ -51,11 +51,14 @@ class FrameRecord:
         ).strip()
         if not video_id:
             raise ValueError("video_id is required")
-        try:
-            filename_frame_index = int(Path(frame_path).stem)
-        except ValueError as error:
-            raise ValueError(f"frame filename must be numeric: {frame_path}") from error
-        frame_index = int(raw.get("frame_index", filename_frame_index))
+        raw_frame_index = raw.get("frame_index")
+        if raw_frame_index is not None:
+            frame_index = int(raw_frame_index)
+        else:
+            try:
+                frame_index = int(Path(frame_path).stem)
+            except ValueError as error:
+                raise ValueError(f"frame filename must be numeric: {frame_path}") from error
 
         keyframe_info = raw.get("keyframe_info") or {}
         if not isinstance(keyframe_info, Mapping):
@@ -212,6 +215,10 @@ class EmbeddingArtifactWriter:
             "revision": self.spec.revision,
             "text_padding": self.spec.text_padding,
             "text_max_length": self.spec.text_max_length,
+            "tokenizer_url": self.spec.tokenizer_url,
+            "image_size": self.spec.image_size,
+            "pretrained_sha256": self.spec.pretrained_sha256,
+            "tokenizer_sha256": self.spec.tokenizer_sha256,
         }
         for field, expected_value in expected_identity.items():
             if raw_model.get(field) != expected_value:
@@ -296,6 +303,10 @@ class EmbeddingArtifactWriter:
                 "collection": self.spec.collection,
                 "text_padding": self.spec.text_padding,
                 "text_max_length": self.spec.text_max_length,
+                "tokenizer_url": self.spec.tokenizer_url,
+                "image_size": self.spec.image_size,
+                "pretrained_sha256": self.spec.pretrained_sha256,
+                "tokenizer_sha256": self.spec.tokenizer_sha256,
             },
             "total_frames": total_frames,
             "shards": self._shards,

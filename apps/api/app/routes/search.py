@@ -11,6 +11,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, send_file
 from pydantic import ValidationError
 
+from app.config import Config
 from app.models import (
     EnsembleOptionsRequest,
     MultiBoxRequest,
@@ -19,6 +20,7 @@ from app.models import (
     VideoIdRequest,
 )
 from app.services.ensemble_search import EnsembleSearchError, EnsembleSearchOptions
+from app.services.ensemble_profiles import RetrievalMode, get_ensemble_profile
 from app.services.hybrid_search import (
     multi_box_search,
     search_composed_with_meta,
@@ -52,13 +54,20 @@ def _options(
     *,
     result_top_k: int,
     enhance: bool = True,
+    mode: RetrievalMode = "text",
 ) -> EnsembleSearchOptions:
+    profile = get_ensemble_profile(data.profile) if data.profile else None
     return EnsembleSearchOptions(
-        model_ids=tuple(data.model_ids) if data.model_ids else None,
+        profile=profile.profile_id if profile else None,
+        model_ids=(
+            profile.model_ids_for(mode)
+            if profile
+            else tuple(data.model_ids) if data.model_ids else None
+        ),
         model_weights=data.model_weights,
         candidate_top_k=max(data.candidate_topk, result_top_k),
         result_top_k=result_top_k,
-        rrf_k=data.rrf_k,
+        rrf_k=data.rrf_k or (profile.rrf_k if profile else Config.ENSEMBLE_RRF_K),
         use_enhanced_query=enhance,
         preserve_original_query=data.preserve_original_query,
         min_time_gap_seconds=data.diversity_time_seconds,
@@ -102,10 +111,10 @@ def api_search() -> tuple[Any, int] | Any:
             keyword_mode=data.keyword_mode,
             keyword_source=data.keyword_source,
         )
-    except (ValidationError, ValueError, json.JSONDecodeError) as error:
-        return _error("INVALID_SEARCH_REQUEST", str(error), 400)
     except (EnsembleSearchError, ModelConfigurationError, ModelLoadError) as error:
         return _error("SEARCH_FAILED", str(error), 422)
+    except (ValidationError, ValueError, json.JSONDecodeError) as error:
+        return _error("INVALID_SEARCH_REQUEST", str(error), 400)
     return jsonify(
         {
             "query": data.text,
@@ -128,17 +137,22 @@ def api_search_image() -> tuple[Any, int] | Any:
         ensemble = _ensemble_form()
         response = search_image_with_meta(
             request.files["image"].read(),
-            options=_options(ensemble, result_top_k=top_k, enhance=False),
+            options=_options(
+                ensemble,
+                result_top_k=top_k,
+                enhance=False,
+                mode="image",
+            ),
             tags=request.form.getlist("tags"),
             tag_mode=_form_match_mode("tag_mode"),
             keywords=request.form.getlist("keywords"),
             keyword_mode=_form_match_mode("keyword_mode"),
             keyword_source=request.form.get("keyword_source", "all"),
         )
-    except (ValidationError, ValueError, json.JSONDecodeError) as error:
-        return _error("INVALID_IMAGE_REQUEST", str(error), 400)
     except (EnsembleSearchError, ModelConfigurationError, ModelLoadError) as error:
         return _error("IMAGE_SEARCH_FAILED", str(error), 422)
+    except (ValidationError, ValueError, json.JSONDecodeError) as error:
+        return _error("INVALID_IMAGE_REQUEST", str(error), 400)
     return jsonify(
         {
             "filename": request.files["image"].filename,
@@ -154,27 +168,47 @@ def api_search_composed() -> tuple[Any, int] | Any:
     if "image" not in request.files:
         return _error("INVALID_COMPOSED_REQUEST", "image file is required", 400)
     try:
-        query = request.form.get("text", "").strip()
-        if not query:
-            raise ValueError("text is required")
+        uses_structured_feedback = (
+            "original_text" in request.form or "feedback_text" in request.form
+        )
+        if uses_structured_feedback:
+            original_query = request.form.get("original_text", "").strip()
+            feedback_text = request.form.get("feedback_text", "").strip()
+            if not original_query:
+                raise ValueError("original_text is required for structured feedback")
+            if not feedback_text:
+                raise ValueError("feedback_text is required for structured feedback")
+        else:
+            original_query = ""
+            feedback_text = request.form.get("text", "").strip()
+            if not feedback_text:
+                raise ValueError("text is required")
         text_weight = float(request.form.get("text_weight", 0.75))
         if not math.isfinite(text_weight) or not 0.0 <= text_weight <= 1.0:
             raise ValueError("text_weight must be between 0 and 1")
         top_k = _form_top_k()
         ensemble = _ensemble_form()
         response = search_composed_with_meta(
-            query,
+            feedback_text,
             request.files["image"].read(),
+            original_query=original_query or None,
             text_weight=text_weight,
-            options=_options(ensemble, result_top_k=top_k),
+            options=_options(
+                ensemble,
+                result_top_k=top_k,
+                enhance=False,
+                mode="composed",
+            ),
         )
-    except (ValidationError, ValueError, json.JSONDecodeError) as error:
-        return _error("INVALID_COMPOSED_REQUEST", str(error), 400)
     except (EnsembleSearchError, ModelConfigurationError, ModelLoadError) as error:
         return _error("COMPOSED_SEARCH_FAILED", str(error), 422)
+    except (ValidationError, ValueError, json.JSONDecodeError) as error:
+        return _error("INVALID_COMPOSED_REQUEST", str(error), 400)
     return jsonify(
         {
-            "query": query,
+            "query": response.query,
+            "originalQuery": original_query,
+            "feedbackText": feedback_text,
             "textWeight": text_weight,
             "results": response.results,
             "total": len(response.results),
@@ -213,12 +247,12 @@ def api_frames() -> tuple[Any, int] | Any:
             topk=data.topk,
             enhance=data.enhance,
         )
+    except (EnsembleSearchError, ModelConfigurationError, ModelLoadError) as error:
+        return _error("BOX_SEARCH_FAILED", str(error), 422)
     except ValidationError as error:
         return _error("INVALID_BOX_QUERY", str(error), 400)
     except (ValueError, Base64Error) as error:
         return _error("INVALID_BOX_QUERY", str(error), 400)
-    except (EnsembleSearchError, ModelConfigurationError, ModelLoadError) as error:
-        return _error("BOX_SEARCH_FAILED", str(error), 422)
     return jsonify({"results": results, "total": len(results)})
 
 

@@ -202,16 +202,18 @@ def search_image_with_meta(
 
 
 def search_composed_with_meta(
-    query: str,
+    feedback_text: str,
     image_bytes: bytes,
     *,
+    original_query: str | None = None,
     text_weight: float,
     options: EnsembleSearchOptions,
 ) -> EnsembleSearchResponse:
     """Run paper-inspired composed text+image feedback retrieval."""
     response = get_ensemble_search_service().search_composed(
-        query,
+        feedback_text,
         decode_image(image_bytes),
+        original_query=original_query,
         text_weight=text_weight,
         options=options,
     )

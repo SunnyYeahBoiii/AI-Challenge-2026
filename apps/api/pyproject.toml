@@ -22,6 +22,11 @@ dependencies = [
 models = [
     "transformers>=4.56.2",
     "safetensors>=0.4",
+    "sentence-transformers[image]>=5.2.0",
+    "sentencepiece>=0.2.0",
+    "timm>=1.0.15",
+    "torchscale==0.2.0",
+    "torchvision>=0.15",
 ]
 dev = [
     "ruff>=0.8",
@@ -33,6 +38,11 @@ dev = [
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
+
+[tool.uv]
+# TorchScale pins timm 0.4.12 for unrelated training utilities. FrameSeeker only imports
+# TorchScale's BEiT-3 modules, while Perception Encoder requires the current timm PE model.
+override-dependencies = ["timm>=1.0.15"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "scripts*"]
@@ -53,6 +63,11 @@ module = [
     "elasticsearch.*",
     "openai.*",
     "transformers.*",
+    "sentence_transformers.*",
+    "sentencepiece.*",
+    "timm.*",
+    "torchscale.*",
+    "torchvision.*",
 ]
 ignore_missing_imports = true
 

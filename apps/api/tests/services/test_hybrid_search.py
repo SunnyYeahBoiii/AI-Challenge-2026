@@ -181,10 +181,11 @@ class FakeEnsembleService:
         query: str,
         image: object,
         *,
+        original_query: str | None = None,
         text_weight: float,
         options: EnsembleSearchOptions,
     ) -> EnsembleSearchResponse:
-        self.calls.append(("composed", text_weight))
+        self.calls.append(("composed", (original_query, text_weight)))
         return _response([{"frame_uid": "c", "video_id": "V1", "frame_index": 1}])
 
 
@@ -199,7 +200,11 @@ def test_online_search_entrypoints_and_compatibility_wrappers(monkeypatch: Any) 
     assert module.search_text_with_meta("q", options=options).results[0]["frame_uid"] == "t"
     assert module.search_image_with_meta(b"image", options=options).results[0]["frame_uid"] == "i"
     assert module.search_composed_with_meta(
-        "q", b"image", text_weight=0.75, options=options
+        "feedback",
+        b"image",
+        original_query="original",
+        text_weight=0.75,
+        options=options,
     ).results[0]["frame_uid"] == "c"
     assert module.search_text("q", topk=3, enhance=False)[0]["frame_uid"] == "t"
     assert module.search_image(b"image", topk=4)[0]["frame_uid"] == "i"

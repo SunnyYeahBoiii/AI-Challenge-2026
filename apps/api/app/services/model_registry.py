@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
 import gc
 import math
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -43,6 +43,10 @@ class ModelSpec:
     trust_remote_code: bool = False
     text_padding: str = "longest"
     text_max_length: int | None = None
+    tokenizer_url: str | None = None
+    image_size: int | None = None
+    pretrained_sha256: str | None = None
+    tokenizer_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not self.model_id or not self.adapter or not self.model_name:
@@ -59,6 +63,17 @@ class ModelSpec:
             raise ModelConfigurationError("text_padding must be longest or max_length")
         if self.text_max_length is not None and self.text_max_length < 1:
             raise ModelConfigurationError("text_max_length must be positive")
+        if self.image_size is not None and self.image_size < 1:
+            raise ModelConfigurationError("image_size must be positive")
+        for field, checksum in (
+            ("pretrained_sha256", self.pretrained_sha256),
+            ("tokenizer_sha256", self.tokenizer_sha256),
+        ):
+            if checksum is not None and (
+                len(checksum) != 64
+                or any(character not in "0123456789abcdefABCDEF" for character in checksum)
+            ):
+                raise ModelConfigurationError(f"{field} must be a 64-character SHA-256")
 
 
 class EmbeddingModel(ABC):
@@ -74,11 +89,24 @@ class EmbeddingModel(ABC):
     def encode_images(self, images: list[object]) -> FloatArray:
         """Encode and L2-normalize PIL image inputs."""
 
+    def encode_composed(
+        self,
+        images: list[object],
+        texts: list[str],
+    ) -> FloatArray | None:
+        """Return a native joint image-text embedding when the model supports one."""
+        del images, texts
+        return None
+
 
 def _normalize(features: Any) -> FloatArray:
     array = features.detach().float().cpu().numpy().astype(np.float32)
+    if not np.isfinite(array).all():
+        raise RuntimeError("embedding model returned non-finite features")
     norms = np.linalg.norm(array, axis=-1, keepdims=True)
-    normalized = array / np.clip(norms, a_min=1e-12, a_max=None)
+    if not np.isfinite(norms).all() or np.any(norms <= 1e-12):
+        raise RuntimeError("embedding model returned zero-norm or invalid features")
+    normalized = array / norms
     return cast(FloatArray, normalized)
 
 
@@ -105,12 +133,16 @@ class OpenClipEmbeddingModel(EmbeddingModel):
         self._tokenizer = tokenizer
 
     def encode_texts(self, texts: list[str]) -> FloatArray:
+        if not texts:
+            return np.empty((0, self.spec.dimension), dtype=np.float32)
         tokens = self._tokenizer(texts).to(self._device)
         with self._torch.inference_mode():
             features = self._model.encode_text(tokens)
         return _normalize(features)
 
     def encode_images(self, images: list[object]) -> FloatArray:
+        if not images:
+            return np.empty((0, self.spec.dimension), dtype=np.float32)
         batch = self._torch.stack([self._preprocess(image) for image in images]).to(self._device)
         with self._torch.inference_mode():
             features = self._model.encode_image(batch)
@@ -158,6 +190,8 @@ class HuggingFaceEmbeddingModel(EmbeddingModel):
         return {key: value.to(self._device) for key, value in inputs.items()}
 
     def encode_texts(self, texts: list[str]) -> FloatArray:
+        if not texts:
+            return np.empty((0, self.spec.dimension), dtype=np.float32)
         processor_kwargs: dict[str, object] = {
             "text": texts,
             "return_tensors": "pt",
@@ -172,6 +206,8 @@ class HuggingFaceEmbeddingModel(EmbeddingModel):
         return _normalize(_feature_tensor(features))
 
     def encode_images(self, images: list[object]) -> FloatArray:
+        if not images:
+            return np.empty((0, self.spec.dimension), dtype=np.float32)
         inputs = self._processor(images=images, return_tensors="pt")
         with self._torch.inference_mode():
             features = self._model.get_image_features(**self._to_device(inputs))
@@ -179,6 +215,24 @@ class HuggingFaceEmbeddingModel(EmbeddingModel):
 
 
 ModelFactory = Callable[[ModelSpec], EmbeddingModel]
+
+
+def _build_beit3_model(spec: ModelSpec) -> EmbeddingModel:
+    from app.services.beit3_adapter import BEiT3EmbeddingModel
+
+    return BEiT3EmbeddingModel(spec)
+
+
+def _build_bge_vl_model(spec: ModelSpec) -> EmbeddingModel:
+    from app.services.bge_vl_adapter import BGEVLEmbeddingModel
+
+    return BGEVLEmbeddingModel(spec)
+
+
+def _build_perception_model(spec: ModelSpec) -> EmbeddingModel:
+    from app.services.perception_adapter import PerceptionEmbeddingModel
+
+    return PerceptionEmbeddingModel(spec)
 
 
 class ModelRegistry:
@@ -196,6 +250,9 @@ class ModelRegistry:
         self._factories: dict[str, ModelFactory] = {
             "open_clip": OpenClipEmbeddingModel,
             "huggingface": HuggingFaceEmbeddingModel,
+            "beit3": _build_beit3_model,
+            "bge_vl": _build_bge_vl_model,
+            "perception": _build_perception_model,
         }
         if factories:
             self._factories.update(factories)
@@ -257,6 +314,7 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
     raw_dimension = data["dimension"]
     raw_weight = data.get("weight", 1.0)
     raw_text_max_length = data.get("text_max_length")
+    raw_image_size = data.get("image_size")
     raw_enabled = data.get("enabled", True)
     raw_trust_remote_code = data.get("trust_remote_code", False)
     if not isinstance(raw_dimension, int) or isinstance(raw_dimension, bool):
@@ -272,8 +330,18 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
         or isinstance(raw_text_max_length, bool)
     ):
         raise ModelConfigurationError("model text_max_length must be an integer")
+    if raw_image_size is not None and (
+        not isinstance(raw_image_size, int) or isinstance(raw_image_size, bool)
+    ):
+        raise ModelConfigurationError("model image_size must be an integer")
     for field in ("id", "adapter", "model_name", "collection"):
         if not isinstance(data[field], str):
+            raise ModelConfigurationError(f"model {field} must be a string")
+    for field in ("pretrained", "revision", "tokenizer_url"):
+        if data.get(field) is not None and not isinstance(data[field], str):
+            raise ModelConfigurationError(f"model {field} must be a string")
+    for field in ("pretrained_sha256", "tokenizer_sha256"):
+        if data.get(field) is not None and not isinstance(data[field], str):
             raise ModelConfigurationError(f"model {field} must be a string")
     return ModelSpec(
         model_id=str(data["id"]),
@@ -290,6 +358,20 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
         text_padding=str(data.get("text_padding", "longest")),
         text_max_length=(
             raw_text_max_length if isinstance(raw_text_max_length, int) else None
+        ),
+        tokenizer_url=(
+            str(data["tokenizer_url"]) if data.get("tokenizer_url") else None
+        ),
+        image_size=raw_image_size if isinstance(raw_image_size, int) else None,
+        pretrained_sha256=(
+            str(data["pretrained_sha256"])
+            if data.get("pretrained_sha256")
+            else None
+        ),
+        tokenizer_sha256=(
+            str(data["tokenizer_sha256"])
+            if data.get("tokenizer_sha256")
+            else None
         ),
     )
 

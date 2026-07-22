@@ -2,7 +2,7 @@
 
 **Dự án:** FrameSeeker — AI Challenge 2026  
 **Phạm vi:** Offline image inference, online query inference, multi-model retrieval, rank fusion, temporal retrieval và đánh giá ensemble  
-**Ngày cập nhật:** 21/07/2026  
+**Ngày cập nhật:** 22/07/2026
 **Trạng thái:** Hoàn thành implementation; chờ dataset chính thức để tạo gallery đa mô hình và tuning trên validation set
 
 ---
@@ -27,7 +27,10 @@ Kết luận về trạng thái hiện tại:
 
 - **Mã nguồn và kiến trúc Inference + Ensemble:** hoàn thành.
 - **Baseline DFN5B:** đã bật trong cấu hình.
-- **SigLIP2 và MetaCLIP2:** adapter và cấu hình đã có, nhưng đang tắt có chủ đích.
+- **Top 1 preset:** BEiT-3 + MetaCLIP2 + Perception Encoder + RRF đã có trong cấu hình.
+- **Top 2 preset:** BEiT-3 + BGE-VL-Large + MetaCLIP2 + Perception Encoder + RRF đã có trong cấu hình.
+- **Composed feedback Top 2:** giữ `original query + selected frame + feedback text`, dùng native joint encoder BGE-VL-Large.
+- **Các model paper:** adapter và cấu hình đã hoàn chỉnh nhưng đang tắt có chủ đích đến khi gallery được nạp đủ.
 - **Ensemble đa mô hình trên dữ liệu thi thật:** cần encode đủ gallery cho các mô hình bổ sung, nạp Milvus và bật chúng trong cấu hình.
 - **Trọng số ensemble cuối cùng:** phải được chọn bằng validation/ablation, không nên đoán thủ công.
 
@@ -104,12 +107,19 @@ Nguồn cấu hình: `apps/api/config/ensemble.json`.
 | `dfn5b` | OpenCLIP | `ViT-H-14`, pretrained `dfn5b` | 1024 | `data_frames` | 1.0 | Bật |
 | `siglip2-so400m-384` | Hugging Face | `google/siglip2-so400m-patch14-384` | 1152 | `data_frames_siglip2_so400m_384` | 1.0 | Tắt |
 | `metaclip2-worldwide-huge` | Hugging Face | `facebook/metaclip-2-worldwide-huge-quickgelu` | 1024 | `data_frames_metaclip2_worldwide_huge` | 1.0 | Tắt |
+| `beit3-large-coco-retrieval-384` | BEiT-3 | checkpoint COCO Retrieval chính thức, input 384×384 | 1024 | `data_frames_beit3_large_coco_retrieval_384` | 1.0 | Tắt |
+| `bge-vl-large` | BGE-VL | `BAAI/BGE-VL-large`, revision `40fb482…` | 768 | `data_frames_bge_vl_large` | 1.0 | Tắt |
+| `perception-core-l14-336` | Perception | `PE-Core-L14-336`, OpenCLIP/timm revision `8eff41b…` | 1024 | `data_frames_perception_core_l14_336` | 1.0 | Tắt |
 
-Các revision Hugging Face đã được pin để tăng tính tái lập. Trước khi bật MetaCLIP2 cần kiểm tra lại điều kiện sử dụng checkpoint vì cấu hình hiện tại có ghi chú giấy phép phi thương mại.
+Các revision Hugging Face đã được pin để tăng tính tái lập. BEiT-3 dùng đúng checkpoint retrieval 384×384 và tokenizer `beit3.spm`; cả hai file đều được khóa SHA-256 và kiểm tra trước khi load. BGE-VL dùng revision bất biến và native joint image–text encoder. Perception dùng checkpoint 2,68 GB, input 336×336, context 32 token, preprocess chính thức (mean/std 0,5, bilinear, squash) và SHA-256 `b1fff709…2f786b`. Các adapter được cài qua nhóm dependency `models`. Trước khi bật MetaCLIP2 cần kiểm tra lại điều kiện sử dụng checkpoint vì cấu hình hiện tại có ghi chú giấy phép phi thương mại.
+
+Hai paper chỉ công bố tên **Perception Encoder**, không công bố biến thể/checkpoint cụ thể. `PE-Core-L14-336` là lựa chọn tái lập chính thức của FrameSeeker dựa trên checkpoint CLIP do Meta phát hành, không phải hyperparameter bí mật được suy đoán là của đội thi. Paper Top 2 cũng không công bố RRF `k`; hệ thống dùng `k=60` làm giá trị tái lập và vẫn yêu cầu ablation trên validation set.
 
 ### 4.1. Trạng thái ensemble thực tế
 
 Hạ tầng multi-model đã hoàn chỉnh, nhưng khi chỉ `dfn5b` được bật thì hệ thống đang vận hành như single-model baseline đi qua cùng một fusion engine. RRF bắt đầu tạo lợi ích đa mô hình sau khi ít nhất một gallery bổ sung được encode, nạp đầy đủ và bật.
+
+Preset `top1_2025` chọn BEiT-3, MetaCLIP2 và Perception. Preset `top2_2025` chọn cả bốn model paper cho text/image retrieval; với composed feedback, preset này chỉ chọn BGE-VL-Large đúng theo luồng joint feedback mà paper mô tả.
 
 ---
 
@@ -260,15 +270,18 @@ Loader thực hiện toàn bộ preflight trước khi sửa collection:
 ```mermaid
 flowchart LR
     Q["Text query"] --> V["Original + enhanced variants"]
-    V --> M1["DFN5B text encoder"]
-    V --> M2["SigLIP2 text encoder"]
+    V --> M1["BEiT-3 text encoder"]
+    V --> M2["BGE-VL text encoder"]
     V --> M3["MetaCLIP2 text encoder"]
+    V --> M4["Perception text encoder"]
     M1 --> S1["Top-K collection 1"]
     M2 --> S2["Top-K collection 2"]
     M3 --> S3["Top-K collection 3"]
+    M4 --> S4["Top-K collection 4"]
     S1 --> R["WRRF"]
     S2 --> R
     S3 --> R
+    S4 --> R
 ```
 
 Các bước:
@@ -299,13 +312,23 @@ Mặc định quan trọng:
 
 ### 8.3. Composed image-text retrieval
 
-Với mỗi model `m`, text và ảnh được kết hợp trong chính joint embedding space của model đó:
+API chuẩn nhận `original_text`, `feedback_text` và frame người dùng đã chọn. Hệ thống tái tạo query theo đúng ý tưởng bảo toàn ngữ cảnh của Top 2:
 
 ```text
-z_m = normalize(α × text_embedding_m + (1 - α) × image_embedding_m)
+reconstructed_query = original_query + feedback_text
 ```
 
-Trong đó `α = 0.75` là baseline. Sau khi chuẩn hóa L2, `z_m` truy vấn gallery của model `m`. Các ranking composed của các model sau đó mới được fusion.
+Preset `top2_2025` đưa `reconstructed_query` cùng selected frame vào native joint encoder BGE-VL-Large. Response ghi rõ input trong `meta.compositionInput`, tránh lỗi semantic drift do chỉ tìm bằng feedback như “đổi áo thành xanh”.
+
+Preset `top1_2025` không nối original query vào câu feedback. BEiT-3, MetaCLIP2 và
+Perception encode riêng câu textual feedback rồi áp dụng linear feedback đã công bố trong
+không gian embedding của từng model:
+
+```text
+z_m = normalize(α × feedback_text_embedding_m + (1 - α) × image_embedding_m)
+```
+
+Trong đó `α = 0.75` là giá trị paper công bố. Sau đó embedding của từng model chỉ truy vấn gallery tương ứng và các ranking composed được fusion bằng RRF. Custom model selection vẫn được hỗ trợ: BGE-VL dùng joint encoder, dual encoder khác dùng linear fallback. Response ghi rõ chế độ từng model trong `meta.compositionModes`.
 
 Thiết kế này phù hợp với quy trình relevance feedback: người dùng chọn một frame gần đúng rồi bổ sung câu mô tả phần cần thay đổi.
 
@@ -532,17 +555,21 @@ timestamp_ms = round(timestamp_seconds × 1000)
 
 | Hạng mục | Kết quả |
 |---|---|
-| Backend tests | 109/109 đạt |
-| Backend coverage | 96.99% |
+| Backend tests | 145/145 đạt |
+| Backend coverage | 90.76% |
 | Ruff | Đạt |
-| Mypy | Đạt trên 52 source files |
+| Mypy | Đạt trên 60 source files |
 | Frontend lint | 0 lỗi; còn 5 warning không chặn build |
 | Frontend production build | Đạt |
 | Root monorepo build | Đạt |
 | Frozen lockfile install | Đạt |
 | Docker Compose config | Đạt |
 | API Docker image | Build thành công; smoke `/api/health` HTTP 200 |
-| Web Docker image | Build thành công; smoke trang chính HTTP 200 |
+| Web Docker image | Build thành công |
+| BEiT-3 runtime smoke | Checkpoint thật; image/text `(1, 1024)`, L2 norm 1, artifact checksum đạt |
+| BGE-VL runtime smoke | Checkpoint thật; image/text/joint `(1, 768)`, L2 norm xấp xỉ 1 |
+| Perception runtime smoke | Checkpoint 2.684.623.612 byte; SHA-256 đạt; image/text `(1, 1024)`, L2 norm 1 |
+| BEiT-3 sau timm override | Checkpoint thật; image/text `(1, 1024)`, L2 norm 1 |
 | Browser dogfood | Search/error/QA/frame selection/responsive flow đã kiểm tra |
 | Git diff hygiene | `git diff --check` đạt |
 
@@ -555,7 +582,7 @@ API smoke test trả `degraded` khi chạy container độc lập không có Mil
 | Công việc | Trạng thái | Lý do |
 |---|---|---|
 | Encode toàn bộ dataset chính thức | Chưa chạy | Chưa có/freeze dataset chính thức trong pipeline hiện tại |
-| Nạp gallery SigLIP2 và MetaCLIP2 | Chưa chạy | Phụ thuộc artifact hoàn chỉnh |
+| Nạp gallery SigLIP2, MetaCLIP2, BEiT-3, BGE-VL và Perception | Chưa chạy | Phụ thuộc artifact toàn bộ dataset và Milvus đích |
 | Bật multi-model production | Chưa bật | Tránh truy vấn collection thiếu dữ liệu |
 | Chọn weight tối ưu | Chưa chốt | Phải dựa trên validation metrics |
 | Chốt `rrf_k` và candidate Top-K | Baseline đã có | Cần ablation dataset thật |
@@ -642,7 +669,11 @@ Mốc tiếp theo không phải viết lại pipeline mà là:
 - `docs/inference-ensemble.md`: hướng dẫn vận hành ngắn gọn.
 - `docs/adr/0002-multi-model-retrieval-and-rank-fusion.md`: quyết định kiến trúc.
 - `apps/api/config/ensemble.json`: model registry và trọng số.
-- `apps/api/app/services/model_registry.py`: model adapters.
+- `apps/api/app/services/model_registry.py`: registry và hợp đồng adapter.
+- `apps/api/app/services/beit3_adapter.py`: BEiT-3 Large COCO retrieval.
+- `apps/api/app/services/bge_vl_adapter.py`: BGE-VL text/image/joint image-text.
+- `apps/api/app/services/perception_adapter.py`: Perception Encoder image/text.
+- `apps/api/app/services/ensemble_profiles.py`: preset Top 1/Top 2 theo mode retrieval.
 - `apps/api/app/services/embedding_artifacts.py`: artifact format và integrity.
 - `apps/api/app/services/ensemble_search.py`: online multi-model inference.
 - `apps/api/app/services/fusion.py`: RRF/WRRF và diversity.
@@ -651,4 +682,3 @@ Mốc tiếp theo không phải viết lại pipeline mà là:
 - `apps/api/scripts/load_ensemble_embeddings.py`: Milvus loading.
 - `apps/api/scripts/generate_retrieval_runs.py`: sinh retrieval runs.
 - `apps/api/scripts/evaluate_ensemble.py`: evaluation và ablation.
-

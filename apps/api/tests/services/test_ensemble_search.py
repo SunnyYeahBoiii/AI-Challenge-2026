@@ -109,6 +109,147 @@ def test_composed_search_fuses_text_and_image_per_model_before_rrf() -> None:
     assert backend.calls[0][1] == pytest.approx(1.0)
     assert backend.calls[1][1] == pytest.approx(1.0)
     assert response.sources == ["a:composed", "b:composed"]
+    assert response.meta()["compositionModes"] == {
+        "a": "linear_text_image",
+        "b": "linear_text_image",
+    }
+
+
+def test_composed_search_prefers_model_native_joint_encoder() -> None:
+    encoded_texts: list[str] = []
+
+    class JointModel(FakeModel):
+        def encode_texts(self, texts: list[str]) -> np.ndarray:
+            raise AssertionError("linear text encoder must not be used")
+
+        def encode_images(self, images: list[object]) -> np.ndarray:
+            raise AssertionError("linear image encoder must not be used")
+
+        def encode_composed(
+            self, images: list[object], texts: list[str]
+        ) -> np.ndarray | None:
+            assert len(images) == len(texts) == 1
+            encoded_texts.extend(texts)
+            return np.asarray([[1.0]], dtype=np.float32)
+
+    registry = ModelRegistry(
+        [ModelSpec("joint", "joint", "joint", 1, "joint")],
+        factories={"joint": lambda spec: JointModel(spec, 0.0)},
+    )
+    backend = FakeVectorBackend()
+    service = EnsembleSearchService(
+        registry=registry,
+        vector_backend=backend,
+        query_enhancer=lambda query: query,
+    )
+
+    response = service.search_composed(
+        "Change the shirt to green.",
+        object(),
+        original_query="The dog is surfing.",
+        text_weight=0.75,
+        options=EnsembleSearchOptions(use_enhanced_query=False),
+    )
+
+    assert encoded_texts == ["The dog is surfing. Change the shirt to green."]
+    assert response.query == "The dog is surfing. Change the shirt to green."
+    assert response.sources == ["joint:joint-composed"]
+    assert response.meta()["compositionModes"] == {"joint": "joint_image_text"}
+    assert response.meta()["compositionInput"] == {
+        "originalQuery": "The dog is surfing.",
+        "feedbackText": "Change the shirt to green.",
+        "contextQuery": "The dog is surfing. Change the shirt to green.",
+        "encodedText": "The dog is surfing. Change the shirt to green.",
+    }
+
+
+def test_top1_composed_profile_encodes_feedback_without_original_query() -> None:
+    encoded_texts: list[str] = []
+
+    class CapturingModel(FakeModel):
+        def encode_texts(self, texts: list[str]) -> np.ndarray:
+            encoded_texts.extend(texts)
+            return super().encode_texts(texts)
+
+    registry = ModelRegistry(
+        [ModelSpec("linear", "linear", "linear", 1, "linear")],
+        factories={"linear": lambda spec: CapturingModel(spec, 0.0)},
+    )
+    service = EnsembleSearchService(
+        registry=registry,
+        vector_backend=SimpleBackend(),
+        query_enhancer=lambda query: query,
+    )
+
+    response = service.search_composed(
+        "Change the shirt to green.",
+        object(),
+        original_query="The dog is surfing.",
+        text_weight=0.75,
+        options=EnsembleSearchOptions(
+            profile="top1_2025",
+            use_enhanced_query=False,
+        ),
+    )
+
+    assert encoded_texts == ["Change the shirt to green."]
+    assert response.query == "Change the shirt to green."
+    assert response.meta()["compositionInput"] == {
+        "originalQuery": "The dog is surfing.",
+        "feedbackText": "Change the shirt to green.",
+        "contextQuery": "The dog is surfing. Change the shirt to green.",
+        "encodedText": "Change the shirt to green.",
+    }
+
+
+def test_invalid_native_composed_shape_becomes_a_model_error() -> None:
+    class InvalidJointModel(FakeModel):
+        def encode_composed(
+            self, images: list[object], texts: list[str]
+        ) -> np.ndarray | None:
+            return np.ones((1, 2), dtype=np.float32)
+
+    registry = ModelRegistry(
+        [ModelSpec("joint", "joint", "joint", 1, "joint")],
+        factories={"joint": lambda spec: InvalidJointModel(spec, 0.0)},
+    )
+    service = EnsembleSearchService(
+        registry=registry,
+        vector_backend=SimpleBackend(),
+        query_enhancer=lambda query: query,
+    )
+
+    with pytest.raises(EnsembleSearchError, match="returned shape"):
+        service.search_composed(
+            "modification", object(), text_weight=0.5, options=EnsembleSearchOptions()
+        )
+
+
+def test_composition_modes_only_include_successful_models() -> None:
+    class FailsOneBackend(SimpleBackend):
+        def search(
+            self,
+            spec: ModelSpec,
+            embedding: Sequence[float],
+            top_k: int,
+            expression: str | None = None,
+        ) -> list[dict[str, object]]:
+            if spec.model_id == "a":
+                raise RuntimeError("collection unavailable")
+            return super().search(spec, embedding, top_k, expression)
+
+    service = EnsembleSearchService(
+        registry=_registry(),
+        vector_backend=FailsOneBackend(),
+        query_enhancer=lambda query: query,
+    )
+
+    response = service.search_composed(
+        "query", object(), text_weight=0.75, options=EnsembleSearchOptions()
+    )
+
+    assert response.models == ["b"]
+    assert response.composition_modes == {"b": "linear_text_image"}
 
 
 @pytest.mark.parametrize(
@@ -307,6 +448,8 @@ def test_wrong_text_shape_and_incompatible_composed_shapes_become_model_errors()
 
     with pytest.raises(EnsembleSearchError, match="returned shape"):
         service.search_text("query", EnsembleSearchOptions())
+    with pytest.raises(EnsembleSearchError, match="returned shape"):
+        service.search_image(object(), EnsembleSearchOptions())
     with pytest.raises(EnsembleSearchError, match="incompatible"):
         service.search_composed(
             "query",
@@ -314,3 +457,51 @@ def test_wrong_text_shape_and_incompatible_composed_shapes_become_model_errors()
             text_weight=0.5,
             options=EnsembleSearchOptions(use_enhanced_query=False),
         )
+
+
+def test_non_finite_query_embeddings_become_model_errors() -> None:
+    class NonFiniteModel(FakeModel):
+        def encode_texts(self, texts: list[str]) -> np.ndarray:
+            return np.full((len(texts), 1), np.nan, dtype=np.float32)
+
+        def encode_images(self, images: list[object]) -> np.ndarray:
+            return np.full((len(images), 1), np.inf, dtype=np.float32)
+
+    registry = ModelRegistry(
+        [ModelSpec("invalid", "invalid", "invalid", 1, "invalid")],
+        factories={"invalid": lambda spec: NonFiniteModel(spec, 0.0)},
+    )
+    service = EnsembleSearchService(
+        registry=registry,
+        vector_backend=SimpleBackend(),
+        query_enhancer=lambda query: query,
+    )
+
+    with pytest.raises(EnsembleSearchError, match="non-finite text"):
+        service.search_text("query", EnsembleSearchOptions(use_enhanced_query=False))
+    with pytest.raises(EnsembleSearchError, match="non-finite image"):
+        service.search_image(object(), EnsembleSearchOptions())
+
+
+def test_zero_norm_query_embeddings_become_model_errors() -> None:
+    class ZeroModel(FakeModel):
+        def encode_texts(self, texts: list[str]) -> np.ndarray:
+            return np.zeros((len(texts), 1), dtype=np.float32)
+
+        def encode_images(self, images: list[object]) -> np.ndarray:
+            return np.zeros((len(images), 1), dtype=np.float32)
+
+    registry = ModelRegistry(
+        [ModelSpec("zero", "zero", "zero", 1, "zero")],
+        factories={"zero": lambda spec: ZeroModel(spec, 0.0)},
+    )
+    service = EnsembleSearchService(
+        registry=registry,
+        vector_backend=SimpleBackend(),
+        query_enhancer=lambda query: query,
+    )
+
+    with pytest.raises(EnsembleSearchError, match="zero-norm.*text"):
+        service.search_text("query", EnsembleSearchOptions(use_enhanced_query=False))
+    with pytest.raises(EnsembleSearchError, match="zero-norm.*image"):
+        service.search_image(object(), EnsembleSearchOptions())

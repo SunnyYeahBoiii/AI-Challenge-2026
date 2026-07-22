@@ -1,65 +1,57 @@
 # Inference + Ensemble — Bản ngắn gọn
 
-FrameSeeker dùng nhiều model image-text để tìm keyframe. Mỗi model encode ảnh và câu query trong không gian embedding riêng, truy vấn Top-K riêng, sau đó kết hợp các bảng xếp hạng bằng Weighted RRF.
+FrameSeeker đã tích hợp đúng các nhánh visual retrieval được công bố bởi đội Top 1 và
+Top 2 AIC 2025. Mỗi model tạo một bảng xếp hạng Top-K trong Milvus collection riêng;
+các vector khác model không bị trộn trực tiếp.
 
-## Các model
+## Model sử dụng
 
-| Model | Trạng thái | Tác dụng |
+| Model | Tác dụng | Cách thêm vào hệ thống |
 |---|---|---|
-| **DFN5B CLIP ViT-H/14** | Đang bật | Model inference chính và baseline. Tìm kiếm text-to-image tốt, dimension 1024, dùng collection `data_frames`. |
-| **SigLIP2 SO400M 384** | Đã cấu hình, chưa bật | Bổ sung góc nhìn khác cho câu query và hình ảnh, giúp tăng recall khi kết hợp với DFN5B. Dimension 1152. |
-| **MetaCLIP2 Worldwide Huge** | Đã cấu hình, chưa bật | Bổ sung khả năng hiểu nội dung đa dạng và đa ngôn ngữ. Dimension 1024. Cần kiểm tra giấy phép trước khi sử dụng chính thức. |
+| **BEiT-3 Large COCO Retrieval 384** | Cân bằng độ chính xác và tốc độ; vector ảnh/text 1024 chiều. | Adapter BEiT-3, checkpoint và tokenizer chính thức có SHA-256, collection riêng. |
+| **MetaCLIP2 Worldwide Huge** | Mạnh với entity, landmark và nội dung phổ biến; vector 1024 chiều. | Adapter Hugging Face, checkpoint ghim revision, collection riêng. |
+| **Perception Encoder PE-Core-L14-336** | Bổ sung khả năng xử lý query phức tạp, nhiều cụm mô tả; vector 1024 chiều. | Adapter Perception dựa trên OpenCLIP conversion của checkpoint chính thức, ghim revision và SHA-256, collection riêng. |
+| **BGE-VL-Large** | Model feedback chính: encode chung ảnh đã chọn và câu sửa đổi; vector 768 chiều. | Adapter BGE-VL native joint image–text, checkpoint ghim revision, collection riêng. |
 
-## Cách ensemble hoạt động
+Hai preset có sẵn trong `apps/api/config/ensemble.json`:
+
+- `top1_2025`: BEiT-3 + MetaCLIP2 + Perception Encoder; hợp nhất bằng RRF.
+- `top2_2025`: BEiT-3 + BGE-VL-Large + MetaCLIP2 + Perception Encoder; hợp nhất bằng RRF.
+
+Top 2 paper không nêu biến thể Perception, checkpoint cụ thể hoặc giá trị RRF `k`.
+FrameSeeker chọn `PE-Core-L14-336` và `k=60` làm cấu hình tái lập, không giả vờ đây là
+hyperparameter được paper công bố.
+
+## Cách hoạt động
 
 ```text
 Query
-  ├─ Encode bằng DFN5B   → Top-K DFN5B
-  ├─ Encode bằng SigLIP2 → Top-K SigLIP2
-  └─ Encode bằng MetaCLIP2 → Top-K MetaCLIP2
-                           ↓
-                    Weighted RRF
-                           ↓
-                  Kết quả cuối cùng
+  ├─ BEiT-3       → Top-K riêng
+  ├─ MetaCLIP2    → Top-K riêng
+  ├─ Perception   → Top-K riêng
+  └─ BGE-VL       → Top-K riêng (preset Top 2)
+                         ↓
+                   RRF / Weighted RRF
+                         ↓
+                   Kết quả cuối cùng
 ```
 
-Không trộn trực tiếp embedding của các model vì chúng có dimension và không gian đặc trưng khác nhau. Hệ thống chỉ kết hợp thứ hạng kết quả bằng công thức:
+Composed feedback chuẩn Top 2 nhận ba đầu vào:
 
 ```text
-score(frame) = Σ weight(model) / (rrf_k + rank(frame))
+original query + selected frame + feedback text
 ```
 
-Baseline dùng `rrf_k = 60` và weight `1.0` cho mỗi model. Weight cuối cùng phải được chọn bằng validation mAP/Recall@K.
+Hệ thống ghép lại ngữ cảnh gốc với feedback rồi đưa ảnh + text vào joint encoder của
+BGE-VL-Large. Preset Top 1 chỉ encode câu feedback, trộn với frame đã chọn theo công
+thức đã công bố: `0.75 × feedback_text_embedding + 0.25 × image_embedding`, sau đó
+RRF ba model.
 
-## Cách thêm hoặc bật một model
+Các model paper hiện chưa bật mặc định vì phải encode toàn bộ keyframe, nạp đủ từng
+gallery vào Milvus và xác minh cùng tập `frame_uid` trước. Sau khi có dataset:
 
-1. Thêm model vào `apps/api/config/ensemble.json`, gồm:
-   - `id`, adapter và checkpoint;
-   - embedding dimension;
-   - tên Milvus collection riêng;
-   - weight và trạng thái `enabled`.
-2. Encode toàn bộ keyframe bằng model đó:
-
-   ```powershell
-   cd apps/api
-   uv run python scripts/embed_keyframes.py --input ../../data/manifests/frames.jsonl --images-root ../../data --output ../../data/ensemble-embeddings --model <model-id>
-   ```
-
-3. Kiểm tra artifact trước khi nạp:
-
-   ```powershell
-   uv run python scripts/load_ensemble_embeddings.py ../../data/ensemble-embeddings/<model-id>/manifest.json --dry-run
-   ```
-
-4. Nạp embedding vào Milvus:
-
-   ```powershell
-   uv run python scripts/load_ensemble_embeddings.py ../../data/ensemble-embeddings/<model-id>/manifest.json
-   ```
-
-5. Kiểm tra collection có đủ cùng tập `frame_uid` với các model khác.
-6. Đổi `enabled` thành `true` trong `ensemble.json` và khởi động lại API.
-7. Chạy validation để đo model đơn lẻ và ensemble trước khi chỉnh weight.
-
-> Không bật model nếu chưa encode và nạp đầy đủ gallery của model đó vào Milvus.
-
+1. Chạy `scripts/embed_keyframes.py --model <model-id>` cho từng model.
+2. Chạy `scripts/load_ensemble_embeddings.py <manifest> --dry-run`.
+3. Nạp mỗi artifact vào collection tương ứng.
+4. Bật model và gọi API với `ensemble.profile = "top1_2025"` hoặc `"top2_2025"`.
+5. Chạy validation mAP/Recall@K trước khi chỉnh weight.

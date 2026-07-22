@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from app.services.embedding_artifacts import iter_input_records
 from app.services.frame_identity import frame_uid
 from app.services.milvus_client import get_vector_backend
@@ -15,10 +17,19 @@ from app.services.model_registry import ModelRegistry, load_model_specs
 
 
 def _queries(path: Path) -> list[dict[str, Any]]:
-    queries = list(iter_input_records(path))
-    for query in queries:
-        if not str(query.get("query_id", "")) or not str(query.get("text", "")):
+    queries: list[dict[str, Any]] = []
+    seen_query_ids: set[str] = set()
+    for raw_query in iter_input_records(path):
+        query_id = str(raw_query.get("query_id", "")).strip()
+        text = str(raw_query.get("text", "")).strip()
+        if not query_id or not text:
             raise ValueError("each Query requires query_id and text")
+        if query_id in seen_query_ids:
+            raise ValueError(f"duplicate query_id: {query_id}")
+        seen_query_ids.add(query_id)
+        queries.append({**raw_query, "query_id": query_id, "text": text})
+    if not queries:
+        raise ValueError("Query manifest cannot be empty")
     return queries
 
 
@@ -54,8 +65,16 @@ def generate_runs(
                 encode_started = time.perf_counter()
                 embeddings = model.encode_texts(texts)
                 encode_elapsed_ms = (time.perf_counter() - encode_started) * 1_000
+                expected_shape = (len(batch), spec.dimension)
+                if embeddings.shape != expected_shape:
+                    raise RuntimeError(
+                        f"{model_id} returned shape {embeddings.shape}; "
+                        f"expected {expected_shape}"
+                    )
+                if not np.isfinite(embeddings).all():
+                    raise RuntimeError(f"{model_id} returned non-finite Query embeddings")
                 per_query_encode_ms = encode_elapsed_ms / len(batch)
-                for query, embedding in zip(batch, embeddings):
+                for query, embedding in zip(batch, embeddings, strict=True):
                     search_started = time.perf_counter()
                     frames = backend.search(spec, embedding.tolist(), top_k)
                     search_elapsed_ms = (time.perf_counter() - search_started) * 1_000

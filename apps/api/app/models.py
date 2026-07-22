@@ -16,14 +16,21 @@ class EmbedTextRequest(BaseModel):
 class EnsembleOptionsRequest(BaseModel):
     """HTTP representation of per-Query ensemble controls."""
 
+    profile: str | None = Field(default=None, min_length=1)
     model_ids: list[str] | None = None
     model_weights: dict[str, float] = Field(default_factory=dict)
     candidate_topk: int = Field(default=Config.ENSEMBLE_CANDIDATE_TOP_K, ge=1, le=5_000)
-    rrf_k: int = Field(default=Config.ENSEMBLE_RRF_K, ge=1, le=10_000)
+    rrf_k: int | None = Field(default=None, ge=1, le=10_000)
     preserve_original_query: bool = True
     diversity_time_seconds: float = Field(default=0.0, ge=0.0, allow_inf_nan=False)
     max_per_video: int = Field(default=0, ge=0)
     allow_partial_models: bool = True
+
+    @model_validator(mode="after")
+    def validate_model_selector(self) -> Self:
+        if self.profile and self.model_ids:
+            raise ValueError("ensemble profile and model_ids cannot be combined")
+        return self
 
 
 class SearchRequest(BaseModel):

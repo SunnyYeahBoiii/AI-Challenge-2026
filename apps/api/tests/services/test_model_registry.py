@@ -19,6 +19,7 @@ from app.services.model_registry import (
     ModelRegistry,
     ModelSpec,
     OpenClipEmbeddingModel,
+    _normalize,
     load_model_specs,
 )
 
@@ -106,6 +107,8 @@ def test_registry_loads_models_lazily_and_reuses_instances() -> None:
         ({"weight": float("nan")}, "finite"),
         ({"text_padding": "invalid"}, "text_padding"),
         ({"text_max_length": 0}, "text_max_length"),
+        ({"image_size": 0}, "image_size"),
+        ({"pretrained_sha256": "invalid"}, "pretrained_sha256"),
     ],
 )
 def test_model_spec_rejects_invalid_configuration(
@@ -139,6 +142,56 @@ def test_registry_selection_and_configuration_errors() -> None:
         ModelRegistry([ModelSpec("x", "missing", "x", 2, "x")]).get("x")
     with pytest.raises(ModelConfigurationError, match="unique"):
         ModelRegistry([enabled, enabled])
+
+
+def test_top2_embedding_specs_are_versioned() -> None:
+    config = Path(__file__).resolve().parents[2] / "config" / "ensemble.json"
+
+    specs = {spec.model_id: spec for spec in load_model_specs(config)}
+
+    beit3 = specs["beit3-large-coco-retrieval-384"]
+    assert beit3.adapter == "beit3"
+    assert beit3.dimension == 1024
+    assert beit3.image_size == 384
+    assert beit3.text_max_length == 64
+    assert beit3.pretrained == (
+        "https://github.com/addf400/files/releases/download/beit3/"
+        "beit3_large_patch16_384_coco_retrieval.pth"
+    )
+    assert beit3.tokenizer_url == (
+        "https://github.com/addf400/files/releases/download/beit3/beit3.spm"
+    )
+    assert beit3.pretrained_sha256 == (
+        "72a569be8a4c5396d82f7a4eab9dd3c9d6f11af731e9d86227450cde02a2fddb"
+    )
+    assert beit3.tokenizer_sha256 == (
+        "6f5e2fefcf793761a76a6bfb8ad35489f9c203b25557673284b6d032f41043f4"
+    )
+
+    bge = specs["bge-vl-large"]
+    assert bge.adapter == "bge_vl"
+    assert bge.model_name == "BAAI/BGE-VL-large"
+    assert bge.dimension == 768
+    assert bge.revision == "40fb48217f521df22a2a5bf15edd52ed1146ef05"
+    assert bge.trust_remote_code is True
+
+    perception = specs["perception-core-l14-336"]
+    assert perception.adapter == "perception"
+    assert perception.model_name == "facebook/PE-Core-L14-336"
+    assert perception.pretrained == "timm/PE-Core-L-14-336"
+    assert perception.dimension == 1024
+    assert perception.image_size == 336
+    assert perception.text_max_length == 32
+    assert perception.revision == "8eff41b3f687e50a323662c2dda5eb3588c6dd35"
+    assert perception.pretrained_sha256 == (
+        "b1fff7093c32a01d98a2d82098f9adf788b30f0efee639916520b3e4302f786b"
+    )
+
+
+def test_registry_contains_top2_builtin_factories() -> None:
+    registry = ModelRegistry([ModelSpec("x", "fake", "x", 2, "x")])
+
+    assert {"beit3", "bge_vl", "perception"} <= set(registry._factories)
 
 
 def test_load_model_specs_reports_malformed_and_disabled_configs(tmp_path: Path) -> None:
@@ -293,7 +346,22 @@ def test_openclip_adapter_encodes_and_normalizes(monkeypatch: Any) -> None:
 
     np.testing.assert_allclose(adapter.encode_texts(["a", "b"]), [[0.6, 0.8], [0.6, 0.8]])
     np.testing.assert_allclose(adapter.encode_images([object()]), [[0.0, 1.0]])
+    assert adapter.encode_texts([]).shape == (0, 2)
+    assert adapter.encode_images([]).shape == (0, 2)
     assert model.device == "cpu"
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [[0.0, 0.0]],
+        [[float("nan"), 1.0]],
+        [[float("inf"), 1.0]],
+    ],
+)
+def test_normalize_rejects_invalid_features(values: list[list[float]]) -> None:
+    with pytest.raises(RuntimeError, match="non-finite|zero-norm"):
+        _normalize(FakeTensor(values))
 
 
 def test_model_adapters_wrap_load_failures(monkeypatch: Any) -> None:
@@ -353,6 +421,8 @@ def test_huggingface_adapter_passes_padding_revision_and_normalizes(monkeypatch:
     assert calls["processor_load"][1]["revision"] == "commit"
     assert calls["processor_call"]["max_length"] == 64
     np.testing.assert_allclose(adapter.encode_images([object()]), [[0.0, 1.0]])
+    assert adapter.encode_texts([]).shape == (0, 2)
+    assert adapter.encode_images([]).shape == (0, 2)
 
 
 def test_registry_global_cache_and_unload(tmp_path: Path, monkeypatch: Any) -> None:

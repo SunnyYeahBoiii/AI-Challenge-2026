@@ -1,4 +1,42 @@
 {
+  "profiles": {
+    "top1_2025": {
+      "text_model_ids": [
+        "beit3-large-coco-retrieval-384",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336"
+      ],
+      "image_model_ids": [
+        "beit3-large-coco-retrieval-384",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336"
+      ],
+      "composed_model_ids": [
+        "beit3-large-coco-retrieval-384",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336"
+      ],
+      "rrf_k": 60
+    },
+    "top2_2025": {
+      "text_model_ids": [
+        "beit3-large-coco-retrieval-384",
+        "bge-vl-large",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336"
+      ],
+      "image_model_ids": [
+        "beit3-large-coco-retrieval-384",
+        "bge-vl-large",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336"
+      ],
+      "composed_model_ids": [
+        "bge-vl-large"
+      ],
+      "rrf_k": 60
+    }
+  },
   "models": [
     {
       "id": "dfn5b",
@@ -31,6 +69,48 @@
       "collection": "data_frames_metaclip2_worldwide_huge",
       "text_padding": "max_length",
       "text_max_length": 77,
+      "weight": 1.0,
+      "enabled": false
+    },
+    {
+      "id": "beit3-large-coco-retrieval-384",
+      "adapter": "beit3",
+      "model_name": "beit3_large_patch16_384_retrieval",
+      "pretrained": "https://github.com/addf400/files/releases/download/beit3/beit3_large_patch16_384_coco_retrieval.pth",
+      "pretrained_sha256": "72a569be8a4c5396d82f7a4eab9dd3c9d6f11af731e9d86227450cde02a2fddb",
+      "tokenizer_url": "https://github.com/addf400/files/releases/download/beit3/beit3.spm",
+      "tokenizer_sha256": "6f5e2fefcf793761a76a6bfb8ad35489f9c203b25557673284b6d032f41043f4",
+      "dimension": 1024,
+      "collection": "data_frames_beit3_large_coco_retrieval_384",
+      "image_size": 384,
+      "text_padding": "max_length",
+      "text_max_length": 64,
+      "weight": 1.0,
+      "enabled": false
+    },
+    {
+      "id": "bge-vl-large",
+      "adapter": "bge_vl",
+      "model_name": "BAAI/BGE-VL-large",
+      "revision": "40fb48217f521df22a2a5bf15edd52ed1146ef05",
+      "trust_remote_code": true,
+      "dimension": 768,
+      "collection": "data_frames_bge_vl_large",
+      "weight": 1.0,
+      "enabled": false
+    },
+    {
+      "id": "perception-core-l14-336",
+      "adapter": "perception",
+      "model_name": "facebook/PE-Core-L14-336",
+      "pretrained": "timm/PE-Core-L-14-336",
+      "revision": "8eff41b3f687e50a323662c2dda5eb3588c6dd35",
+      "pretrained_sha256": "b1fff7093c32a01d98a2d82098f9adf788b30f0efee639916520b3e4302f786b",
+      "dimension": 1024,
+      "collection": "data_frames_perception_core_l14_336",
+      "image_size": 336,
+      "text_padding": "max_length",
+      "text_max_length": 32,
       "weight": 1.0,
       "enabled": false
     }

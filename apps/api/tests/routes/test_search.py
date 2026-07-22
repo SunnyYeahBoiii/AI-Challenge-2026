@@ -8,6 +8,7 @@ from typing import Any
 from app.main import create_app
 from app.routes import search as search_routes
 from app.services.ensemble_search import EnsembleSearchError, EnsembleSearchResponse
+from app.services.model_registry import ModelConfigurationError
 
 
 def _response(query: str = "query") -> EnsembleSearchResponse:
@@ -108,6 +109,66 @@ def test_composed_route_uses_paper_default_text_weight(monkeypatch: Any) -> None
     assert captured["image_bytes"] == b"image"
 
 
+def test_composed_route_preserves_original_query_for_top2_feedback(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_composed(
+        feedback_text: str,
+        image_bytes: bytes,
+        **kwargs: Any,
+    ) -> EnsembleSearchResponse:
+        captured.update(
+            feedback_text=feedback_text,
+            image_bytes=image_bytes,
+            **kwargs,
+        )
+        return _response("The dog is surfing. Change the shirt to green.")
+
+    monkeypatch.setattr(search_routes, "search_composed_with_meta", fake_composed)
+    response = create_app().test_client().post(
+        "/api/search/composed",
+        data={
+            "original_text": "The dog is surfing.",
+            "feedback_text": "Change the shirt to green.",
+            "ensemble": '{"profile":"top2_2025"}',
+            "image": (io.BytesIO(b"image"), "feedback.jpg"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert captured["feedback_text"] == "Change the shirt to green."
+    assert captured["original_query"] == "The dog is surfing."
+    assert captured["options"].model_ids == ("bge-vl-large",)
+    assert captured["options"].use_enhanced_query is False
+    payload = response.get_json()
+    assert payload["originalQuery"] == "The dog is surfing."
+    assert payload["feedbackText"] == "Change the shirt to green."
+
+
+def test_top2_profile_selects_four_visual_models(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_search(query: str, **kwargs: Any) -> EnsembleSearchResponse:
+        captured.update(kwargs)
+        return _response(query)
+
+    monkeypatch.setattr(search_routes, "search_text_with_meta", fake_search)
+    response = create_app().test_client().post(
+        "/api/search",
+        json={"text": "query", "ensemble": {"profile": "top2_2025"}},
+    )
+
+    assert response.status_code == 200
+    assert captured["options"].model_ids == (
+        "beit3-large-coco-retrieval-384",
+        "bge-vl-large",
+        "metaclip2-worldwide-huge",
+        "perception-core-l14-336",
+    )
+    assert captured["options"].profile == "top2_2025"
+
+
 def test_text_route_maps_ensemble_failure(monkeypatch: Any) -> None:
     def fail(*args: Any, **kwargs: Any) -> None:
         raise EnsembleSearchError("all models failed")
@@ -116,6 +177,22 @@ def test_text_route_maps_ensemble_failure(monkeypatch: Any) -> None:
     response = create_app().test_client().post("/api/search", json={"text": "query"})
     assert response.status_code == 422
     assert response.get_json()["error"]["code"] == "SEARCH_FAILED"
+
+
+def test_text_route_maps_model_configuration_failure_to_search_error(
+    monkeypatch: Any,
+) -> None:
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise ModelConfigurationError("model is disabled")
+
+    monkeypatch.setattr(search_routes, "search_text_with_meta", fail)
+    response = create_app().test_client().post("/api/search", json={"text": "query"})
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "SEARCH_FAILED",
+        "message": "model is disabled",
+    }
 
 
 def test_image_route_validation_success_and_failures(monkeypatch: Any) -> None:
@@ -182,6 +259,15 @@ def test_composed_route_validation_and_failure(monkeypatch: Any) -> None:
         content_type="multipart/form-data",
     )
     assert missing_text.status_code == 400
+    missing_feedback = client.post(
+        "/api/search/composed",
+        data={
+            "original_text": "original",
+            "image": (io.BytesIO(b"x"), "x.png"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert missing_feedback.status_code == 400
 
     monkeypatch.setattr(
         search_routes,
