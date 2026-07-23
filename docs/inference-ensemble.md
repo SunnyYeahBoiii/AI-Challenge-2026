@@ -14,6 +14,7 @@ Each entry fixes:
 
 - model id and adapter (`open_clip`, `huggingface`, `beit3`, `bge_vl` or `perception`);
 - checkpoint/model name and optional revision;
+- inference dtype when a checkpoint needs a tracked reduced-precision runtime;
 - embedding dimension;
 - Milvus collection;
 - RRF weight;
@@ -46,6 +47,17 @@ Install model adapters and development tools:
 cd apps/api
 uv sync --extra models --extra dev
 ```
+
+On Windows, the project pins the official PyTorch CUDA 13.0 index because PyPI's Windows
+wheel is CPU-only. Verify GPU execution before starting a long gallery job:
+
+```powershell
+uv run --frozen python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+The configured MetaCLIP2 Worldwide Huge checkpoint is approximately 7.4 GB in FP32, so
+FrameSeeker loads it as tracked FP16 inference. The dtype is part of the artifact identity;
+resume and Milvus loading reject an artifact created with a different dtype.
 
 For a small GPU, process models one at a time. `embed_keyframes.py` unloads each completed
 model before loading the next one.
@@ -112,28 +124,28 @@ uv run python scripts/embed_keyframes.py \
   --images-root ../../data \
   --output ../../data/ensemble-embeddings \
   --model beit3-large-coco-retrieval-384 \
-  --batch-size 8
+  --batch-size 1
 
 uv run python scripts/embed_keyframes.py \
   --input ../../data/manifests/frames.jsonl \
   --images-root ../../data \
   --output ../../data/ensemble-embeddings \
   --model bge-vl-large \
-  --batch-size 16
+  --batch-size 1
 
 uv run python scripts/embed_keyframes.py \
   --input ../../data/manifests/frames.jsonl \
   --images-root ../../data \
   --output ../../data/ensemble-embeddings \
   --model metaclip2-worldwide-huge \
-  --batch-size 8
+  --batch-size 1
 
 uv run python scripts/embed_keyframes.py \
   --input ../../data/manifests/frames.jsonl \
   --images-root ../../data \
   --output ../../data/ensemble-embeddings \
   --model perception-core-l14-336 \
-  --batch-size 8
+  --batch-size 1
 ```
 
 Use `--resume` after an interrupted job. Every flushed shard updates `manifest.json`,

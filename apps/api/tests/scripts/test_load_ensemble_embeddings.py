@@ -24,6 +24,7 @@ def _config(path: Path, spec: ModelSpec) -> Path:
                         "model_name": spec.model_name,
                         "pretrained": spec.pretrained,
                         "revision": spec.revision,
+                        "dtype": spec.dtype,
                         "dimension": spec.dimension,
                         "collection": spec.collection,
                         "enabled": True,

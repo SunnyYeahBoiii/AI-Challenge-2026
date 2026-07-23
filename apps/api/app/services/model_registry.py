@@ -39,6 +39,7 @@ class ModelSpec:
     weight: float = 1.0
     is_enabled: bool = True
     device: str | None = None
+    dtype: str | None = None
     revision: str | None = None
     trust_remote_code: bool = False
     text_padding: str = "longest"
@@ -65,6 +66,10 @@ class ModelSpec:
             raise ModelConfigurationError("text_max_length must be positive")
         if self.image_size is not None and self.image_size < 1:
             raise ModelConfigurationError("image_size must be positive")
+        if self.dtype not in {None, "float32", "float16", "bfloat16"}:
+            raise ModelConfigurationError(
+                "dtype must be float32, float16, bfloat16 or null"
+            )
         for field, checksum in (
             ("pretrained_sha256", self.pretrained_sha256),
             ("tokenizer_sha256", self.tokenizer_sha256),
@@ -179,7 +184,15 @@ class HuggingFaceEmbeddingModel(EmbeddingModel):
         try:
             load_processor = cast(Callable[..., Any], AutoProcessor.from_pretrained)
             self._processor = load_processor(spec.model_name, **kwargs)
-            self._model = AutoModel.from_pretrained(spec.model_name, **kwargs)
+            model_kwargs = dict(kwargs)
+            if spec.dtype is not None:
+                try:
+                    model_kwargs["dtype"] = getattr(torch, spec.dtype)
+                except AttributeError as error:
+                    raise ModelLoadError(
+                        f"PyTorch does not support configured dtype {spec.dtype}"
+                    ) from error
+            self._model = AutoModel.from_pretrained(spec.model_name, **model_kwargs)
         except Exception as error:
             raise ModelLoadError(
                 f"cannot load Hugging Face model {spec.model_id}: {error}"
@@ -315,6 +328,7 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
     raw_weight = data.get("weight", 1.0)
     raw_text_max_length = data.get("text_max_length")
     raw_image_size = data.get("image_size")
+    raw_dtype = data.get("dtype")
     raw_enabled = data.get("enabled", True)
     raw_trust_remote_code = data.get("trust_remote_code", False)
     if not isinstance(raw_dimension, int) or isinstance(raw_dimension, bool):
@@ -334,6 +348,8 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
         not isinstance(raw_image_size, int) or isinstance(raw_image_size, bool)
     ):
         raise ModelConfigurationError("model image_size must be an integer")
+    if raw_dtype is not None and not isinstance(raw_dtype, str):
+        raise ModelConfigurationError("model dtype must be a string")
     for field in ("id", "adapter", "model_name", "collection"):
         if not isinstance(data[field], str):
             raise ModelConfigurationError(f"model {field} must be a string")
@@ -353,6 +369,7 @@ def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
         weight=float(raw_weight),
         is_enabled=raw_enabled,
         device=str(data["device"]) if data.get("device") else None,
+        dtype=str(raw_dtype) if raw_dtype is not None else None,
         revision=str(data["revision"]) if data.get("revision") else None,
         trust_remote_code=raw_trust_remote_code,
         text_padding=str(data.get("text_padding", "longest")),

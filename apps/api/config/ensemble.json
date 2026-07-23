@@ -65,6 +65,7 @@
       "adapter": "huggingface",
       "model_name": "facebook/metaclip-2-worldwide-huge-quickgelu",
       "revision": "c30deeca36da4422753d39c51552123bc4b5505e",
+      "dtype": "float16",
       "dimension": 1024,
       "collection": "data_frames_metaclip2_worldwide_huge",
       "text_padding": "max_length",

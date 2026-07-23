@@ -250,6 +250,7 @@ def test_resume_rejects_different_checkpoint_identity(tmp_path: Path) -> None:
     [
         ("tokenizer_url", "https://example.test/other.spm"),
         ("image_size", 224),
+        ("dtype", "float16"),
         ("pretrained_sha256", "c" * 64),
     ],
 )
@@ -264,6 +265,7 @@ def test_resume_rejects_different_preprocessing_identity(
         "frames_fake",
         tokenizer_url="https://example.test/tokenizer.spm",
         image_size=384,
+        dtype="float32",
     )
     writer = EmbeddingArtifactWriter(tmp_path, spec, shard_size=1)
     writer.append(
@@ -277,6 +279,8 @@ def test_resume_rejects_different_preprocessing_identity(
             changed = replace(spec, tokenizer_url=str(replacement))
         elif field == "image_size":
             changed = replace(spec, image_size=int(str(replacement)))
+        elif field == "dtype":
+            changed = replace(spec, dtype=str(replacement))
         else:
             changed = replace(spec, pretrained_sha256=str(replacement))
         EmbeddingArtifactWriter(tmp_path, changed, resume=True)

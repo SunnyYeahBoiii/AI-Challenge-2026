@@ -127,6 +127,7 @@ def _validate_manifest_model(manifest: Mapping[str, Any], spec: ModelSpec) -> No
         "model_name": spec.model_name,
         "pretrained": spec.pretrained,
         "revision": spec.revision,
+        "dtype": spec.dtype,
         "dimension": spec.dimension,
         "text_padding": spec.text_padding,
         "text_max_length": spec.text_max_length,

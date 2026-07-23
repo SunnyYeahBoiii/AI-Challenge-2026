@@ -108,6 +108,7 @@ def test_registry_loads_models_lazily_and_reuses_instances() -> None:
         ({"text_padding": "invalid"}, "text_padding"),
         ({"text_max_length": 0}, "text_max_length"),
         ({"image_size": 0}, "image_size"),
+        ({"dtype": "float8"}, "dtype"),
         ({"pretrained_sha256": "invalid"}, "pretrained_sha256"),
     ],
 )
@@ -186,6 +187,9 @@ def test_top2_embedding_specs_are_versioned() -> None:
     assert perception.pretrained_sha256 == (
         "b1fff7093c32a01d98a2d82098f9adf788b30f0efee639916520b3e4302f786b"
     )
+
+    metaclip = specs["metaclip2-worldwide-huge"]
+    assert metaclip.dtype == "float16"
 
 
 def test_registry_contains_top2_builtin_factories() -> None:
@@ -319,6 +323,7 @@ class FakeDualEncoder:
 
 def _fake_torch() -> ModuleType:
     torch = ModuleType("torch")
+    setattr(torch, "float16", "fake-float16")
     setattr(torch, "cuda", SimpleNamespace(is_available=lambda: False, empty_cache=lambda: None))
     setattr(torch, "inference_mode", nullcontext)
     setattr(torch, "stack", lambda tensors: FakeTensor([tensor.values for tensor in tensors]))
@@ -411,6 +416,7 @@ def test_huggingface_adapter_passes_padding_revision_and_normalizes(monkeypatch:
         2,
         "hf",
         revision="commit",
+        dtype="float16",
         text_padding="max_length",
         text_max_length=64,
     )
@@ -419,6 +425,8 @@ def test_huggingface_adapter_passes_padding_revision_and_normalizes(monkeypatch:
 
     np.testing.assert_allclose(adapter.encode_texts(["query"]), [[0.6, 0.8]])
     assert calls["processor_load"][1]["revision"] == "commit"
+    assert "dtype" not in calls["processor_load"][1]
+    assert calls["model_load"][1]["dtype"] == "fake-float16"
     assert calls["processor_call"]["max_length"] == 64
     np.testing.assert_allclose(adapter.encode_images([object()]), [[0.0, 1.0]])
     assert adapter.encode_texts([]).shape == (0, 2)

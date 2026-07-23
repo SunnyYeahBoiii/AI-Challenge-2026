@@ -44,6 +44,17 @@ build-backend = "setuptools.build_meta"
 # TorchScale's BEiT-3 modules, while Perception Encoder requires the current timm PE model.
 override-dependencies = ["timm>=1.0.15"]
 
+# PyPI publishes CPU-only PyTorch wheels for Windows. Pin the official CUDA 13.0
+# index on Windows so offline gallery inference actually uses the NVIDIA GPU.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.setuptools.packages.find]
 include = ["app*", "scripts*"]
 
