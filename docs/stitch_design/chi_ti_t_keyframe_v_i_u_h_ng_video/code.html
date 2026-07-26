@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Frame Seeker - Keyframe Selection Popup</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed": "#191c1e",
+                    "on-primary-fixed-variant": "#004d62",
+                    "inverse-surface": "#2f3133",
+                    "on-tertiary-container": "#4e5254",
+                    "on-surface-variant": "#3f484c",
+                    "background": "#f9f9fc",
+                    "on-secondary-fixed-variant": "#004493",
+                    "tertiary": "#5c5f61",
+                    "surface-tint": "#0c6780",
+                    "inverse-primary": "#89d0ed",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "secondary-container": "#0070eb",
+                    "outline": "#6f787d",
+                    "primary-fixed": "#baeaff",
+                    "on-primary-fixed": "#001f29",
+                    "on-secondary-container": "#fefcff",
+                    "tertiary-container": "#c2c5c7",
+                    "surface": "#f9f9fc",
+                    "secondary-fixed": "#d8e2ff",
+                    "on-background": "#1a1c1e",
+                    "on-primary": "#ffffff",
+                    "inverse-on-surface": "#f0f0f3",
+                    "surface-container-low": "#f3f3f6",
+                    "on-primary-container": "#005870",
+                    "tertiary-fixed": "#e0e3e5",
+                    "surface-dim": "#dadadc",
+                    "surface-bright": "#f9f9fc",
+                    "on-tertiary-fixed-variant": "#444749",
+                    "primary-container": "#87ceeb",
+                    "tertiary-fixed-dim": "#c4c7c9",
+                    "error": "#ba1a1a",
+                    "surface-container-highest": "#e2e2e5",
+                    "surface-variant": "#e2e2e5",
+                    "on-error": "#ffffff",
+                    "primary": "#0c6780",
+                    "on-error-container": "#93000a",
+                    "outline-variant": "#bfc8cd",
+                    "on-secondary": "#ffffff",
+                    "surface-container": "#eeeef0",
+                    "secondary": "#0058bc",
+                    "surface-container-high": "#e8e8ea",
+                    "secondary-fixed-dim": "#adc6ff",
+                    "on-secondary-fixed": "#001a41",
+                    "on-surface": "#1a1c1e",
+                    "primary-fixed-dim": "#89d0ed"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "topbar-height": "64px",
+                    "stack-gap": "12px",
+                    "sidebar-width": "320px",
+                    "gutter": "16px",
+                    "container-padding": "24px"
+            },
+            "fontFamily": {
+                    "headline-sm": [
+                            "Inter"
+                    ],
+                    "mono-sm": [
+                            "JetBrains Mono"
+                    ],
+                    "label-sm": [
+                            "Inter"
+                    ],
+                    "label-md": [
+                            "Inter"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ],
+                    "body-sm": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "headline-sm": [
+                            "18px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "mono-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "label-sm": [
+                            "11px",
+                            {
+                                    "lineHeight": "14px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "label-md": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-sm": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* Custom Scrollbar for Similar Frames */
+        .similar-frames-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        .similar-frames-grid::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .similar-frames-grid::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: theme('borderRadius.full');
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased h-screen w-screen overflow-hidden">
+<!-- Background Screen Context (Search Results) -->
+<div class="absolute inset-0 z-0">
+<img alt="Search Results Background" class="w-full h-full object-cover opacity-30 pointer-events-none filter blur-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVib7fEkk7PHlh93e1LDRdRjOh7N_vo3EkraaEmUtyfiJqbLzYSOHA7h0ilUIiB5rJ-2xQX-FZedYzDYzeYtPjAlgF_qfWxIIi448ibYyMp5GGe93pshwx6Qo6rU5PWjQqyeFPJkkj5N0r63Y-5FqI7Myb5yFZWq_VZUgSIDadcVr1aJMnEyOoR0TEjNSt9rPZQe0gJZXthHb2NfEpeTINvsNbzWwNZDX73WuuQ2uMoveNKpqesyAatg"/>
+</div>
+<!-- Modal Overlay Backdrop -->
+<div class="absolute inset-0 bg-on-surface/80 z-40 flex items-center justify-center p-4 md:p-8 backdrop-blur-sm transition-opacity">
+<!-- Modal Container -->
+<div class="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-[1400px] h-full max-h-[921px] flex flex-col md:flex-row overflow-hidden relative border border-outline-variant">
+<!-- Close Button (Absolute Top Right) -->
+<button aria-label="Close" class="absolute top-4 right-4 z-50 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full p-1 transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">close</span>
+</button>
+<!-- Left Panel: Video Player & Controls -->
+<div class="w-full md:w-[60%] lg:w-[65%] flex flex-col bg-[#111111] text-white border-r border-outline-variant">
+<!-- Video Section -->
+<div class="relative w-full aspect-video bg-black flex-shrink-0 group">
+<img class="w-full h-full object-cover" data-alt="A high resolution still frame extracted from a broadcast news segment. The scene shows a group of volunteers in matching green t-shirts actively packing food into white styrofoam containers on a long table. The lighting is bright and even, typical of indoor news footage. The mood is industrious and communal. A playbar graphic is superimposed at the bottom." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcEnQZd12Y4zFMDhvrSyoSyLPZVuz0xxqxW59Akn-6JB-EuJNNI-2W7XY2LSyl2A02pBt5kJuOlu3BRl-6WOTKtOECVZdgZIgOHEHDqU781376WliftbH-ZwqVopCdCLes_CbwHJBmjyQOTZF0f_uAhddCrDzYUd50ZRcDb_Rrxdj8UCVDcv8rxLySRhe6n83g7nOCVNGBhV7Jw8-sb0HIflijJJdDEpYCVLEi5fHAKKl4omz_Vj2w6g"/>
+<!-- Video Overlay Metadata (Top Right) -->
+<div class="absolute top-4 right-4 bg-black/60 backdrop-blur-md rounded px-3 py-2 font-mono-sm text-mono-sm text-gray-200 border border-white/10 flex flex-col gap-1">
+<div class="flex justify-between gap-4"><span>Time</span><span class="text-white font-medium">361871.74ms</span></div>
+<div class="flex justify-between gap-4"><span>FPS</span><span class="text-white font-medium">30 fps</span></div>
+<div class="flex justify-between gap-4"><span>Frame</span><span class="text-white font-medium">10856</span></div>
+</div>
+<!-- Video Controls Overlay (Bottom) -->
+<div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<div class="w-full h-1 bg-white/30 rounded-full mb-3 cursor-pointer relative">
+<div class="absolute top-0 left-0 h-full bg-red-600 rounded-full w-1/3"></div>
+<div class="absolute top-1/2 left-1/3 w-3 h-3 bg-red-600 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+</div>
+<div class="flex items-center justify-between text-sm">
+<div class="flex items-center gap-3">
+<button class="hover:text-primary-container transition-colors"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">play_arrow</span></button>
+<button class="hover:text-primary-container transition-colors"><span class="material-symbols-outlined">volume_up</span></button>
+<span class="font-mono-sm text-mono-sm">6:01 / 20:43</span>
+</div>
+<div class="flex items-center gap-3">
+<button class="hover:text-primary-container transition-colors"><span class="material-symbols-outlined">settings</span></button>
+<button class="hover:text-primary-container transition-colors"><span class="material-symbols-outlined">fullscreen</span></button>
+</div>
+</div>
+</div>
+</div>
+<!-- Submission Controls Section -->
+<div class="flex-grow p-6 flex flex-col gap-6 overflow-y-auto">
+<!-- Header -->
+<div>
+<h2 class="font-headline-sm text-headline-sm text-white mb-1">Frame 143 from keyframes/K13/K13_V015</h2>
+</div>
+<!-- Mode Toggles -->
+<div class="flex items-center gap-6">
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="form-radio text-primary-container border-outline-variant bg-transparent focus:ring-primary-container focus:ring-offset-0 focus:ring-offset-transparent w-4 h-4" name="mode" type="radio"/>
+<span class="font-label-md text-label-md text-gray-300 group-hover:text-white transition-colors">Track</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="form-radio text-primary-container border-outline-variant bg-transparent focus:ring-primary-container focus:ring-offset-0 focus:ring-offset-transparent w-4 h-4" name="mode" type="radio"/>
+<span class="font-label-md text-label-md text-gray-300 group-hover:text-white transition-colors">QA</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input checked="" class="form-radio text-primary-container border-outline-variant bg-transparent focus:ring-primary-container focus:ring-offset-0 focus:ring-offset-transparent w-4 h-4" name="mode" type="radio"/>
+<span class="font-label-md text-label-md text-white font-bold">KIS</span>
+</label>
+</div>
+<!-- Input Fields -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="flex flex-col gap-1">
+<input class="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" type="text" value="10845"/>
+</div>
+<div class="flex flex-col gap-1">
+<input class="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" type="text" value="keyframes/K13/K13_V015"/>
+</div>
+<div class="flex flex-col gap-1">
+<input class="bg-[#222222] border border-[#333333] rounded px-3 py-2 font-mono-sm text-mono-sm text-white focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" type="text" value="361872"/>
+</div>
+</div>
+<!-- Submit Action -->
+<div class="mt-auto pt-4 flex justify-end">
+<button class="bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-fixed px-8 py-2.5 rounded font-label-md text-label-md font-bold transition-all w-full md:w-auto">
+                            Submit
+                        </button>
+</div>
+</div>
+</div>
+<!-- Right Panel: Similar Frames Grid -->
+<div class="w-full md:w-[40%] lg:w-[35%] flex flex-col bg-surface-container-lowest">
+<!-- Header -->
+<div class="p-4 border-b border-outline-variant flex items-center justify-between sticky top-0 bg-surface-container-lowest z-10">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Similar Frames</h3>
+<!-- Minimalistic Toolbar for Grid -->
+<div class="flex gap-2">
+<button class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Filter">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">filter_list</span>
+</button>
+</div>
+</div>
+<!-- Scrollable Grid -->
+<div class="p-4 overflow-y-auto similar-frames-grid h-full bg-surface-container-low">
+<div class="grid grid-cols-2 lg:grid-cols-3 gap-2">
+<!-- Grid Items (Repeated for density) -->
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a news anchor in a blue dress presenting a segment. Bright studio lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5ZlmsVjVswmvARSHErb_QsBRknDmtNo0-Vzzvlp_coJxKh2JWbWORla1VfApPbRYhrYluvOs96QU8pTMy1W16mA6y_Va1QeRD-kYpgs9zOCQ2nT1HRt6aIFR88SxxvU7NE6sZLoqJ0HmNcn0OS12DQyy5Al89fQU-Ky9NWbYLT2ntpmDX4e776tgK17kr6QP7dPur6YpffIUf7IPHybwP827USeV012FGITMB-wjTKEQyDXbtG9LhIg"/>
+<div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+</div>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing volunteers packing food in a large hall." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZpwB6rj_1_4guCNMcF9OmPkankG5GX-HC-JMH7ObSk2DTP2-wppym_prUzMVCt2lduFEOMmI99jbwtMzm1xaqjI3Kk09UzgLZX9dLFCAw3pLMqkpmV8its72RXN1TPf_y_ENsPTcvGrk-GDYjOIBrO9OEKBX2I4n3zRZvNZCq2yJioh-awXclN5oK4AersjJPYJRmS0BJ3136HNSDXpnYKJwo-e9fnlXvoEVJydpkEgJetj8P08NRWw"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative ring-2 ring-primary">
+<!-- Active/Selected Frame State -->
+<img class="w-full h-full object-cover" data-alt="A small thumbnail identical to the main video frame: volunteers in green shirts packing styrofoam boxes." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCyl0blwRL6sGwiknTq-M4mk-E8TyfegbGLoKO83YlwgQY1Krt1FFuk2Kjfmug7_aWwuEe2o0cp-YCZXTjOVFt-wHT4BT8zYdO1TtZfVhPMTHoE_nZPjkvwQqin5IfjfZnWutunCfsSMFda9M9m8mSkD6TnmPiB0qiBHHz1o6d80dYqxnOVlVISZpKgz-F_S-0-EJe6_8J6OKsNXVO9J4m6Gubpi0AzMb5OPxoyHd0vy8r83IaKcDBTxg"/>
+<div class="absolute top-1 right-1 bg-primary text-white rounded-full w-4 h-4 flex items-center justify-center">
+<span class="material-symbols-outlined text-[12px]" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a woman cooking over an open fire." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzCNO2Kzqu25l3_kQf4_PsgDjb5qK71PmsnYlyzALZkqV52SDNHYUnSDZ7WriBZIFkudkiyf6DRCPf0mzW9LMISAooecZCmVN3xJpmZWq0zt0Q15KsBI93H7JIQIlJPBC9Eq5TG72NVyf1jCydCz0dBS7RBePIaKwGeO_7bdy55z5w8OEFeJU2M87Z01C_1KfCLk3XmAwCxZImeIq8rytpR-Qj50jql5p_yEAZqZdZxIvy4ESFr-axsQ"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail focusing tightly on hands preparing food." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZjn8j4xTkKF_-QCGYg7_wuK8J4ZsaWTIWC9uY4i8TuqFQdrnmHOvmzXTZgUsjLhsfFQ-0tUbt8yafDZ7gTL06hco1zEt9HaeqJO6M04dr3xR8iI0W-RHKOU8PYYRx_I625wfeYQQnnJ06X1nxD-FZgZuSjSY5zGsrs6Vaz4sm22R8oG8kp3tK9a-zqTvr57-WxjddQ2eCC2uDPekkFNtQMceRD4kH-Kqrvmm52trOYuV-lhQwwoh7zw"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail of a close up of bright orange flames from a cooking fire." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBI0Db9stoYrufOKzv9FDDBhlBQlFF5BoB0Bnv-bgkaF5EJL1DR2_GJ9fAVV3hpDEulsC8mhMCVsRWktuIfwdyp4SZqJPzCYjRbthKJqwvAyQPdrSjjDRl7Qpv08zirk_j5A1DlYNflSQis8dDsm38YkmF0vVf5h3xtJQbwxWchhQe9oSuYROYVcVq4as5CHcXul38wKN4o_KS3Zq7xeG9G5tDQtP3ED4sZEIjg7FiG5NvefofLZyWwMQ"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing an older woman speaking to the camera in a news interview style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRtpw-SzwsUzAW4ALpyTi1UWiv8NSKCIjjflAjSsUnYJrnBeUJL-AN06HuOn-qEjNRDEomeg_YBVyw7dGBX96dw7fWk1YvXjdhFUxba8kgFYFFOsczq8VFRuAAsdRgn9nHYWIXO6gBj2pFTYIUrOT5np0gAI60wm3BwEq6SZ63fvXM8BJAIFHYZLTdEkzsPgHVz5Q7Bk-3WeA5vVc94xKmmla40tPGy_5uWOfLFVR7695GnQSA8vFjvQ"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a long table filled with prepped meals." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnPko6R9qgM85XogQj5Za7zGUpYkLsCwHqGtfXMQaaWkueM2yBTOh1srxlGNtvqQpgodhOgLJd5dkqlwNUgfQesm6_zNSvFXSHvGk3RcGlLo-v0huTnM2nKHNKp1T624BUu4474JTlHJaqBbxokvO4bIDKP87ZXLFVVJinL2rX-fyfdIhGZJgK0Hddy9usnvxMqQbzutebecpR8LJtPTikZnNAJOQAc8GXZXLtyy63J4a-zZZ_nuayZQ"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a woman wearing a pink hat holding a sign outdoors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDg2mFaetyxdbNJFgaWZb2-Otpa4UkDtDMOaw2L3SLUZwW6TvWPCsrrdw_uzf0vY9AW_nC6UR-BKqL0Qmj5tsynIbL0vMmVc5-7MY-L072SdYbYfVOhbmbfTcg60Kuk4RosJHiEc8Vicsa8o75BdNLKgMPJKhXCg5PUwhCfi5UgVyLUU4ZEWf0lEr9NDbhZVdzGDCJotNIuUzJpEgJu0Zsxobc3Ng17WydKMGSmDZ-UhUF-fCN9ViQSpQ"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a monk in orange robes speaking." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIL4PhCuBHJT7wxWiH1PN4y7f4H5L0alpu-Vt7kWeDZGwq3Bs9YpOkPg1ceRCZsNK_IT5zYVDuwDgnOuv6w7UqooiTpBLmsN00-IyWhQz0SB8kpr4SwPOTYLipaNujbgIdAXDR1jkHiMkNzBTFRQ-w_aIJJzBPaioYIUE1AUrotLmio24GLoOrMZBcKDNNB8SfEXbguCyCZWcWo_ypRi1PCvtolJ2ekgISmexRPvhTLRD-_ilf9GkTIA"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a crowded outdoor charity food distribution event." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4hmmDnhLbsb1sdQj2xNjHUonrNMU2RXoq0K6TfwvqfUVH3Q7j0EjNAFSb4AGlCsF4_EfWW9f4v50qCdhSCPQc1eUx6AaUMfNq8p6lNTosCQyNQ3qwxi4gpjy52ew5YoCALLBafP4V7K4BtNqQYlKE2XnuoINr18CZLgCqXcmgMmjqkbb-fueblzzXfe6rFg3W-aiXu6BfQ9A8evdmMBZ6bA1FQUVemFRorhu9OcvDtViSveBoRnP2dg"/>
+</div>
+<div class="aspect-video bg-surface rounded overflow-hidden border border-outline-variant cursor-pointer hover:border-primary hover:shadow-md transition-all group relative">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail showing a different angle of the volunteers packing food boxes." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAyjxkwe7eyuqiAE2c8jAnlDhbUc2IGL7EL7R-hDPOJJBo30ACFJSwzvDi0yELKJNOMJ6QSza5o1wmga5HmOirRccZ8RM8ArTxYSbSP622SPgU13nkvkdB0H1e9LvHBaLWD8SBHiSZwY9sGSkHPpweGDPxi6qkP8Uc2dizXiZ7_cNYcITdCYz4lDIV5VG7wAAJglvgAWLgPJKaKWFZQzoGwt4REllOwqq8Ydi75ai-rCKcqagRhOseEjQ"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

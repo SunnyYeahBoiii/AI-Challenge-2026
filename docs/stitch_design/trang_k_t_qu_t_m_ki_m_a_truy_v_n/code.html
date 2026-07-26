@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Frame Seeker - Results</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#c2c5c7",
+                        "surface-container": "#eeeef0",
+                        "on-primary-container": "#005870",
+                        "secondary": "#0058bc",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "inverse-on-surface": "#f0f0f3",
+                        "surface-bright": "#f9f9fc",
+                        "background": "#f9f9fc",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-fixed": "#d8e2ff",
+                        "surface": "#f9f9fc",
+                        "on-primary-fixed": "#001f29",
+                        "inverse-surface": "#2f3133",
+                        "on-surface-variant": "#3f484c",
+                        "outline-variant": "#bfc8cd",
+                        "surface-container-highest": "#e2e2e5",
+                        "error": "#ba1a1a",
+                        "primary": "#0c6780",
+                        "on-error": "#ffffff",
+                        "primary-container": "#87ceeb",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "tertiary-fixed": "#e0e3e5",
+                        "surface-container-low": "#f3f3f6",
+                        "secondary-container": "#0070eb",
+                        "outline": "#6f787d",
+                        "on-tertiary": "#ffffff",
+                        "tertiary": "#5c5f61",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#004d62",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#89d0ed",
+                        "surface-container-high": "#e8e8ea",
+                        "on-tertiary-fixed": "#191c1e",
+                        "on-tertiary-container": "#4e5254",
+                        "on-background": "#1a1c1e",
+                        "on-primary": "#ffffff",
+                        "on-surface": "#1a1c1e",
+                        "error-container": "#ffdad6",
+                        "on-secondary-container": "#fefcff",
+                        "primary-fixed-dim": "#89d0ed",
+                        "surface-variant": "#e2e2e5",
+                        "surface-dim": "#dadadc",
+                        "on-secondary-fixed-variant": "#004493",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "surface-tint": "#0c6780",
+                        "on-secondary-fixed": "#001a41",
+                        "primary-fixed": "#baeaff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar-width": "320px",
+                        "stack-gap": "12px",
+                        "topbar-height": "64px",
+                        "container-padding": "24px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "mono-sm": ["JetBrains Mono"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "mono-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom scrollbar for sidebar */
+        .sidebar-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .sidebar-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: 4px;
+        }
+        
+        /* Toggle Switch CSS */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: theme('colors.primary');
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: theme('colors.primary');
+        }
+        .toggle-checkbox:checked + .toggle-label:after {
+            transform: translateX(100%);
+            border-color: white;
+        }
+        .toggle-label {
+            width: 36px;
+            height: 20px;
+            background-color: theme('colors.surface-variant');
+            border-radius: 9999px;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .toggle-label:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 50%;
+            transition: transform 0.2s ease-in-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md h-screen w-screen overflow-hidden flex flex-col antialiased">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center px-container-padding w-full h-topbar-height shrink-0 z-20">
+<div class="flex items-center gap-6">
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight">Frame Seeker</span>
+<div class="h-6 w-px bg-outline-variant hidden md:block"></div>
+<div class="hidden md:flex items-center gap-4 text-label-md font-label-md">
+<a class="text-primary font-bold border-b-2 border-primary py-5" href="#">Queries</a>
+<a class="text-on-surface-variant font-medium hover:text-on-surface transition-colors py-5" href="#">History</a>
+<a class="text-on-surface-variant font-medium hover:text-on-surface transition-colors py-5" href="#">Collections</a>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 mr-4 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+<label class="flex items-center gap-1 px-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-3 w-3" name="search_type" type="radio"/>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Track</span>
+</label>
+<label class="flex items-center gap-1 px-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-3 w-3" name="search_type" type="radio"/>
+<span class="font-label-sm text-label-sm text-on-surface-variant">QA</span>
+</label>
+<label class="flex items-center gap-1 px-2 cursor-pointer">
+<input checked="" class="text-primary focus:ring-primary h-3 w-3" name="search_type" type="radio"/>
+<span class="font-label-sm text-label-sm text-on-surface-variant">KIS</span>
+</label>
+</div>
+<div class="flex gap-2">
+<input class="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono-sm text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors" type="text" value="6392"/>
+<input class="w-48 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono-sm text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors text-ellipsis overflow-hidden whitespace-nowrap" type="text" value="keyframes/K05/K05_V001"/>
+<input class="w-40 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono-sm text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors text-ellipsis overflow-hidden whitespace-nowrap" type="text" value="213066.66564941406"/>
+</div>
+<button class="bg-primary-container text-on-primary-container font-label-md text-label-md px-4 py-1.5 rounded hover:bg-opacity-90 transition-colors ml-2">
+                Submit
+            </button>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<button class="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors font-label-md text-label-md text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+                DRES Settings
+            </button>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar / Query Panel -->
+<aside class="w-sidebar-width bg-surface-container-low border-r border-outline-variant flex flex-col shrink-0 z-10">
+<div class="p-container-padding pb-2 border-b border-outline-variant">
+<div class="mb-4">
+<label class="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
+<span class="material-symbols-outlined text-[16px]">movie</span> Video ID Search
+                    </label>
+<input class="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary bg-transparent px-0 py-1.5 font-body-sm text-body-sm outline-none transition-colors placeholder:text-outline" placeholder="Enter Video ID [e.g., K01_V001]" type="text"/>
+</div>
+<div class="mb-4">
+<label class="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
+<span class="material-symbols-outlined text-[16px]">search</span> Query Search Mode
+                    </label>
+<div class="flex justify-between items-center mb-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Sort By</span>
+<select class="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-label-sm text-label-sm outline-none focus:border-primary">
+<option>Frame ID</option>
+<option>Score</option>
+</select>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Top K</span>
+<input class="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono-sm text-mono-sm outline-none focus:border-primary text-right" type="number" value="1000"/>
+</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto sidebar-scroll p-stack-gap flex flex-col gap-stack-gap bg-[#f3f3f6]">
+<div class="flex justify-between items-center px-1">
+<h3 class="font-label-md text-label-md text-on-surface">Queries</h3>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+</div>
+<!-- Query Card E1 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-sm overflow-hidden flex flex-col">
+<div class="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright">
+<div class="relative inline-block w-[36px] h-[20px]">
+<input checked="" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer"></label>
+</div>
+<div class="flex gap-1">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">drag_indicator</span></button>
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">image</span></button>
+<button class="text-error opacity-70 hover:opacity-100 transition-colors p-1"><span class="material-symbols-outlined text-[16px]">delete</span></button>
+</div>
+</div>
+<div class="p-3 bg-surface-container-lowest">
+<textarea class="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 font-body-sm text-body-sm outline-none" placeholder="Enter query text...">E1: The Thing trong Fantastic Four (nhân vật có làn da giống đá)</textarea>
+</div>
+<div class="border-t border-surface-variant bg-surface-bright p-2 flex flex-col gap-1">
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">sell</span>
+<span class="font-label-sm text-label-sm">Tags</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">key</span>
+<span class="font-label-sm text-label-sm">Keywords</span>
+</div>
+</div>
+</div>
+<!-- Query Card E2 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-sm overflow-hidden flex flex-col">
+<div class="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright">
+<div class="relative inline-block w-[36px] h-[20px]">
+<input checked="" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer"></label>
+</div>
+<div class="flex gap-1">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">drag_indicator</span></button>
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">image</span></button>
+<button class="text-error opacity-70 hover:opacity-100 transition-colors p-1"><span class="material-symbols-outlined text-[16px]">delete</span></button>
+</div>
+</div>
+<div class="p-3 bg-surface-container-lowest">
+<textarea class="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 font-body-sm text-body-sm outline-none" placeholder="Enter query text...">E2: Nhân vật có sừng nai, tai nhọn, có 2 con bướm đậu trên sừng.</textarea>
+</div>
+<div class="border-t border-surface-variant bg-surface-bright p-2 flex flex-col gap-1">
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">sell</span>
+<span class="font-label-sm text-label-sm">Tags</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">key</span>
+<span class="font-label-sm text-label-sm">Keywords</span>
+</div>
+</div>
+</div>
+<!-- Query Card E3 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-sm overflow-hidden flex flex-col">
+<div class="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright">
+<div class="relative inline-block w-[36px] h-[20px]">
+<input checked="" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer"></label>
+</div>
+<div class="flex gap-1">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">drag_indicator</span></button>
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">image</span></button>
+<button class="text-error opacity-70 hover:opacity-100 transition-colors p-1"><span class="material-symbols-outlined text-[16px]">delete</span></button>
+</div>
+</div>
+<div class="p-3 bg-surface-container-lowest">
+<textarea class="w-full h-16 resize-none bg-transparent border-none focus:ring-0 p-0 font-body-sm text-body-sm outline-none" placeholder="Enter query text...">E3: Wonder Woman</textarea>
+</div>
+<div class="border-t border-surface-variant bg-surface-bright p-2 flex flex-col gap-1">
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">sell</span>
+<span class="font-label-sm text-label-sm">Tags</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">key</span>
+<span class="font-label-sm text-label-sm">Keywords</span>
+</div>
+</div>
+</div>
+<!-- Query Card E4 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-sm overflow-hidden flex flex-col">
+<div class="flex justify-between items-center p-2 border-b border-surface-variant bg-surface-bright">
+<div class="relative inline-block w-[36px] h-[20px]">
+<input checked="" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer"></label>
+</div>
+<div class="flex gap-1">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">drag_indicator</span></button>
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[16px]">image</span></button>
+<button class="text-error opacity-70 hover:opacity-100 transition-colors p-1"><span class="material-symbols-outlined text-[16px]">delete</span></button>
+</div>
+</div>
+<div class="p-3 bg-surface-container-lowest">
+<textarea class="w-full h-16 resize-none bg-transparent border-none focus:ring-0 p-0 font-body-sm text-body-sm outline-none" placeholder="Enter query text...">E4: Greta - Gremlin phiên bản nữ - Da xanh lá và tai lớn</textarea>
+</div>
+</div>
+</div>
+<div class="p-4 border-t border-outline-variant bg-surface-container-lowest flex gap-2">
+<button class="flex-1 bg-surface-container hover:bg-surface-variant border border-outline-variant text-on-surface font-label-md text-label-md py-2 rounded transition-colors">Clear</button>
+<button class="flex-1 bg-primary-container hover:bg-opacity-90 text-on-primary-container font-label-md text-label-md py-2 rounded transition-colors">Enter</button>
+</div>
+<!-- Logo bottom left -->
+<div class="absolute bottom-4 left-4 z-50">
+<img class="w-8 h-8" data-alt="A small, stylized geometric lotus flower logo with overlapping petals in primary colors, sharp clean lines, minimal flat vector style, isolated on transparent background, corporate tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCb5t--2ZF7Iq7X_5b8me2kLI4XT8h-7tJPzs-iP8tf9dOB6K2KCwxV9fZMgJT3X9S3qgy_6wkzu9FskXDcn-V_jMzOv2yRQ3m1FRjsdBtKKi4_6-TDkbEeBiKdLPiUqx-sxJmMuZbU3a6Jb0kKe5Rui0EkFE170VW1qCw7IjV0w5gDbHPl1FyC6xZNM_oRxUb_yJ9fSSfBVf60aXdMQkWGGbyfkbU38V15r9TI6Y2dYnaeaYynQJBTA"/>
+</div>
+</aside>
+<!-- Main Content Area - Results Grid -->
+<main class="flex-1 bg-surface-container-lowest overflow-y-auto p-4">
+<div class="flex flex-col gap-6">
+<!-- Result Row 1 -->
+<div class="flex flex-col gap-2">
+<div class="h-px bg-outline-variant w-full my-1"></div>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+<!-- Frame Items -->
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A close up video frame showing a person in a rocky, orange textured full body suit, likely a cosplay of The Thing from Fantastic Four, standing outdoors in a bright sunny plaza with crowds in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbnAHH9ITvlHtzdB2QNNsYR_HP7s4-FRsoNgQxKQp_rWMBlROXDkEkKf_olGG19_54XxeZb2woVL_ZKRKfw0mBkMOLeoskw2OyXif6Q-HTG6P4i5tapC57DaOEJZnMVDnKlLCGoIoGltHrlJ-sXcPo390D_Eb-xRnd8W_BWtbTMqJwnATcHjIpu0MEO4lceL1ZMLokO06Pf-PKtyWe3p5uLVqpRi9ccq9y0F6F0kCNJ0ECKdnbFD1zjw"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-3xl">play_circle</span>
+</div>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A medium shot video frame of a person wearing a rocky, orange textured suit, The Thing cosplay, in an outdoor convention setting on a sunny day." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAx_CSSKXFBgOv1N2q3cg8njK8SjO6BQMGFJjoyJnBwTfzp8Nlea-ZGV7DRi9AIu5uBEAY5ypi63ap6E2ChlUkUaA__xLnDa1Zq9RBnfMnK3F24vswhxOXldvd-2qeX2vT7zug8l6KwTN6ChMZLftNXoxO8d70OyGqG2MzMYjMhxq7Yjnrd1M2ZqpmFpHfVUQsLtX4-qU8tItH3UgKZLrZGOb4KvjU-s6giMnRC9V_-aifm95BW_8-fOw"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Another angle of the person in the orange rocky The Thing costume, outdoor sunny setting, daytime." src="https://lh3.googleusercontent.com/aida-public/AB6AXuARnl5rf2_ACrDNoScIVHVxBe-JSi8eewwtWvufmaJl6Akcwd__ju5XUF72sp-PDjRfsBi7HGy2jwSxF9tTXEDf7War_qyyjEDVMx7sE_Js14QIQxWD4MD5uhuYL3Z5U2f-USqnfqWbnEGWv8fLgWu7KYDqI4lu2vX_6mWXd5MRSYA7Qj6NHcww9H8fDTcJYcUJXGMLxKJPlugUMO4IMppr-a-1AB7Gkyz9Xln_ukvQXPLko8DhoKnfww"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Slightly wider shot of the person in the orange rocky The Thing costume, outdoors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRqUeLXvE-EksR_UHMaKqR-ruhvYqiILbIDXUX5BpcHEjdmF5QpNVZbRuqfms8_eEa1DjD0VF4yROApWXKJ4ajHKmHDd085jrfofQprICQNxZUxGx5VTPtShnaUUL8mMqImX1zmJ1WmaUG2wcgO-6U8F7_5zgtXRFMWk8P4aC6tSCwd-pmboqyorztn1-QT1q4PRzNxItUtBq67gue2zNfsYuyDCwMK-Da9CgjKLYi6MiX_3hhsii8LA"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A video frame showing a person cosplaying with elaborate deer antlers, elf ears, and wearing a Wonder Woman style chest plate, outdoor sunny setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaDarel3d491NxOM8kUI-HCZej-T4hHB3Ya5MQFSVopl5HJqaq0VzdCE1hmYCbiilE8hTpdPDQ8_H0fm9Eo7q8hM5X5FWu2J6kbcrMkMFcoLB6fVVTZUHvM8MInES-YIuEbQEtvbWIZx92lMz9iKWJ4qXZ3Ibs4C-XMMlGjch7UckURuwfky3ErNOvmyJVueoNewn-bPZm5yR-V2fQpZUp1dhNfu_Dxpzh2XXu36Fzw62axdnAhzUagg"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Another shot of the cosplayer with antlers and Wonder Woman armor, smiling." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCP60Ttk5wvv0wBVq4DqauH2U6zYMQoKg3L4OR9wlR4kM-90I0yCsSm0KM6UYZhEi5L8H8IuW6nIn2z2eR4KshfKTulQQsqLe03AeSl8Sv65iebkRfIWvcej1VkAtrVT0jp2WrK0EPUbeaWblHg9Nhn-XMuVuAeYTGS551f2W93cr5aOcB8m8CwHeVXiOlxpn5o6ffIjUItHN6Mp15XG286S47Nj8R9mCWNW3R-MSizYl3WtGUQACIT3w"/>
+</div>
+</div>
+</div>
+<!-- Result Row 2 -->
+<div class="flex flex-col gap-2">
+<div class="h-px bg-outline-variant w-full my-1"></div>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Video frame of a woman cosplaying with large deer antlers and elf ears, speaking or posing outdoors at a convention." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6RGYVKF2pkcxF48LERjYiDhl3CUouCQ76hAgX62hSVCsIHJy1KUbEBUs6ANo1c38qNfPc9NK_j5tEUUBCu5INoEIHiEtJ9UPU-58WtLPIFLELbYU-jHoTPyV3hHElKfpH_9-JK_h9-2iOMhoe10V4tTbRG0aEHpaqYYHgvkNcW6I7etEGG98GZjMHXIZhc0taVm0jBqhVjLlBSNl_2zKBykVsG1uthvPD91zF_pJVJYBhd7vAavYnlQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Similar shot of the woman with antlers, bright outdoor lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUaI9pqhHrdhqIICzFxax7_mYW9iWZ81m-iVtk1CNAUwcuACRRADqMI9xgUeg3beJO0purPzLBMmnXaa9joR3YXF_C6_OkQNXf9veACAUUeHd4ErCd-vSyd_B5DDSFDJpo6zP6qw4DlW8iwB3tEfA83V6pOdfrDFSnzSHGczgIfcWFf97Hfqj044JHcghQKDR5larDtn3tMTXaAIusIxO4pwVzbPu1YWMRkFU47XU2GIa92Pv_pfX2YA"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="The woman with antlers and Wonder Woman top posing confidently." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2-mZRlemq4Fj9HfdGATmxWKTG6Brpu6aQVz4emYXQuufPWZN1ygmC44I7G91M3ODbbfGHYnlQERBcKLSuIHi_OTp3k_nAQLiLOI7ibTppflwyjtVk3GJXe_w6zq1iUL0RwzthZh_wElJrfguq38je0v6dCPlMqfx8LlGMAxXwh6SzsZQ68AcBEpE_WxgVybzo3IzbRMyUWHQcdM2UKgGHsxvIxz-KoehVa_xtqYqo6H133escTtVvQg"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A video frame showing a woman in a full Wonder Woman costume posing." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2thyHgOExhIw5b0b8AbNwpOPvCAMRlJC_7u1IGdn51W7_S3-ywhusW3YuLJf-3vj07TX9SDrl6o4DRFQ0Ar1LqryCSfWykWMjWYEDyzGtYRoWC9bvsQ8ix5v99SxPXkVrVgZoNVC9k3OwT6sgdm5sztmpfMWEkaB7aJyCAD5QdoUjk0lF7-k1XBEDldO7_RFXrYdbd5XsPhR6JowItJLeZmTsdKs337-gFCHt_IhuxT5LrUC8K5qmyw"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A woman in a Wonder Woman costume holding a large flowing red cape." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGB9XTwM-_9duJJP-sNtuXMYlT7-hI5pd-Y97ZH9R6NoxU3UASpmkRh_lq2lN0guwgw0FIkb8vVnm05aXpfKGS34js68EfpwU1hkU1M3BCGql7-epX_4OvoAzKCpQqWtGofIm6Au8TKC108aSuwCn4ccrJQ9CPiMGaarOqyiwSv6-t8ubpR3kfn8mfBLI7NCo9wfLGGfgLtzg_kQpFSyGl5uTENAgPSNEqOkG3L6IudahdsdYMozQRhA"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Wide shot of the Wonder Woman cosplayer with the large red cape." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlyb-Z-zpm0sup5g9Q9Pf-1Dm5t2aw3rK_JtGO_gAW8WLCsrKp11gi4_7A_KKGppd1czdMOSVZH_gePlUFxqpCWoQkChn-Zs7QTD08K3jW41_CNPkwrzbOZF75wfBfjusskW9GCiINLUjCcWP-JE_hINCmxGoZ4QVPGDJliIBtHYQtSbvSX50T0IVfrdEBmdtAFV0ozyjZktyj6tSz12E43E5PFq-n585cUvp9fOZHFaUPpuGONS9-Eg"/>
+</div>
+</div>
+</div>
+<!-- Result Row 3 -->
+<div class="flex flex-col gap-2">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A woman with antlers in a Wonder Woman top, gesturing with her hands." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDuvsH0fw-uIRX34mehsjbKYkAmiKwf8XKJPxJ3D3l-ZzY6iRPMCSzAy310wIk27WrNhegSea_Pi0qZjLPPIURviB3F-UeTz5CP2-ISiC8IWeCtooBRX9--fotxi9ht5RceFwPDXLQsP2n5QPmasTIjXk-mYUiBJ9j4Sc5vmLYNzIhwBo65WkVV-g8ewdMikRxvwkCBbDG4Q885QYcSKSXi320XKKcw0ZMoJmSMVNzr8fgcvAksmmam9A"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="The same woman with antlers gesturing." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDh6CGDIZGn8SAaj7R9w0Zb5QlLT7fPemTMHXtTbtMtriDCVyCy6RQLB4REYCiPFPS4LRla6iyimhpbgQhEqW7dVob5Efx9eAS0QRFEcJw1pkrPJR3Ytz7Uda58U2_qRyLnIN_tOu0JG4MWLYOGUHh1Xxm-Euwh2oOsaEi8p0Tazo0tBZiZx0joqnxz52ApBx3uErPqswBqdLyUVeVBqICFmoN6BM0Git_Q2_fLf30Br-w-cKvOXLtknQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A group of cosplayers posing together outdoors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZUEZWngWihHyWMeNrkTnfMueYHxOcY9CA5WPEE_rR5Zq3mxf5Afiiz-kDb4NM6kD_Y9GYuo1Twnf9RDJ3hh_4DEQrTNCwLYp2m4zL5K5fAHxDVUwOvcHwdBuqT2IP9ClaRCOeUVeIxNiUDEzq5pImHvIryW-k1mZXmGxabP1h-owSCGnEhA34ZEvHu6fK3yDD5cXcmUWBBZ707eZDiCZ0pb-g9Wn0Lo6uwltcsvzuNXBt07PaZ2kqRg"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Another shot of the group of diverse cosplayers." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkZv4SjkWepNGXaKa80C-M4B0kSRcSLC1nA70B9rcZ_ufca5THRwtcNG03ieaJ2710DlwQB_lmRzYTutRMIo3s6Hv80RHN8b8UhjAlvQwgPYlmolAZZntrc0YnttFbauDlOdwhgvcP8IvFeTJU_Gkcw2YX6aax0nynH3nDW5eYKwsHvitg4qO3CQsD4fkPyhOvotrJGOsyUqGmOxadPmlqUglALjokBLZHP-fno6IxQ_lK6K11-iPoAQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A cosplayer with bright green face paint and pink hair." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNRf-4gO0krYV1HtwVB_6Zl2--5b1U_b6-PB9DH_O3QxH6_8MY2be6dUJ-4t-B0JCzKJf_cbzsuWWK29YpyCvkpT9H6h41_Q4UquFBOHSurRXxRApDcLz4R_sqtPNJonHD6g-j4K9LV3BbpIRHd_lXmlSWORY_x4Kh0-cb1VJXYukVETXgtIC5Hh7GNqazrYJLE0Rd1W5BWqsqkhbcWsMFc_hkOPdv0eYHmYhtFp9dWDL4NrWcQLtzaw"/>
+</div>
+</div>
+</div>
+<!-- Result Row 4 -->
+<div class="flex flex-col gap-2">
+<div class="h-px bg-outline-variant w-full my-1"></div>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A low angle shot of a very large, furry, brown mascot-like costume." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6Kh5Yzqd0GuGH5BTV3Ynlqopa8cOgdTVEmiRFEn1gf1tjSLzw4AJDYe6RZiBk5g-34HTz6trbIoP4HX2WV-Sa_RhQueyYXKt7BzLU1N0wBlOtkubsHmdjokl_dTJ1f2pXFMmFgLSJdfdrLoQOsAJybqlAjMIQCCC891XR_0jVrBHymymK7RKZYmuxsNz4v8pU5JU_-Rbvkv6oCESg3p0R5ZIih_AnvnKxBMCmojGgng_uUEUJZkwBIw"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A video frame from an animation showing small, cute, furry creatures with large heads in a wooden environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDl1YXHjYL1KJnkysVq_uONn2Bs46sbMrG86Xc_4YlCjC-pZkjM4uS_uaEUU4Urr3aLEY7G7ufq4mZ7cmvLR6AS1LjjSBfNeJZqGCxbrjjskT28gbjARHc_V-u7oFlKBkVY5ovGt1Ard9r4G6Oc9Ax2pSTlUOdwu39r81voCHcWNeZdJnjoAp-rI_ygxJLJhGL4y6IDlKXdbgW4troVHEgm93j1bY1eK9BnwWgchy6Y4HOM6dO2cKZ0fA"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Animation frame of the small furry creature holding something." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvBTtnnPRQFRIynb203x9-hIpKdH5NUbFInZKyc4FBPpp56yp5RzATwLt7O3ZCK2Y7JH79QHXevhiqHnEvm8I1Kza6rKyF-ntuZJPNjHPeKcS-9nseTu-rrS3dYBGWCsDRM4aS_5z1uqc6KaJHnj_W-6I3Yyep4AFQMoLjJxfumAOnP6SrCAhF07kem8O78W220_h2F-MvUqvO6sBLxj9tFE-fVe_vfOJ0-QCkcdgmAR7cmVqGvIg24g"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Animation frame, close up of the cute furry creatures." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWpRamC0EKT4gfaG-eZVzjzEbG3e9UaOSDcqA9TM2mwaEQWJfEwg0gc2yXOAR4cs5Eml-cqO23MdLHzw-12MKxvX0dk-6L-zytLmNRua-GE4oifEsvpEptr07ZyHn2uOHnN5XG8n5YhxgMy4oYartc1vv5MvjoSBxDFxMFRZW2UCjVy23iwZVTNcwRk6exEWGnYY8Z4MdoO02J55Rb8OkQI_Xus1YHAzwqfAsLQGOj-mwsGsvJLcxwPg"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Animation frame, close up of two of the furry creatures interacting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuByaqwvKHeSJ_x8P3xZP0NVdYidEvACXoL5rofz5PRpigxKoEq2In8z45tVe8jLOVJgqD5XEeGN3H0qkS_dQ5c5Ti_mzVrHxb527fWDeVJktGPaHSrXD0n7Q-aamsgFR_Wu2vUDfsdmUnL15z7JP6zCaWrQMXcit_SF0F1ctyccdIwnqj3-GUGKj7JgNNwhxwp4cUr3_ClNmYZs7RcTDWubfGW0JENDCli-zBvG3oK6P6sXFETdfONstw"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Animation frame, another angle of the two creatures." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBhxT4qwKLxEPx5R6YvYNUkvp5h9PGPS7Uh4vKdQetqIJstHIu6QwHjBPPiYD4yZxxZMBIXKJxY1oPyQNIubVgXhoaRYWvCU8J4bQTGOUdKvCJNFvPQbOnYMlWE5mIynAch1xoDF2X6iZnqCr2xqqP7hCJ7OmbZhigEMDTTOPoKg6jxU7ljhH97ZBaOt1MY3_8ygj2dU8aAr6ZtHBvVj8JETp8Mv6B_HAHhakEakUGXAoL4J-T2gsxSg"/>
+</div>
+</div>
+</div>
+<!-- Result Row 5 -->
+<div class="flex flex-col gap-2">
+<div class="h-px bg-outline-variant w-full my-1"></div>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+<div class="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="A behind the scenes video frame showing a person applying makeup to an actor in a detailed, scary, hairy monster mask, dark lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBPn2-FQcnEw55-vobmBejVz3q2UlKDxLCGTmFqOLtDBxv0dkCWwe1U2q23tdlINlzJqRbZOcX8LptG_F4RJbEGrvPPlq-y_6QkAxqjYyx85-lRfmDVnd4CM_wAGpp0-rzCIFNJbxAHcrWinmWpZaTEnpn1u1UnAgXSEcW_q5CvIF6VUy3BH0mGqTx9Tjbgz6y8AJdgePcgB0lKbMTn6xwio0G4HZD7WlC2HCZmf7lu9uPA0edPWW5iwQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-black overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover opacity-50" data-alt="A very dark video frame, mostly black, showing a vague shape of a hairy creature." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoN7vPwphg8Y3LfTtqKKNlCbzYt-gfSelQcgfidjRVPHv47KnakHOcc8MFktMGSw3HD1ONNR45Fozktj2uuTgpQrf3-jjMcENvWxE8VXojsWXL2KdMSgcvjUUUa_H1F9ranpFgDx4bTMN-t4jV3zuPjJ_ynhMqf9x0vNj2b1p5vaTZSbnFmLhCWGBXnUsHjeLvYfwmZD_GTpzj0qTHbcKCsRSR9SjG7TVUCbLwzHpjCuNKByMTwyWX6w"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-black overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover opacity-50" data-alt="Another very dark frame, silhouette of a hairy creature." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCwcrjJ0dWjDikXNMAe1giTVMLNaOYnUXdFbkZbDagHpRqTvONhdZuv68RPU84FeTtjVJDhRtzAtON0lNUIZv4YiPte8UaylFLJCNieLQvvfo96shQV3c2nPMWycl-4xts7hrEu-fJAwyPx_AjdT8QLznWkg_3RWtva0UNuVB9rS_TWyzq9io99pjCHQq9eCHRERxVXP0aI1hgE3CpvsyOLizf2TGwJz1oJmoDEePL2o2Y9Ed9_dqdqQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-black overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover opacity-50" data-alt="Dark frame, close up on texture that looks like hair or fur." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNYEuEVE9vR6pkYEARi5AnEbxfi6-C4cbx3KMgmja6p4gcrYMZozLXJ8-B8NXIJzpyWX-Zcyy2oQRszLpLcTgZkJalpeWeTkTKAG_XNkpFNgwcqGhYtFEMySN9Spn2M4G8DxKB_1RELg39danMUEwVsrtGH92_EXuJ9vr7x8mqp7HpOGcRU3wlKG84ixJaR4rcmkD_Vh4wTzwnbQ37nPW1HvOfdMpnyU5rwtH48v3hlfrN56IdKjkYiQ"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-black overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover opacity-50" data-alt="Dark frame, side profile silhouette of a hairy monster head." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXeKjHVFBe24jZTTygMLGnIkltDOZ80QYEMd-jVO1o7m6HJGFZjtIvPKshMM4ka4xo6qXRlkm-NDDSA1LPlun24-Ty2Hh08jmqCc0emWug2Bzq97XgJQPQImCp4WVyY_LO2EiqbATUNl_-gE-tNyBNmtbjTfBe-y5kpBL3HS-71Dx3AL_IKuIop0_ojGnYz_GJRoLoRCAzsllcmrNq4dTD6E3lcjZACGqp5VSVWilDMqIcaRww2uDqUA"/>
+</div>
+<div class="relative group cursor-pointer aspect-video bg-black overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors">
+<img class="w-full h-full object-cover opacity-50" data-alt="Dark frame, slightly different angle of the hairy monster head silhouette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaF3z3B-o_GJkxyGf7EMHIhHaBzV5UPngSkPCNW3M-DvvGMAAt3g8W0-tm9st-rqSH-NBVRfZGKGL1kCBxiJYgcC6K5Fklo8SpgIxMLq1qb1Ed3yg-9kTTeadGdsr8-UBwpg_uBe10wspXZp7nrViOUX-1-oK7si0YYGEmpWYkiNG33y5O3SCzG-71nNCxC7J1T3W0y1ZavzJa-HZcyrtKIgWaFUtZ4LyvIcTqOnBPdwtX62vbrlqivQ"/>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
