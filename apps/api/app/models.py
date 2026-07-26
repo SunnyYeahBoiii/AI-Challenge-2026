@@ -25,6 +25,7 @@ class BoxQuery(BaseModel):
     tag_match_mode: Literal["and", "or"] = "and"
     keywords: list[str] = []
     key_match_mode: Literal["and", "or"] = "and"
+    keyword_source: Literal["all", "ocr", "asr"] = "all"
     enhance: bool | None = None
     topk: int = 20
 
@@ -62,8 +63,12 @@ class FrameResult(BaseModel):
     title: str = ""
     description: str = ""
     keywords: list[str] = []
+    author: str = ""
+    publish_date: str = ""
     thumbnail_url: str = ""
     watch_url: str = ""
+    sequence_idx: int | None = None
+    sequence_id: str = ""
 
 
 class VideoResult(BaseModel):

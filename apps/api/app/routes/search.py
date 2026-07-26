@@ -27,6 +27,9 @@ def api_search():
         keywords=data.keywords,
         topk=data.topk,
         enhance=data.enhance,
+        tag_mode=data.tag_mode,
+        keyword_mode=data.keyword_mode,
+        keyword_source=data.keyword_source,
     )
     return jsonify({
         "query": data.text,
@@ -50,6 +53,9 @@ def api_search_image():
         tags=tags,
         keywords=keywords,
         topk=topk,
+        tag_mode=request.form.get("tag_mode", "and"),
+        keyword_mode=request.form.get("keyword_mode", "and"),
+        keyword_source=request.form.get("keyword_source", "all"),
     )
     return jsonify({
         "filename": file.filename,
