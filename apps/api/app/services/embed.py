@@ -11,6 +11,8 @@ import open_clip
 import torch
 from PIL import Image
 
+from app.config import MODEL_ID
+
 Embeddings = npt.NDArray[np.float32]
 
 EMBEDDING_DIM = 1024
@@ -32,10 +34,8 @@ def _load_model() -> tuple[Any, Any, Any]:
     if _model is None:
         with _model_lock:
             if _model is None:
-                model, _, preprocess = open_clip.create_model_and_transforms(
-                    "ViT-H-14", pretrained="dfn5b"
-                )
-                _tokenizer = open_clip.get_tokenizer("ViT-H-14")
+                model, _, preprocess = open_clip.create_model_and_transforms(MODEL_ID)
+                _tokenizer = open_clip.get_tokenizer(MODEL_ID)
                 _preprocess = preprocess
                 _model = model.to(_device).eval()
     return _model, _tokenizer, _preprocess
