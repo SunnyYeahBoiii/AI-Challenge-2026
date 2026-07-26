@@ -32,3 +32,13 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+# These packages ship no type information.
+[[tool.mypy.overrides]]
+module = ["pymilvus.*", "open_clip.*", "flask_cors.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
