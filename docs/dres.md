@@ -31,9 +31,9 @@ Frontend                  API (Flask)                       DRES Server
 All credentials live in `apps/api/.env` (never commit the real `.env`):
 
 ```bash
-DRES_URL=http://34.27.44.11:8080
-DRES_USERNAME=ghienaram
-DRES_PASSWORD=10giokem7
+DRES_URL=
+DRES_USERNAME=
+DRES_PASSWORD=
 ```
 
 `apps/api/app/config.py` exposes them as `Config.DRES_URL`, `Config.DRES_USERNAME`, `Config.DRES_PASSWORD` (blank defaults; raise at runtime if missing when used).
