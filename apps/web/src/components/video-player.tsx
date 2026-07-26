@@ -183,7 +183,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     if (!videoId) {
       return (
-        <div className="flex h-full w-full items-center justify-center bg-black font-mono-sm text-mono-sm text-gray-400">
+        <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
           Invalid video URL
         </div>
       );
@@ -191,7 +191,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     if (error) {
       return (
-        <div className="flex h-full w-full items-center justify-center bg-black font-mono-sm text-mono-sm text-gray-400">
+        <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
           {error}
         </div>
       );
@@ -204,7 +204,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="flex flex-col items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-white" />
-              <span className="font-mono-sm text-mono-sm text-gray-400">
+              <span className="font-mono text-mono-sm text-gray-400">
                 Loading player...
               </span>
             </div>
