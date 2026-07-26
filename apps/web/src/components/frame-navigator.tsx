@@ -25,11 +25,11 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: Fra
   if (frames.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-center gap-2 bg-[#111111] py-3 px-4">
+    <div className="flex items-center justify-center gap-2 bg-neutral-900 py-3 px-4">
       <button
         onClick={() => onFrameSelect(frames[currentArrayIndex - 1])}
         disabled={currentArrayIndex <= 0}
-        className="bg-[#222222] hover:bg-[#333333] rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         aria-label="Previous frame"
       >
         <Icon name="chevron_left" size={24} className="text-white" />
@@ -54,7 +54,7 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: Fra
                 alt={`Frame ${frame.frame_index}`}
               />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
-                <span className="text-mono-sm font-mono-sm text-white/90">
+                <span className="font-mono text-mono-sm text-white/90">
                   {frame.frame_index}
                 </span>
               </div>
@@ -66,7 +66,7 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: Fra
       <button
         onClick={() => onFrameSelect(frames[currentArrayIndex + 1])}
         disabled={currentArrayIndex >= frames.length - 1}
-        className="bg-[#222222] hover:bg-[#333333] rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         aria-label="Next frame"
       >
         <Icon name="chevron_right" size={24} className="text-white" />

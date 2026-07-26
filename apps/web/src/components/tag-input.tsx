@@ -15,7 +15,10 @@ export function TagInput({ tags, onChange, placeholder = "Add tag..." }: TagInpu
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && input.trim()) {
       e.preventDefault();
-      onChange([...tags, input.trim()]);
+      const value = input.trim();
+      if (!tags.includes(value)) {
+        onChange([...tags, value]);
+      }
       setInput("");
     }
   };
@@ -29,7 +32,7 @@ export function TagInput({ tags, onChange, placeholder = "Add tag..." }: TagInpu
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/30 text-on-surface font-label-sm text-label-sm"
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/30 text-on-surface text-label-sm"
         >
           {tag}
           <button
@@ -48,7 +51,7 @@ export function TagInput({ tags, onChange, placeholder = "Add tag..." }: TagInpu
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={tags.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[100px] bg-transparent border-none outline-none font-body-sm text-body-sm placeholder:text-outline"
+        className="flex-1 min-w-[100px] bg-transparent border-none outline-none text-body-sm placeholder:text-outline"
       />
     </div>
   );
