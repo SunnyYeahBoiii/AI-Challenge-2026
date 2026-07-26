@@ -17,8 +17,14 @@ export interface FrameResult {
   title: string;
   description: string;
   keywords: string[];
+  author?: string;
+  publish_date?: string;
   thumbnail_url: string;
   watch_url: string;
+  /** Position of this frame inside a temporal sequence (sequential mode only). */
+  sequence_idx?: number;
+  /** Groups the frames that belong to the same temporal sequence. */
+  sequence_id?: string;
 }
 
 export interface VideoResult {
@@ -62,15 +68,22 @@ export interface MultiBoxQuery {
   tag_match_mode?: "and" | "or";
   keywords?: string[];
   key_match_mode?: "and" | "or";
+  keyword_source?: "all" | "ocr" | "asr";
   enhance?: boolean | null;
   topk?: number;
 }
 
 export interface MultiBoxRequest {
   box_queries: MultiBoxQuery[];
+  /** Max gap between consecutive shots of a sequence, in seconds. */
   temporal_window_seconds?: number;
   topk?: number;
   enhance?: boolean;
+  /**
+   * "parallel" fuses the boxes with RRF and returns independent frames.
+   * "sequential" reads the boxes as consecutive shots of one scene and returns
+   * temporal chains within a single video.
+   */
   mode?: "parallel" | "sequential";
 }
 
