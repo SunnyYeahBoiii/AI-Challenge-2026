@@ -12,7 +12,6 @@ import type { VideoResult } from "@/lib/api";
 export interface SearchFilter {
   videoId?: string;
   queries: BoxQuery[];
-  sortBy: "frame_id" | "score";
   mode: "parallel" | "sequential";
 }
 
@@ -27,7 +26,6 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
   const [queries, setQueries] = useState<BoxQuery[]>([
     { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
   ]);
-  const [sortBy, setSortBy] = useState<"frame_id" | "score">("frame_id");
   const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
@@ -85,14 +83,14 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], sortBy, mode });
+      onSearch({ videoId: videoId.trim(), queries: [], mode });
     } else {
       const enabledQueries = queries.filter((q) => q.enabled && (q.content || q.tags?.length));
       if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, sortBy, mode });
+        onSearch({ queries: enabledQueries, mode });
       }
     }
-  }, [videoId, queries, sortBy, mode, onSearch]);
+  }, [videoId, queries, mode, onSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
@@ -119,7 +117,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], sortBy, mode });
+    onSearch({ videoId: video.video_id, queries: [], mode });
   };
 
   const addQuery = () => {
@@ -177,17 +175,6 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
           <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
             <Icon name="search" size={16} /> Query Search Mode
           </label>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-label-sm text-on-surface-variant">Sort By</span>
-            <select
-              className="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 text-label-sm outline-none focus:border-primary"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "frame_id" | "score")}
-            >
-              <option value="frame_id">Frame ID</option>
-              <option value="score">Score</option>
-            </select>
-          </div>
           <div className="flex justify-between items-center mb-2">
             <span className="text-label-sm text-on-surface-variant">Query Mode</span>
             <div className="flex bg-surface-container-lowest border border-outline-variant rounded overflow-hidden">

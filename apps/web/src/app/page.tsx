@@ -10,16 +10,8 @@ import { Icon } from "@/components/icon";
 import type { FrameResult } from "@/lib/api";
 import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
 
-function sortFrames(frames: FrameResult[], sortBy: "frame_id" | "score"): FrameResult[] {
-  const sorted = [...frames];
-  if (sortBy === "score") {
-    sorted.sort((a, b) => b.score - a.score);
-  } else {
-    sorted.sort(
-      (a, b) => a.video_id.localeCompare(b.video_id) || a.frame_index - b.frame_index
-    );
-  }
-  return sorted;
+function sortFrames(frames: FrameResult[]): FrameResult[] {
+  return [...frames].sort((a, b) => b.score - a.score);
 }
 
 export default function Home() {
@@ -50,7 +42,7 @@ export default function Home() {
     try {
       if (newFilter.videoId) {
         const data = await searchVideoFrames(newFilter.videoId);
-        setFrames(sortFrames(data.results, newFilter.sortBy));
+        setFrames(sortFrames(data.results));
       } else {
         const enabledQueries = newFilter.queries.filter(
           (q) => q.enabled && (q.content || q.tags?.length)
@@ -67,7 +59,7 @@ export default function Home() {
           box_queries: boxQueries,
           mode: newFilter.mode,
         });
-        setFrames(sortFrames(data.results, newFilter.sortBy));
+        setFrames(sortFrames(data.results));
       }
     } catch (error) {
       console.error("Search failed:", error);
