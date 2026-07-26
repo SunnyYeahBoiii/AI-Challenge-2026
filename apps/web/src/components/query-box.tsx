@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
+import { Toggle } from "./toggle";
 
 export interface BoxQuery {
   id: string;
@@ -58,24 +59,21 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
   return (
     <div ref={setNodeRef} style={style} className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0 relative">
       {/* Index badge */}
-      <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded bg-primary text-on-primary flex items-center justify-center font-label-xs text-label-xs">
+      <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded bg-primary text-on-primary flex items-center justify-center text-label-xs">
         {index + 1}
       </div>
       {/* Header */}
       <div className="flex justify-between items-center p-2 pl-7 border-b border-surface-variant bg-surface-bright rounded-t-lg">
         {/* Toggle */}
-        <div className="relative inline-block w-[36px] h-[20px]">
-          <input
-            type="checkbox"
-            checked={query.enabled}
-            onChange={(e) => onUpdate({ enabled: e.target.checked })}
-            className="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 opacity-0"
-          />
-          <label className="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer" />
-        </div>
+        <Toggle
+          checked={query.enabled}
+          onChange={(enabled) => onUpdate({ enabled })}
+          label={`Query ${index + 1} enabled`}
+        />
         {/* Actions */}
         <div className="flex gap-1">
           <button
+            aria-label="Drag to reorder"
             className="text-outline hover:text-on-surface transition-colors p-1 cursor-grab active:cursor-grabbing"
             {...attributes}
             {...listeners}
@@ -91,13 +89,15 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
                 onUpdate({ type: "text", content: "" });
               }
             }}
+            aria-label={query.type === "text" ? "Switch to image query" : "Switch to text query"}
             className="text-outline hover:text-on-surface transition-colors p-1"
           >
-            <Icon name="image" size={16} />
+            <Icon name={query.type === "text" ? "image" : "text_fields"} size={16} />
           </button>
           {canRemove && (
             <button
               onClick={onRemove}
+              aria-label="Remove query"
               className="text-error opacity-70 hover:opacity-100 transition-colors p-1"
             >
               <Icon name="delete" size={16} />
@@ -110,7 +110,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
       <div className="p-3 bg-surface-container-lowest">
         {query.type === "text" ? (
           <textarea
-            className="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 font-body-sm text-body-sm outline-none"
+            className="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 text-body-sm outline-none"
             placeholder="Enter query text..."
             value={query.content}
             onChange={(e) => onUpdate({ content: e.target.value })}
@@ -153,28 +153,23 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
       {/* Top K & AI Enhance */}
       <div className="flex justify-between items-center px-3 py-2 border-t border-surface-variant">
         <div className="flex items-center gap-2">
-          <span className="font-label-sm text-label-sm text-on-surface-variant">Top K</span>
+          <span className="text-label-sm text-on-surface-variant">Top K</span>
           <input
-            className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono-sm text-mono-sm outline-none focus:border-primary text-right"
+            className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-mono-sm outline-none focus:border-primary text-right"
             type="number"
+            min={1}
+            aria-label="Top K results"
             value={query.topK ?? 100}
-            onChange={(e) => onUpdate({ topK: Number(e.target.value) })}
+            onChange={(e) => onUpdate({ topK: Math.max(1, Number(e.target.value) || 1) })}
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-label-sm text-label-sm text-on-surface-variant">AI Enhance</span>
-          <button
-            onClick={() => onUpdate({ enhance: !query.enhance })}
-            className={`relative w-9 h-5 rounded-full transition-colors ${
-              query.enhance ? "bg-primary" : "bg-outline"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                query.enhance ? "translate-x-4" : ""
-              }`}
-            />
-          </button>
+          <span className="text-label-sm text-on-surface-variant">AI Enhance</span>
+          <Toggle
+            checked={query.enhance ?? false}
+            onChange={(enhance) => onUpdate({ enhance })}
+            label="AI Enhance"
+          />
         </div>
       </div>
 
@@ -185,7 +180,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           className="w-full px-3 py-2 flex items-center gap-2 border-b border-surface-variant cursor-pointer hover:bg-surface-container-high transition-colors"
         >
           <Icon name="sell" size={14} className="text-outline" />
-          <span className="font-label-sm text-label-sm text-on-surface-variant">
+          <span className="text-label-sm text-on-surface-variant">
             Tags {query.tags && query.tags.length > 0 && `(${query.tags.length})`}
           </span>
           <Icon
@@ -208,7 +203,7 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           className="w-full px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-surface-container-high transition-colors rounded-b-lg"
         >
           <Icon name="key" size={14} className="text-outline" />
-          <span className="font-label-sm text-label-sm text-on-surface-variant">
+          <span className="text-label-sm text-on-surface-variant">
             Keywords {query.keywords && query.keywords.length > 0 && `(${query.keywords.length})`}
           </span>
           <Icon

@@ -77,11 +77,17 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     };
   }, []);
 
+  // A box with tags but no text is still searchable — the backend answers it
+  // with a scalar filter. Keywords alone are not: they only narrow a hit set.
+  const isSearchable = (q: BoxQuery) => Boolean(q.enabled && (q.content || q.tags?.length));
+
+  const canSearch = videoId.trim().length > 0 || queries.some(isSearchable);
+
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
       onSearch({ videoId: videoId.trim(), queries: [], sortBy, mode });
     } else {
-      const enabledQueries = queries.filter((q) => q.enabled && q.content);
+      const enabledQueries = queries.filter((q) => q.enabled && (q.content || q.tags?.length));
       if (enabledQueries.length > 0) {
         onSearch({ queries: enabledQueries, sortBy, mode });
       }
@@ -137,12 +143,12 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       <div className="p-container-padding pb-2 border-b border-outline-variant">
         {/* Video ID Search */}
         <div className="mb-4 relative">
-          <label className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
+          <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
             <Icon name="movie" size={16} /> Video ID Search
           </label>
           <input
             ref={videoInputRef}
-            className="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary bg-transparent px-0 py-1.5 font-body-sm text-body-sm outline-none transition-colors placeholder:text-outline"
+            className="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary bg-transparent px-0 py-1.5 text-body-sm outline-none transition-colors placeholder:text-outline"
             placeholder="Type to search videos..."
             value={videoId}
             onChange={(e) => setVideoId(e.target.value)}
@@ -158,8 +164,8 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
                   className="w-full text-left px-3 py-2 hover:bg-surface-container-high border-b border-outline-variant last:border-b-0 transition-colors flex flex-col gap-0.5"
                   onClick={() => selectVideo(v)}
                 >
-                  <span className="font-label-sm text-label-sm text-on-surface">{v.video_id}</span>
-                  <span className="font-body-xs text-body-xs text-on-surface-variant truncate">{v.title || v.description}</span>
+                  <span className="text-label-sm text-on-surface">{v.video_id}</span>
+                  <span className="text-body-xs text-on-surface-variant truncate">{v.title || v.description}</span>
                 </button>
               ))}
             </div>
@@ -168,13 +174,13 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
 
         {/* Query Search Mode */}
         <div className="mb-4">
-          <label className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
+          <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
             <Icon name="search" size={16} /> Query Search Mode
           </label>
           <div className="flex justify-between items-center mb-2">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">Sort By</span>
+            <span className="text-label-sm text-on-surface-variant">Sort By</span>
             <select
-              className="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-label-sm text-label-sm outline-none focus:border-primary"
+              className="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 text-label-sm outline-none focus:border-primary"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as "frame_id" | "score")}
             >
@@ -183,11 +189,12 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
             </select>
           </div>
           <div className="flex justify-between items-center mb-2">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">Query Mode</span>
+            <span className="text-label-sm text-on-surface-variant">Query Mode</span>
             <div className="flex bg-surface-container-lowest border border-outline-variant rounded overflow-hidden">
               <button
                 onClick={() => setMode("parallel")}
-                className={`px-2 py-1 font-label-xs text-label-xs transition-colors ${
+                title="Fuse every box with reciprocal rank fusion — frames matching more boxes rank higher"
+                className={`px-2 py-1 text-label-xs transition-colors ${
                   mode === "parallel"
                     ? "bg-primary text-on-primary"
                     : "hover:bg-surface-container-high text-on-surface-variant"
@@ -197,7 +204,8 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
               </button>
               <button
                 onClick={() => setMode("sequential")}
-                className={`px-2 py-1 font-label-xs text-label-xs transition-colors ${
+                title="Read the boxes as consecutive shots of one scene — same video, in order, within the temporal window"
+                className={`px-2 py-1 text-label-xs transition-colors ${
                   mode === "sequential"
                     ? "bg-primary text-on-primary"
                     : "hover:bg-surface-container-high text-on-surface-variant"
@@ -213,9 +221,10 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       {/* Queries List */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low">
         <div className="flex justify-between items-center px-1 shrink-0">
-          <h3 className="font-label-md text-label-md text-on-surface">Queries</h3>
+          <h3 className="text-label-md text-on-surface">Queries</h3>
           <button
             onClick={addQuery}
+            aria-label="Add query"
             className="text-on-surface-variant hover:text-primary transition-colors"
           >
             <Icon name="add" size={18} />
@@ -243,16 +252,17 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
       <div className="p-4 border-t border-outline-variant bg-surface-container-lowest flex gap-2">
         <button
           onClick={onClear}
-          className="flex-1 bg-surface-container hover:bg-surface-variant border border-outline-variant text-on-surface font-label-md text-label-md py-2 rounded transition-colors"
+          className="flex-1 bg-surface-container hover:bg-surface-variant border border-outline-variant text-on-surface text-label-md py-2 rounded transition-colors"
         >
           Clear
         </button>
         <button
           onClick={handleSearch}
-          disabled={isLoading}
-          className="flex-1 bg-primary-container hover:bg-opacity-90 text-on-primary-container font-label-md text-label-md py-2 rounded transition-colors disabled:opacity-50"
+          disabled={isLoading || !canSearch}
+          className="flex-1 bg-primary-container hover:bg-primary-fixed text-on-primary-container text-label-md py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
         >
-          {isLoading ? "Searching..." : "Enter"}
+          <Icon name="search" size={16} />
+          {isLoading ? "Searching..." : "Search"}
         </button>
       </div>
     </aside>
