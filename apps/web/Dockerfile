@@ -6,6 +6,7 @@ RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web/ ./apps/web/
