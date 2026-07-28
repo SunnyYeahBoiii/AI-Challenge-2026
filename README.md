@@ -75,6 +75,100 @@ uv sync
 uv run flask --app app.main run --port 5000 --debug
 ```
 
+## Docker Images (Pre-built)
+
+Pre-built images are published to GitHub Container Registry on every push to `main` and on version tags.
+
+### Available Images
+
+| Image | Description |
+|-------|-------------|
+| `ghcr.io/sunnyyeahboiii/ai-challenge-2026/api` | Python/Flask backend |
+| `ghcr.io/sunnyyeahboiii/ai-challenge-2026/web` | Next.js frontend |
+
+### Tags
+
+- `latest` — latest build from `main`
+- `main` — latest build from `main` branch
+- `v1.0.0` — release tag (semver)
+- `<sha>` — commit SHA (e.g. `a1b2c3d`)
+
+### Running with Pre-built Images
+
+Create a `docker-compose.prod.yml`:
+
+```yaml
+services:
+  web:
+    image: ghcr.io/sunnyyeahboiii/ai-challenge-2026/web:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    environment:
+      - API_BASE_URL=http://api:5000
+
+  api:
+    image: ghcr.io/sunnyyeahboiii/ai-challenge-2026/api:latest
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      milvus:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  milvus:
+    image: milvusdb/milvus:v2.4.17
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - ETCD_USE_EMBED=true
+      - COMMON_STORAGETYPE=local
+
+  elasticsearch:
+    image: elasticsearch:8.12.0
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+
+volumes:
+  milvus_data:
+  es_data:
+```
+
+Then run:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+# Fill in your credentials in apps/api/.env
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ## Environment Variables
 
 Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
@@ -88,6 +182,12 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
 | `ES_PASS` | Elasticsearch password | Elastic Cloud dashboard |
 | `OPENAI_API_KEY` | OpenAI API key (for query enhancement) | OpenAI dashboard |
 | `SECRET_KEY` | Flask secret key | Generate any random string |
+
+**Web Container**:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_BASE_URL` | Backend API URL | `http://api:5000` |
 
 ## Project Structure
 
