@@ -1,8 +1,8 @@
 services:
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:5000
     ports:

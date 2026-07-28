@@ -22,7 +22,7 @@ jobs:
             context: ./apps/api
             file: ./apps/api/Dockerfile
           - image: sunnyyeahboiii/ai-challenge-2026/web
-            context: ./apps/web
+            context: .
             file: ./apps/web/Dockerfile
     steps:
       - uses: actions/checkout@v4
