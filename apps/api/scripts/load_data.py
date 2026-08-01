@@ -40,6 +40,7 @@ from pymilvus import (
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
+MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "")
 ES_PASS = os.getenv("ES_PASS", "")
@@ -77,7 +78,7 @@ def normalize_text(text: str) -> str:
 # ── Milvus ──────────────────────────────────────────────────────────────────
 def connect_milvus() -> None:
     print(f"Connecting to Milvus at {MILVUS_URI}...")
-    connections.connect(alias="default", uri=MILVUS_URI)
+    connections.connect(alias="default", uri=MILVUS_URI, token=MILVUS_TOKEN)
     print("Milvus connected.")
 
 
@@ -163,7 +164,7 @@ def load_youtube_urls() -> dict[str, str]:
 
     for json_file in MEDIA_DIR.glob("*.json"):
         try:
-            with open(json_file) as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
             watch_url = data.get("watch_url", "")
             base_name = json_file.stem  # e.g., L21_V001

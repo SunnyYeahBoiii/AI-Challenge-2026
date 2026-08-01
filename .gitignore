@@ -23,3 +23,5 @@ Thumbs.db
 docker-compose.override.yml
 /data/
 .opencode/
+data
+apps/api/scripts/.load_checkpoint.json
