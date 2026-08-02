@@ -9,6 +9,7 @@ from app.services.hybrid_search import (
     multi_box_search,
     search_similar_frames,
 )
+from app.services.object_filter import ObjectFilterError
 
 KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes" / "keyframes"
 
@@ -21,16 +22,19 @@ def api_search():
         data = SearchRequest(**request.get_json())
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-    results = search_text(
-        query=data.text,
-        tags=data.tags,
-        keywords=data.keywords,
-        topk=data.topk,
-        enhance=data.enhance,
-        tag_mode=data.tag_mode,
-        keyword_mode=data.keyword_mode,
-        keyword_source=data.keyword_source,
-    )
+    try:
+        results = search_text(
+            query=data.text,
+            tags=data.tags,
+            keywords=data.keywords,
+            topk=data.topk,
+            enhance=data.enhance,
+            tag_mode=data.tag_mode,
+            keyword_mode=data.keyword_mode,
+            keyword_source=data.keyword_source,
+        )
+    except ObjectFilterError as error:
+        return jsonify({"error": str(error)}), 500
     return jsonify({
         "query": data.text,
         "enhanced": data.enhance,
@@ -48,15 +52,18 @@ def api_search_image():
     tags = request.form.getlist("tags") if request.form.get("tags") else []
     keywords = request.form.getlist("keywords") if request.form.get("keywords") else []
     image_bytes = file.read()
-    results = search_image(
-        image_bytes=image_bytes,
-        tags=tags,
-        keywords=keywords,
-        topk=topk,
-        tag_mode=request.form.get("tag_mode", "and"),
-        keyword_mode=request.form.get("keyword_mode", "and"),
-        keyword_source=request.form.get("keyword_source", "all"),
-    )
+    try:
+        results = search_image(
+            image_bytes=image_bytes,
+            tags=tags,
+            keywords=keywords,
+            topk=topk,
+            tag_mode=request.form.get("tag_mode", "and"),
+            keyword_mode=request.form.get("keyword_mode", "and"),
+            keyword_source=request.form.get("keyword_source", "all"),
+        )
+    except ObjectFilterError as error:
+        return jsonify({"error": str(error)}), 500
     return jsonify({
         "filename": file.filename,
         "results": results,
@@ -98,13 +105,16 @@ def api_frames():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     box_list = [b.model_dump() for b in data.box_queries]
-    results = multi_box_search(
-        box_queries=box_list,
-        temporal_window=data.temporal_window_seconds,
-        topk=data.topk,
-        enhance=data.enhance,
-        mode=data.mode,
-    )
+    try:
+        results = multi_box_search(
+            box_queries=box_list,
+            temporal_window=data.temporal_window_seconds,
+            topk=data.topk,
+            enhance=data.enhance,
+            mode=data.mode,
+        )
+    except ObjectFilterError as error:
+        return jsonify({"error": str(error)}), 500
     return jsonify({
         "results": results,
         "total": len(results),

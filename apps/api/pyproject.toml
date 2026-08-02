@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.24",
     "Pillow>=10.0",
     "gunicorn>=22.0",
+    "polars>=1.43.2",
 ]
 
 [project.optional-dependencies]

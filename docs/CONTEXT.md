@@ -20,6 +20,10 @@ _Avoid_: search, request
 A multi-modal search query with an id, type (text or image), content, and weight. Multiple BoxQueries can be combined for complex searches.
 _Avoid_: multi-query, search box
 
+**Tag Filter**:
+An optional list of COCO object class names that refines Frames returned by vector search. Names match `data/objects/classname.json` exactly, including spaces (for example `traffic light`, not `traffic_light`). The filter is evaluated by Polars against RF-DETR detections after Milvus ranks candidates; it does not alter the Milvus query.
+_Avoid_: using tags as a standalone query
+
 **Query Mode**:
 The execution strategy for multiple BoxQueries. `parallel` runs all queries simultaneously and unions results. `sequential` runs queries in order, each filtering within the previous results.
 _Avoid_: search mode, execution mode

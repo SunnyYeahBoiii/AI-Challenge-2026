@@ -3,8 +3,8 @@
 Both multi-box modes share one fan-out stage:
 
     enhance (concurrent)  ->  embed (one batch)  ->  Milvus (one RPC per
-    distinct filter expression)  ->  ES keyword filter (one query)  ->  enrich
-    (in-memory)  ->  merge
+    retrieval stage)  ->  Polars object filter  ->  ES keyword filter (one
+    query)  ->  enrich (in-memory)  ->  merge
 
 `parallel` fuses the per-box hit lists with Reciprocal Rank Fusion; `sequential`
 treats each box as one shot of a temporal sequence and keeps only chains that
@@ -26,6 +26,7 @@ from app.services.embed import (
 )
 from app.services.es_client import es_client
 from app.services.milvus_client import get_milvus_client
+from app.services.object_filter import filter_frames
 
 Frame = dict[str, Any]
 Box = dict[str, Any]
@@ -36,7 +37,6 @@ RRF_K = 60
 STAGE1_TOPK = 300
 STAGE2_TOPK = 500
 MAX_CANDIDATE_VIDEOS = 60
-SCALAR_LIMIT = 4096
 
 
 # ── Filter expressions ──────────────────────────────────────────────────────
@@ -44,32 +44,10 @@ def _quote(value: Any) -> str:
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def build_tag_expr(tags: Sequence[str] | None, mode: str = "and") -> str | None:
-    """Milvus expression for the ARRAY<VARCHAR> `tags` field.
-
-    The previous `tags like "%x%"` form does not apply to array fields, and only
-    ever kept the first tag.
-    """
-    if not tags:
-        return None
-    values = ", ".join(_quote(t) for t in tags)
-    fn = "array_contains_any" if mode == "or" else "array_contains_all"
-    return f"{fn}(tags, [{values}])"
-
-
 def _video_expr(video_ids: Sequence[str]) -> str | None:
     if not video_ids:
         return None
     return f"video_id in [{', '.join(_quote(v) for v in video_ids)}]"
-
-
-def _and_exprs(*exprs: str | None) -> str | None:
-    parts = [e for e in exprs if e]
-    if not parts:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    return " and ".join(f"({p})" for p in parts)
 
 
 # ── Enrichment ──────────────────────────────────────────────────────────────
@@ -102,20 +80,6 @@ def _enrich_frames(frames: Iterable[Frame]) -> list[Frame]:
     return deduped
 
 
-def _scalar_frames(expr: str, limit: int) -> list[Frame]:
-    """Fetch frames by filter alone, no ANN.
-
-    A box that carries tags but no text or image is a pure filter. Searching it
-    with a zero vector would scan the index to rank nothing; `query()` reads the
-    scalar fields directly. There is no similarity to report, so `vector_score`
-    is 0 and such a box contributes membership, not ordering.
-    """
-    frames = get_milvus_client().query_frames(expr, limit=min(limit, SCALAR_LIMIT))
-    for f in frames:
-        f["vector_score"] = 0.0
-    return frames
-
-
 def _filter_by_keywords(
     frames: list[Frame],
     keywords: Sequence[str] | None,
@@ -142,17 +106,15 @@ def search_text(
     keyword_mode: str = "and",
     keyword_source: str = "all",
 ) -> list[Frame]:
-    """Text search: enhance -> embed -> Milvus (tag pre-filter) -> ES keywords."""
+    """Text search: enhance -> embed -> Milvus -> Polars tags -> ES keywords."""
     if enhance and query:
         query = enhance_query(query)
-    expr = build_tag_expr(tags, tag_mode)
     if query:
         vec: list[float] = embed_text([query])[0].tolist()
-        frames = get_milvus_client().search(vec, topk=topk * 2, expr=expr)
-    elif expr:
-        frames = _scalar_frames(expr, topk * 2)
+        frames = get_milvus_client().search(vec, topk=topk * 2)
     else:
         return []
+    frames = filter_frames(frames, tags, tag_mode)
     frames = _filter_by_keywords(frames, keywords, keyword_mode, keyword_source)
     frames = _enrich_frames(frames)
     for f in frames:
@@ -170,10 +132,10 @@ def search_image(
     keyword_mode: str = "and",
     keyword_source: str = "all",
 ) -> list[Frame]:
-    """Image search: embed -> Milvus (tag pre-filter) -> ES keywords."""
+    """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = embed_image(image_bytes).tolist()
-    expr = build_tag_expr(tags, tag_mode)
-    frames = get_milvus_client().search(vec, topk=topk * 2, expr=expr)
+    frames = get_milvus_client().search(vec, topk=topk * 2)
+    frames = filter_frames(frames, tags, tag_mode)
     frames = _filter_by_keywords(frames, keywords, keyword_mode, keyword_source)
     frames = _enrich_frames(frames)
     for f in frames:
@@ -271,26 +233,13 @@ def _grouped_search(
     topk: int,
     extra_expr: str | None = None,
 ) -> list[list[Frame]]:
-    """Search every box, batching boxes that share a filter expression.
-
-    Milvus applies a single expression to a whole `nq > 1` batch, so boxes are
-    grouped by their tag filter; in the common case (no tags, or identical tags)
-    this is one RPC for the whole request. Boxes with no vector but with a filter
-    are fetched with a scalar query instead.
-    """
+    """Search vector-bearing boxes in batches that share a Milvus expression."""
     per_box: list[list[Frame]] = [[] for _ in boxes]
     groups: dict[str, list[int]] = {}
-    scalar: list[tuple[int, str]] = []
     for i, vec in enumerate(vectors):
-        expr = _and_exprs(
-            build_tag_expr(boxes[i].get("tags"), boxes[i].get("tag_match_mode", "and")),
-            extra_expr,
-        )
         if vec is not None:
-            groups.setdefault(expr or "", []).append(i)
-        elif expr:
-            scalar.append((i, expr))
-    if not groups and not scalar:
+            groups.setdefault(extra_expr or "", []).append(i)
+    if not groups:
         return per_box
 
     milvus = get_milvus_client()
@@ -299,8 +248,17 @@ def _grouped_search(
         batched = milvus.search_batch(batch, topk=topk, expr=expr_key or None)
         for i, frames in zip(indices, batched):
             per_box[i] = frames
-    for i, expr_str in scalar:
-        per_box[i] = _scalar_frames(expr_str, topk)
+    return per_box
+
+
+def _apply_box_object_filters(
+    boxes: Sequence[Box], per_box: list[list[Frame]]
+) -> list[list[Frame]]:
+    """Post-filter every box's ranked Milvus candidates by RF-DETR classes."""
+    for i, box in enumerate(boxes):
+        per_box[i] = filter_frames(
+            per_box[i], box.get("tags"), box.get("tag_match_mode", "and")
+        )
     return per_box
 
 
@@ -326,9 +284,11 @@ def _retrieve_boxes(
 
     stage1_topk = max(topk, STAGE1_TOPK) if two_stage else topk * 2
     per_box = _grouped_search(boxes, vectors, stage1_topk)
+    per_box = _apply_box_object_filters(boxes, per_box)
+    per_box = _apply_box_keywords(boxes, per_box)
 
     if not two_stage:
-        return _apply_box_keywords(boxes, per_box), vectors
+        return per_box, vectors
 
     active = [i for i, frames in enumerate(per_box) if frames]
     counts: dict[str, int] = {}
@@ -348,10 +308,12 @@ def _retrieve_boxes(
         return per_box, vectors
 
     deep = _grouped_search(boxes, vectors, max(topk, STAGE2_TOPK), extra_expr=video_expr)
+    deep = _apply_box_object_filters(boxes, deep)
+    deep = _apply_box_keywords(boxes, deep)
     for i in active:
         if deep[i]:
             per_box[i] = deep[i]
-    return _apply_box_keywords(boxes, per_box), vectors
+    return per_box, vectors
 
 
 # ── Merge strategies ────────────────────────────────────────────────────────

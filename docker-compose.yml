@@ -14,8 +14,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     ports:
       - "5000:5000"
     env_file:
@@ -27,6 +27,7 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api/app:/app/app
+      - ./data/objects:/app/data/objects:ro
     develop:
       watch:
         - action: sync

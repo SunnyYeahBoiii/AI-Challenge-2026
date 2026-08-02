@@ -49,6 +49,7 @@ def stub(monkeypatch):
     monkeypatch.setattr(hs, "embed_images", fake_embed_images)
     monkeypatch.setattr(hs, "enhance_queries", lambda qs: [q.upper() for q in qs])
     monkeypatch.setattr(hs, "get_milvus_client", lambda: fake)
+    monkeypatch.setattr(hs, "filter_frames", lambda frames, *args, **kwargs: frames)
     monkeypatch.setattr(hs, "_filter_by_keywords", lambda frames, *a, **k: frames)
     return fake, embed_calls
 
@@ -102,41 +103,38 @@ def test_boxes_with_identical_tags_share_one_rpc(stub):
     hs._grouped_search(boxes, _vec([[1] * 4, [2] * 4]), topk=50)
 
     assert len(fake.calls) == 1
-    assert fake.calls[0]["expr"] == 'array_contains_all(tags, ["car"])'
+    assert fake.calls[0]["expr"] is None
 
 
-def test_boxes_with_different_tags_split_into_groups(stub):
-    """Milvus applies one expression per batch, so differing filters must split."""
+def test_boxes_with_different_tags_still_share_one_rpc(stub):
+    """Tags are post-filtered locally and never split a Milvus batch."""
     fake, _ = stub
     boxes = [{"text": "a", "tags": ["car"]}, {"text": "b", "tags": ["dog"]}]
     hs._grouped_search(boxes, _vec([[1] * 4, [2] * 4]), topk=50)
 
-    assert len(fake.calls) == 2
-    assert {c["nq"] for c in fake.calls} == {1}
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["nq"] == 2
+    assert fake.calls[0]["expr"] is None
 
 
-def test_extra_expr_is_combined_with_tags(stub):
+def test_extra_expr_is_sent_without_tags(stub):
     fake, _ = stub
     boxes = [{"text": "a", "tags": ["car"]}]
     hs._grouped_search(boxes, _vec([[1] * 4]), topk=50, extra_expr='video_id in ["V1"]')
 
     expr = fake.calls[0]["expr"]
-    assert 'array_contains_all(tags, ["car"])' in expr
-    assert 'video_id in ["V1"]' in expr
-    assert " and " in expr
+    assert expr == 'video_id in ["V1"]'
 
 
 # ── Filter-only boxes ───────────────────────────────────────────────────────
-def test_tags_only_box_uses_a_scalar_query(stub):
+def test_tags_only_box_does_not_query_milvus(stub):
     """A box with tags but no text is a pure filter — no ANN, no wasted vector."""
     fake, _ = stub
-    fake.query_rows = [{"video_id": "V1", "frame_index": 3}]
     per_box = hs._grouped_search([{"tags": ["car"]}], [None], topk=50)
 
-    assert fake.calls == [], "a filter-only box must not issue an ANN search"
-    assert fake.queries[0]["expr"] == 'array_contains_all(tags, ["car"])'
-    assert per_box[0][0]["video_id"] == "V1"
-    assert per_box[0][0]["vector_score"] == 0.0
+    assert fake.calls == []
+    assert fake.queries == []
+    assert per_box == [[]]
 
 
 def test_box_with_neither_query_nor_filter_hits_nothing(stub):
@@ -148,15 +146,14 @@ def test_box_with_neither_query_nor_filter_hits_nothing(stub):
     assert per_box == [[]]
 
 
-def test_scalar_and_vector_boxes_coexist(stub):
+def test_vector_and_tags_only_boxes_do_not_trigger_scalar_queries(stub):
     fake, _ = stub
-    fake.query_rows = [{"video_id": "V1", "frame_index": 3}]
     boxes = [{"text": "a"}, {"tags": ["car"]}]
     per_box = hs._grouped_search(boxes, [[1.0] * 4, None], topk=50)
 
     assert len(fake.calls) == 1 and fake.calls[0]["nq"] == 1
-    assert len(fake.queries) == 1
-    assert per_box[1][0]["frame_index"] == 3
+    assert fake.queries == []
+    assert per_box[1] == []
 
 
 # ── Two-stage recall ────────────────────────────────────────────────────────
@@ -192,6 +189,7 @@ def test_two_stage_narrows_to_shared_videos(monkeypatch):
     )
     monkeypatch.setattr(hs, "enhance_queries", lambda qs: list(qs))
     monkeypatch.setattr(hs, "get_milvus_client", lambda: TwoStageMilvus())
+    monkeypatch.setattr(hs, "filter_frames", lambda frames, *args, **kwargs: frames)
     monkeypatch.setattr(hs, "_filter_by_keywords", lambda frames, *a, **k: frames)
 
     boxes = [{"text": "a"}, {"text": "b"}]

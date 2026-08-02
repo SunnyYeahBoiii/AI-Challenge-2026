@@ -18,10 +18,16 @@ export interface SearchFilter {
 interface FilterPanelProps {
   onSearch: (filter: SearchFilter) => void;
   onClear: () => void;
+  onValidationError: (message: string) => void;
   isLoading?: boolean;
 }
 
-export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) {
+export function FilterPanel({
+  onSearch,
+  onClear,
+  onValidationError,
+  isLoading,
+}: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
     { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
@@ -75,8 +81,7 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     };
   }, []);
 
-  // A box with tags but no text is still searchable — the backend answers it
-  // with a scalar filter. Keywords alone are not: they only narrow a hit set.
+  // Tags refine a vector result and cannot be submitted without text or an image.
   const isSearchable = (q: BoxQuery) => Boolean(q.enabled && (q.content || q.tags?.length));
 
   const canSearch = videoId.trim().length > 0 || queries.some(isSearchable);
@@ -85,12 +90,19 @@ export function FilterPanel({ onSearch, onClear, isLoading }: FilterPanelProps) 
     if (videoId.trim()) {
       onSearch({ videoId: videoId.trim(), queries: [], mode });
     } else {
+      const tagOnlyQuery = queries.find(
+        (q) => q.enabled && Boolean(q.tags?.length) && !q.content.trim()
+      );
+      if (tagOnlyQuery) {
+        onValidationError("Add text or an image to every query that uses tags.");
+        return;
+      }
       const enabledQueries = queries.filter((q) => q.enabled && (q.content || q.tags?.length));
       if (enabledQueries.length > 0) {
         onSearch({ queries: enabledQueries, mode });
       }
     }
-  }, [videoId, queries, mode, onSearch]);
+  }, [videoId, queries, mode, onSearch, onValidationError]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
