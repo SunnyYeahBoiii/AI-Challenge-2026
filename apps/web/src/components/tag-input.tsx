@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "./icon";
+
+interface DropdownPosition {
+  top: number;
+  left: number;
+  width: number;
+}
 
 interface TagInputProps {
   tags: string[];
@@ -18,8 +25,12 @@ export function TagInput({
   suggestions,
   allowCustomValues = true,
 }: TagInputProps) {
+  const tagInputRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLUListElement>(null);
   const [input, setInput] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const matches = useMemo(() => {
     const query = input.trim().toLocaleLowerCase();
     if (!query || !suggestions) {
@@ -28,8 +39,50 @@ export function TagInput({
     return suggestions
       .filter((suggestion) => !tags.includes(suggestion))
       .filter((suggestion) => suggestion.toLocaleLowerCase().includes(query))
-      .slice(0, 8);
+      .slice(0, 24);
   }, [input, suggestions, tags]);
+  const activeSuggestion = activeIndex >= 0 ? matches[activeIndex] : undefined;
+
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [input]);
+
+  const showSuggestions = isFocused && matches.length > 0;
+
+  useEffect(() => {
+    if (activeIndex < 0) {
+      return;
+    }
+    dropdownRef.current
+      ?.querySelector(`#tag-suggestion-${activeIndex}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (!showSuggestions) {
+      setDropdownPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const rect = tagInputRef.current?.getBoundingClientRect();
+      if (rect) {
+        setDropdownPosition({
+          top: rect.bottom + 8,
+          left: rect.left - 8,
+          width: rect.width + 16,
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [showSuggestions]);
 
   const addTag = (value: string) => {
     if (!tags.includes(value)) {
@@ -39,12 +92,27 @@ export function TagInput({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" && matches.length > 0) {
+      event.preventDefault();
+      setActiveIndex((index) => (index + 1) % matches.length);
+      return;
+    }
+    if (event.key === "ArrowUp" && matches.length > 0) {
+      event.preventDefault();
+      setActiveIndex((index) => (index <= 0 ? matches.length - 1 : index - 1));
+      return;
+    }
     if (event.key === "Escape") {
       setIsFocused(false);
+      setActiveIndex(-1);
       return;
     }
     if (event.key === "Enter" && input.trim()) {
       event.preventDefault();
+      if (activeSuggestion) {
+        addTag(activeSuggestion);
+        return;
+      }
       const typedValue = input.trim();
       const canonicalValue = suggestions?.find(
         (suggestion) => suggestion.toLocaleLowerCase() === typedValue.toLocaleLowerCase()
@@ -63,10 +131,8 @@ export function TagInput({
     onChange(tags.filter((item) => item !== tag));
   };
 
-  const showSuggestions = isFocused && matches.length > 0;
-
   return (
-    <div className="relative">
+    <div ref={tagInputRef} className="relative">
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
@@ -84,37 +150,66 @@ export function TagInput({
             </button>
           </span>
         ))}
-        <input
-          type="text"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          onKeyDown={handleKeyDown}
-          placeholder={tags.length === 0 ? placeholder : ""}
-          aria-autocomplete={suggestions ? "list" : undefined}
-          aria-expanded={showSuggestions}
-          className="flex-1 min-w-[100px] bg-transparent border-none outline-none text-body-sm placeholder:text-outline"
-        />
+        <div className="relative min-w-[140px] flex-1">
+          <input
+            type="text"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => {
+              setIsFocused(false);
+              setActiveIndex(-1);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={tags.length === 0 ? placeholder : ""}
+            aria-autocomplete={suggestions ? "list" : undefined}
+            aria-controls={showSuggestions ? "tag-suggestions" : undefined}
+            aria-activedescendant={
+              activeSuggestion ? `tag-suggestion-${activeIndex}` : undefined
+            }
+            aria-expanded={showSuggestions}
+            className="relative z-10 w-full bg-transparent border-none outline-none text-body-sm placeholder:text-outline"
+          />
+        </div>
       </div>
-      {showSuggestions && (
+      {showSuggestions &&
+        dropdownPosition &&
+        createPortal(
         <ul
+          ref={dropdownRef}
+          id="tag-suggestions"
           role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded border border-outline-variant bg-surface-container-lowest py-1 shadow-lg"
+          style={dropdownPosition}
+          className="fixed z-50 h-80 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-1.5 shadow-xl"
         >
-          {matches.map((suggestion) => (
-            <li key={suggestion} role="option" aria-selected={false}>
+          <li className="flex items-center justify-between px-2 py-1.5 text-label-xs text-on-surface-variant">
+            <span>COCO classes</span>
+            <span>↑↓ navigate · Enter select</span>
+          </li>
+          {matches.map((suggestion, index) => (
+            <li
+              key={suggestion}
+              id={`tag-suggestion-${index}`}
+              role="option"
+              aria-selected={activeSuggestion === suggestion}
+            >
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => addTag(suggestion)}
-                className="w-full px-3 py-1.5 text-left text-body-sm text-on-surface hover:bg-surface-container-high"
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`w-full rounded-lg px-2 py-2 text-left text-body-sm transition-colors ${
+                  activeSuggestion === suggestion
+                    ? "bg-primary text-on-primary"
+                    : "text-on-surface hover:bg-surface-container-high"
+                }`}
               >
                 {suggestion}
               </button>
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );
