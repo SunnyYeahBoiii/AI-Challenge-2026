@@ -28,6 +28,14 @@ services:
       HF_HOME: /models/huggingface
       TORCH_HOME: /models/torch
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      ENSEMBLE_MAX_LOADED_MODELS: ${ENSEMBLE_MAX_LOADED_MODELS:-1}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       milvus:
         condition: service_healthy

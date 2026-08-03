@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
 import gc
+import json
 import math
 import os
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -256,7 +257,10 @@ class ModelRegistry:
         specs: Sequence[ModelSpec],
         *,
         factories: Mapping[str, ModelFactory] | None = None,
+        max_loaded_models: int | None = None,
     ) -> None:
+        if max_loaded_models is not None and max_loaded_models < 1:
+            raise ModelConfigurationError("max_loaded_models must be positive or null")
         self._specs = {spec.model_id: spec for spec in specs}
         if len(self._specs) != len(specs):
             raise ModelConfigurationError("model ids must be unique")
@@ -269,7 +273,8 @@ class ModelRegistry:
         }
         if factories:
             self._factories.update(factories)
-        self._models: dict[str, EmbeddingModel] = {}
+        self._max_loaded_models = max_loaded_models
+        self._models: OrderedDict[str, EmbeddingModel] = OrderedDict()
         self._lock = RLock()
 
     def enabled_specs(self, model_ids: Sequence[str] | None = None) -> list[ModelSpec]:
@@ -294,7 +299,9 @@ class ModelRegistry:
     def get(self, model_id: str) -> EmbeddingModel:
         with self._lock:
             if model_id in self._models:
-                return self._models[model_id]
+                model = self._models.pop(model_id)
+                self._models[model_id] = model
+                return model
             spec = self.spec(model_id)
             try:
                 factory = self._factories[spec.adapter]
@@ -302,17 +309,19 @@ class ModelRegistry:
                 raise ModelConfigurationError(
                     f"unknown model adapter: {spec.adapter}"
                 ) from error
+            while (
+                self._max_loaded_models is not None
+                and len(self._models) >= self._max_loaded_models
+            ):
+                _, evicted = self._models.popitem(last=False)
+                del evicted
+                self._collect_runtime()
             model = factory(spec)
             self._models[model_id] = model
             return model
 
-    def unload(self, model_id: str) -> None:
-        """Release one loaded model so offline multi-model jobs do not accumulate VRAM."""
-        with self._lock:
-            model = self._models.pop(model_id, None)
-        if model is None:
-            return
-        del model
+    @staticmethod
+    def _collect_runtime() -> None:
         gc.collect()
         try:
             import torch
@@ -321,6 +330,15 @@ class ModelRegistry:
                 torch.cuda.empty_cache()
         except ImportError:
             return
+
+    def unload(self, model_id: str) -> None:
+        """Release one loaded model so offline multi-model jobs do not accumulate VRAM."""
+        with self._lock:
+            model = self._models.pop(model_id, None)
+        if model is None:
+            return
+        del model
+        self._collect_runtime()
 
 
 def _parse_model_spec(data: Mapping[str, object]) -> ModelSpec:
@@ -425,7 +443,17 @@ def get_model_registry() -> ModelRegistry:
     with _registry_lock:
         if _registry is None:
             config_path = Path(os.getenv("ENSEMBLE_CONFIG_PATH", str(DEFAULT_CONFIG_PATH)))
-            _registry = ModelRegistry(load_model_specs(config_path))
+            raw_max_loaded = os.getenv("ENSEMBLE_MAX_LOADED_MODELS", "1")
+            try:
+                max_loaded_models = int(raw_max_loaded)
+            except ValueError as error:
+                raise ModelConfigurationError(
+                    "ENSEMBLE_MAX_LOADED_MODELS must be a positive integer"
+                ) from error
+            _registry = ModelRegistry(
+                load_model_specs(config_path),
+                max_loaded_models=max_loaded_models,
+            )
         return _registry
 
 

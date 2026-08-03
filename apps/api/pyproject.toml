@@ -8,7 +8,7 @@ dependencies = [
     "flask-cors>=4.0",
     "python-dotenv>=1.0",
     "pydantic>=2.0",
-    "pymilvus>=2.4",
+    "pymilvus>=2.4,<3.1",
     "elasticsearch>=8.0,<9",
     "openai>=1.0",
     "open-clip-torch>=2.0",
@@ -44,11 +44,17 @@ build-backend = "setuptools.build_meta"
 # TorchScale's BEiT-3 modules, while Perception Encoder requires the current timm PE model.
 override-dependencies = ["timm>=1.0.15"]
 
-# PyPI publishes CPU-only PyTorch wheels for Windows. Pin the official CUDA 13.0
-# index on Windows so offline gallery inference actually uses the NVIDIA GPU.
+# Pin the official CUDA 13.0 wheels on Windows and Linux. This covers both host-side
+# gallery inference and query inference inside the Linux API container.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
-torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torch = [
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'linux'" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu130"

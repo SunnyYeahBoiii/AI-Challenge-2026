@@ -97,6 +97,39 @@ def test_registry_loads_models_lazily_and_reuses_instances() -> None:
     assert registry.enabled_specs() == [spec]
 
 
+def test_registry_evicts_models_at_configured_memory_limit() -> None:
+    specs = [
+        ModelSpec("a", "fake", "a", 2, "frames_a"),
+        ModelSpec("b", "fake", "b", 2, "frames_b"),
+    ]
+    calls: list[str] = []
+
+    def factory(spec: ModelSpec) -> EmbeddingModel:
+        calls.append(spec.model_id)
+        return FakeModel(spec)
+
+    registry = ModelRegistry(
+        specs,
+        factories={"fake": factory},
+        max_loaded_models=1,
+    )
+
+    first_a = registry.get("a")
+    registry.get("b")
+    second_a = registry.get("a")
+
+    assert first_a is not second_a
+    assert calls == ["a", "b", "a"]
+    assert list(registry._models) == ["a"]
+
+
+def test_registry_rejects_invalid_loaded_model_limit() -> None:
+    spec = ModelSpec("a", "fake", "a", 2, "frames_a")
+
+    with pytest.raises(ModelConfigurationError, match="max_loaded_models"):
+        ModelRegistry([spec], max_loaded_models=0)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

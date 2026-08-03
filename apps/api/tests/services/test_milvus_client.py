@@ -160,7 +160,7 @@ def test_existing_collection_validation_and_recreate(monkeypatch: Any) -> None:
         module.ensure_model_collection(SPEC)
 
     existing.schema.fields[-1].params["dim"] = 2
-    with pytest.raises(ValueError, match="legacy"):
+    with pytest.raises(ValueError, match="canonical"):
         module.ensure_model_collection(SPEC, require_canonical_schema=True)
 
     module.ensure_model_collection(SPEC, recreate=True)

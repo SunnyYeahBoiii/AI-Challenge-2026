@@ -44,6 +44,23 @@ FRAME_OUTPUT_FIELDS = [
     "timestamp",
     "tags",
 ]
+CANONICAL_COLLECTION_FIELDS = {
+    "frame_uid",
+    "video_id",
+    "video_path",
+    "youtube_url",
+    "frame_index",
+    "frame_idx",
+    "frame_path",
+    "shot_idx",
+    "start_time",
+    "end_time",
+    "pts_time",
+    "fps",
+    "timestamp",
+    "tags",
+    "embedding",
+}
 
 
 def _connect() -> None:
@@ -208,21 +225,35 @@ def ensure_model_collection(
             utility.drop_collection(spec.collection)
         else:
             collection = Collection(spec.collection)
-            embedding_field = next(
-                field for field in collection.schema.fields if field.name == "embedding"
-            )
+            fields_by_name = {
+                field.name: field for field in collection.schema.fields
+            }
+            embedding_field = fields_by_name.get("embedding")
+            if embedding_field is None:
+                raise ValueError(
+                    f"collection {spec.collection} has no embedding field"
+                )
             existing_dimension = int(embedding_field.params["dim"])
             if existing_dimension != spec.dimension:
                 raise ValueError(
                     f"collection {spec.collection} dimension {existing_dimension} does not "
                     f"match model {spec.dimension}"
                 )
-            field_names = {field.name for field in collection.schema.fields}
-            if require_canonical_schema and "frame_uid" not in field_names:
-                raise ValueError(
-                    f"collection {spec.collection} uses the legacy auto-id schema; "
-                    "load into a new collection or rerun with --recreate after backing up data"
-                )
+            if require_canonical_schema:
+                missing_fields = CANONICAL_COLLECTION_FIELDS - fields_by_name.keys()
+                frame_uid_field = fields_by_name.get("frame_uid")
+                if missing_fields or not bool(
+                    getattr(frame_uid_field, "is_primary", False)
+                ):
+                    missing = ", ".join(sorted(missing_fields))
+                    details = f"missing fields: {missing}" if missing else (
+                        "frame_uid is not the primary key"
+                    )
+                    raise ValueError(
+                        f"collection {spec.collection} does not use the canonical "
+                        f"Frame schema ({details}); load into a new collection or rerun "
+                        "with --recreate after backing up data"
+                    )
             return collection
 
     fields = [

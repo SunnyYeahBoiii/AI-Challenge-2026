@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,16 @@ FIELD_ORDER = [
     "tags",
     "embedding",
 ]
+
+
+@dataclass(frozen=True)
+class PreparedArtifact:
+    """A fully validated artifact that is safe to compare before database writes."""
+
+    manifest_path: Path
+    spec: ModelSpec
+    frame_count: int
+    frame_uid_sha256: str
 
 
 def _load_manifest(manifest_path: Path) -> dict[str, Any]:
@@ -150,7 +162,7 @@ def _preflight_artifact(
     *,
     insert_batch_size: int,
     verify_checksums: bool,
-) -> int:
+) -> tuple[int, str]:
     """Validate every shard before any collection can be dropped or modified."""
     seen_frame_uids: set[str] = set()
     validated = 0
@@ -170,41 +182,93 @@ def _preflight_artifact(
             validated += len(batch_records)
     if validated < 1:
         raise ValueError("embedding artifact contains no Frames")
-    return validated
+    digest = hashlib.sha256()
+    for frame_uid in sorted(seen_frame_uids):
+        digest.update(frame_uid.encode("utf-8"))
+        digest.update(b"\n")
+    return validated, digest.hexdigest()
 
 
-def load_artifact(
-    *,
+def _prepare_artifact(
     manifest_path: Path,
+    *,
     config_path: Path,
     insert_batch_size: int,
     verify_checksums: bool,
-    recreate: bool,
-    dry_run: bool,
-) -> int:
-    """Validate and upsert one model artifact into its configured collection."""
-    if insert_batch_size < 1:
-        raise ValueError("insert_batch_size must be positive")
+) -> PreparedArtifact:
     manifest = _load_manifest(manifest_path)
     spec = _select_spec(config_path, _manifest_model_id(manifest))
     _validate_manifest_model(manifest, spec)
-    validated = _preflight_artifact(
+    frame_count, frame_uid_sha256 = _preflight_artifact(
         manifest_path,
         insert_batch_size=insert_batch_size,
         verify_checksums=verify_checksums,
     )
-    if dry_run:
-        LOGGER.info("%s: validated %d Frames", spec.model_id, validated)
-        return validated
+    return PreparedArtifact(
+        manifest_path=manifest_path,
+        spec=spec,
+        frame_count=frame_count,
+        frame_uid_sha256=frame_uid_sha256,
+    )
 
+
+def _artifact_frame_uids(manifest_path: Path) -> set[str]:
+    frame_uids: set[str] = set()
+    for _, records in iter_artifact_shards(manifest_path, verify_checksums=False):
+        frame_uids.update(str(record["frame_uid"]) for record in records)
+    return frame_uids
+
+
+def _collection_frame_uids(collection: Any) -> set[str]:
+    if int(collection.num_entities) < 1:
+        return set()
+    collection.load()
+    iterator = collection.query_iterator(
+        expr='frame_uid != ""',
+        output_fields=["frame_uid"],
+        batch_size=2_000,
+        limit=-1,
+    )
+    frame_uids: set[str] = set()
+    try:
+        while batch := iterator.next():
+            for record in batch:
+                frame_uid = str(record.get("frame_uid") or "")
+                if not frame_uid:
+                    raise ValueError("Milvus collection contains an empty frame_uid")
+                if frame_uid in frame_uids:
+                    raise ValueError(f"Milvus collection contains duplicate frame_uid {frame_uid}")
+                frame_uids.add(frame_uid)
+    finally:
+        iterator.close()
+    return frame_uids
+
+
+def _load_prepared_artifact(
+    prepared: PreparedArtifact,
+    *,
+    insert_batch_size: int,
+    recreate: bool,
+) -> int:
+    spec = prepared.spec
     collection = ensure_model_collection(
         spec,
         recreate=recreate,
         require_canonical_schema=True,
     )
+    expected_frame_uids = _artifact_frame_uids(prepared.manifest_path)
+    existing_frame_uids = _collection_frame_uids(collection)
+    stale_frame_uids = existing_frame_uids - expected_frame_uids
+    if stale_frame_uids:
+        sample = ", ".join(sorted(stale_frame_uids)[:3])
+        raise ValueError(
+            f"collection {spec.collection} contains stale Frames not present in the "
+            f"artifact ({sample}); rerun with --recreate after backing up the collection"
+        )
+
     loaded = 0
     for embeddings, records in iter_artifact_shards(
-        manifest_path,
+        prepared.manifest_path,
         verify_checksums=False,
     ):
         for start in range(0, len(records), insert_batch_size):
@@ -218,13 +282,99 @@ def load_artifact(
                 LOGGER.info("%s: loaded %d Frames", spec.model_id, loaded)
     collection.flush()
     collection.load()
-    LOGGER.info("%s: completed %d Frames", spec.model_id, loaded)
+    actual_frame_uids = _collection_frame_uids(collection)
+    if actual_frame_uids != expected_frame_uids:
+        missing = expected_frame_uids - actual_frame_uids
+        extra = actual_frame_uids - expected_frame_uids
+        raise ValueError(
+            f"collection {spec.collection} failed gallery verification after loading: "
+            f"{len(missing)} missing and {len(extra)} extra Frames"
+        )
+    LOGGER.info("%s: completed and verified %d Frames", spec.model_id, loaded)
     return loaded
+
+
+def load_artifact(
+    *,
+    manifest_path: Path,
+    config_path: Path,
+    insert_batch_size: int,
+    verify_checksums: bool,
+    recreate: bool,
+    dry_run: bool,
+) -> int:
+    """Validate and upsert one model artifact into its configured collection."""
+    loaded = load_artifacts(
+        manifest_paths=[manifest_path],
+        config_path=config_path,
+        insert_batch_size=insert_batch_size,
+        verify_checksums=verify_checksums,
+        recreate=recreate,
+        dry_run=dry_run,
+    )
+    return next(iter(loaded.values()))
+
+
+def load_artifacts(
+    *,
+    manifest_paths: Sequence[Path],
+    config_path: Path,
+    insert_batch_size: int,
+    verify_checksums: bool,
+    recreate: bool,
+    dry_run: bool,
+) -> dict[str, int]:
+    """Preflight matching model galleries, then load and verify every collection."""
+    if insert_batch_size < 1:
+        raise ValueError("insert_batch_size must be positive")
+    if not manifest_paths:
+        raise ValueError("at least one embedding artifact manifest is required")
+    prepared = [
+        _prepare_artifact(
+            manifest_path,
+            config_path=config_path,
+            insert_batch_size=insert_batch_size,
+            verify_checksums=verify_checksums,
+        )
+        for manifest_path in manifest_paths
+    ]
+    model_ids = [artifact.spec.model_id for artifact in prepared]
+    if len(set(model_ids)) != len(model_ids):
+        raise ValueError("each model artifact may only be loaded once")
+    reference = prepared[0]
+    for artifact in prepared[1:]:
+        if (
+            artifact.frame_count != reference.frame_count
+            or artifact.frame_uid_sha256 != reference.frame_uid_sha256
+        ):
+            raise ValueError(
+                f"{artifact.spec.model_id} gallery Frame set differs from "
+                f"{reference.spec.model_id}; encode every model from the same manifest "
+                "without model-specific skipped Frames"
+            )
+    if dry_run:
+        for artifact in prepared:
+            LOGGER.info(
+                "%s: validated %d Frames",
+                artifact.spec.model_id,
+                artifact.frame_count,
+            )
+        return {
+            artifact.spec.model_id: artifact.frame_count for artifact in prepared
+        }
+    return {
+        artifact.spec.model_id: _load_prepared_artifact(
+            artifact,
+            insert_batch_size=insert_batch_size,
+            recreate=recreate,
+        )
+        for artifact in prepared
+    }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("manifest", type=Path)
+    parser.add_argument("manifests", nargs="+", type=Path)
     parser.add_argument(
         "--config",
         type=Path,
@@ -243,8 +393,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    load_artifact(
-        manifest_path=args.manifest,
+    load_artifacts(
+        manifest_paths=args.manifests,
         config_path=args.config,
         insert_batch_size=args.insert_batch_size,
         verify_checksums=not args.skip_checksums,

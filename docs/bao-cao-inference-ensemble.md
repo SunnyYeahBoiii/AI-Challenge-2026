@@ -555,8 +555,8 @@ timestamp_ms = round(timestamp_seconds × 1000)
 
 | Hạng mục | Kết quả |
 |---|---|
-| Backend tests | 147/147 đạt |
-| Backend coverage | 90.72% |
+| Backend tests | 151/151 đạt |
+| Backend coverage | 90.69% |
 | Ruff | Đạt |
 | Mypy | Đạt trên 60 source files |
 | Frontend lint | 0 lỗi; còn 5 warning không chặn build |

@@ -177,20 +177,30 @@ uv run python scripts/load_ensemble_embeddings.py \
   --dry-run
 ```
 
-Then load/upsert:
+Then preflight and load all model galleries together. The loader rejects the operation
+before touching Milvus when their canonical `frame_uid` sets differ:
 
 ```bash
 uv run python scripts/load_ensemble_embeddings.py \
-  ../../data/ensemble-embeddings/beit3-large-coco-retrieval-384/manifest.json
+  ../../data/ensemble-embeddings/beit3-large-coco-retrieval-384/manifest.json \
+  ../../data/ensemble-embeddings/bge-vl-large/manifest.json \
+  ../../data/ensemble-embeddings/metaclip2-worldwide-huge/manifest.json \
+  ../../data/ensemble-embeddings/perception-core-l14-336/manifest.json
 ```
 
 The loader verifies checksums and shapes before writing. It refuses to load the new column
-format into a legacy auto-id collection. To migrate `data_frames`, first produce and verify
-a complete DFN5B artifact, back up the old collection, and only then use the explicit
+format into a legacy or incomplete schema, rejects stale collection rows, and verifies the
+final `frame_uid` set after every load. To migrate `data_frames`, first produce and verify a
+complete DFN5B artifact, back up the old collection, and only then use the explicit
 `--recreate` option. A safer rollout is to choose a new collection name, validate it, then
 change the config.
 
 ## 5. Online retrieval and fusion
+
+The API defaults `ENSEMBLE_MAX_LOADED_MODELS=1`. On the target 6 GB GPU, the registry
+therefore loads and evicts encoders sequentially instead of retaining all four checkpoints
+and causing an out-of-memory failure. Machines with enough VRAM may raise this value.
+Keep `GUNICORN_WORKERS=1` when models share one GPU.
 
 `POST /api/search` automatically uses every enabled model:
 
