@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
+import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
 
 export interface BoxQuery {
   id: string;
@@ -13,6 +14,7 @@ export interface BoxQuery {
   content: string;
   enabled: boolean;
   tags?: string[];
+  tagMatchMode?: "and" | "or";
   keywords?: string[];
   topK?: number;
   enhance?: boolean;
@@ -194,8 +196,30 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
             <TagInput
               tags={query.tags || []}
               onChange={(tags) => onUpdate({ tags })}
-              placeholder="Add tag..."
+              placeholder="Search COCO class..."
+              suggestions={COCO_CLASS_NAMES}
+              allowCustomValues={false}
             />
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-label-sm text-on-surface-variant">Match tags</span>
+              <div className="flex overflow-hidden rounded border border-outline-variant">
+                {(["and", "or"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => onUpdate({ tagMatchMode: mode })}
+                    className={`px-2 py-1 text-label-xs uppercase transition-colors ${
+                      (query.tagMatchMode ?? "and") === mode
+                        ? "bg-primary text-on-primary"
+                        : "text-on-surface-variant hover:bg-surface-container-high"
+                    }`}
+                    aria-pressed={(query.tagMatchMode ?? "and") === mode}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         <button

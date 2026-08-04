@@ -51,6 +51,7 @@ export default function Home() {
           text: q.type === "text" ? q.content : undefined,
           image: q.type === "image" ? q.content : undefined,
           tags: q.tags?.length ? q.tags : undefined,
+          tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
           keywords: q.keywords?.length ? q.keywords : undefined,
           topk: q.topK ?? 100,
           enhance: q.enhance ?? false,
@@ -94,7 +95,12 @@ export default function Home() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
-      <FilterPanel onSearch={handleSearch} onClear={handleClear} isLoading={isLoading} />
+      <FilterPanel
+        onSearch={handleSearch}
+        onClear={handleClear}
+        onValidationError={setSearchError}
+        isLoading={isLoading}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">

@@ -22,7 +22,7 @@ _EMPTY: dict[str, Any] = {}
 
 def _read_one(path: Path) -> tuple[str, dict[str, Any]] | None:
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None

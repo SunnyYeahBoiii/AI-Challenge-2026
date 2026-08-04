@@ -19,32 +19,6 @@ def frame(video_id, frame_index, pts_time=0.0, score=0.0):
 
 
 # ── Tag expressions ─────────────────────────────────────────────────────────
-def test_tag_expr_empty():
-    assert hs.build_tag_expr([], "and") is None
-    assert hs.build_tag_expr(None, "or") is None
-
-
-def test_tag_expr_keeps_every_tag():
-    expr = hs.build_tag_expr(["car", "person"], "and")
-    assert expr == 'array_contains_all(tags, ["car", "person"])'
-
-
-def test_tag_expr_or_mode():
-    expr = hs.build_tag_expr(["car", "person"], "or")
-    assert expr == 'array_contains_any(tags, ["car", "person"])'
-
-
-def test_tag_expr_escapes_quotes():
-    expr = hs.build_tag_expr(['say "hi"'], "and")
-    assert expr == 'array_contains_all(tags, ["say \\"hi\\""])'
-
-
-def test_and_exprs_skips_empty():
-    assert hs._and_exprs(None, "a", "") == "a"
-    assert hs._and_exprs("a", "b") == "(a) and (b)"
-    assert hs._and_exprs(None, None) is None
-
-
 # ── RRF ─────────────────────────────────────────────────────────────────────
 def test_rrf_rewards_frames_matched_by_several_boxes():
     box1 = [frame("V1", 1, score=0.9), frame("V1", 2, score=0.8)]

@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class EmbedTextRequest(BaseModel):
@@ -17,6 +17,13 @@ class SearchRequest(BaseModel):
     topk: int = 20
     enhance: bool = True
 
+    @model_validator(mode="after")
+    def validate_tags_need_text(self) -> "SearchRequest":
+        """Require a vector-producing text query when tags are present."""
+        if self.tags and not self.text.strip():
+            raise ValueError("tags require a text query")
+        return self
+
 
 class BoxQuery(BaseModel):
     text: str = ""
@@ -28,6 +35,13 @@ class BoxQuery(BaseModel):
     keyword_source: Literal["all", "ocr", "asr"] = "all"
     enhance: bool | None = None
     topk: int = 20
+
+    @model_validator(mode="after")
+    def validate_tags_need_query_content(self) -> "BoxQuery":
+        """Require text or image content because tags only refine vector results."""
+        if self.tags and not (self.text.strip() or self.image.strip()):
+            raise ValueError("tags require text or image content")
+        return self
 
 
 class MultiBoxRequest(BaseModel):

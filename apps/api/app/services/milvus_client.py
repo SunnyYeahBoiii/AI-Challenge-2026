@@ -6,6 +6,7 @@ from typing import Any
 from pymilvus import Collection, connections
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
+MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
 COLLECTION_NAME = "data_frames"
 SEARCH_EF = int(os.getenv("MILVUS_SEARCH_EF", "128"))
 QUERY_LIMIT = 16384
@@ -40,7 +41,7 @@ def _row_to_frame(row: dict[str, Any]) -> Frame:
 
 class MilvusClient:
     def __init__(self) -> None:
-        connections.connect(alias="default", uri=MILVUS_URI)
+        connections.connect(alias="default", uri=MILVUS_URI, token=MILVUS_TOKEN)
         self.col = Collection(COLLECTION_NAME)
         self.col.load()
 
