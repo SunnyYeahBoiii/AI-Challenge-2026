@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - image: sunnyyeahboiii/ai-challenge-2026/api
-            context: ./apps/api
+            context: .
             file: ./apps/api/Dockerfile
           - image: sunnyyeahboiii/ai-challenge-2026/web
             context: .
