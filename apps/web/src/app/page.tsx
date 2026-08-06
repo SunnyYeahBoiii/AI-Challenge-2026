@@ -57,9 +57,12 @@ export default function Home() {
           topk: q.topK ?? 100,
           enhance: q.enhance ?? false,
         }));
+        // Request-level topk drives merge_rrf / merge_temporal; box topk alone is ignored.
+        const topk = Math.max(...enabledQueries.map((q) => q.topK ?? 100), 1);
         const data = await multiBoxSearch({
           box_queries: boxQueries,
           mode: newFilter.mode,
+          topk,
         });
         setFrames(sortFrames(data.results));
       }
