@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from flask import Blueprint, request, jsonify, send_file
+from pymilvus.exceptions import MilvusException
+
 from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
 from app.services.hybrid_search import (
     search_text,
@@ -14,6 +16,11 @@ from app.services.object_filter import ObjectFilterError
 KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes" / "keyframes"
 
 search_bp = Blueprint("search", __name__)
+
+
+def _milvus_error_response(error: MilvusException):
+    """Surface Milvus client failures as JSON instead of Werkzeug HTML."""
+    return jsonify({"error": str(error)}), 400
 
 
 @search_bp.route("/api/search", methods=["POST"])
@@ -37,6 +44,8 @@ def api_search():
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
+    except MilvusException as error:
+        return _milvus_error_response(error)
     return jsonify({
         "query": data.text,
         "enhanced": data.enhance,
@@ -74,6 +83,8 @@ def api_search_image():
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
+    except MilvusException as error:
+        return _milvus_error_response(error)
     return jsonify({
         "filename": file.filename,
         "results": results,
@@ -87,7 +98,10 @@ def api_search_video():
         data = VideoIdRequest(**request.get_json())
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-    results = search_video_frames(data.video_id, data.frame_index, data.range)
+    try:
+        results = search_video_frames(data.video_id, data.frame_index, data.range)
+    except MilvusException as error:
+        return _milvus_error_response(error)
     return jsonify({
         "video_id": data.video_id,
         "results": results,
@@ -101,7 +115,10 @@ def api_search_similar():
         data = SimilarFramesRequest(**request.get_json())
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-    results = search_similar_frames(data.video_id, data.frame_index, data.topk)
+    try:
+        results = search_similar_frames(data.video_id, data.frame_index, data.topk)
+    except MilvusException as error:
+        return _milvus_error_response(error)
     return jsonify({
         "results": results,
         "total": len(results),
@@ -125,6 +142,8 @@ def api_frames():
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
+    except MilvusException as error:
+        return _milvus_error_response(error)
     return jsonify({
         "results": results,
         "total": len(results),
