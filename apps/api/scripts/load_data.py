@@ -19,9 +19,8 @@ Data files:
 import argparse
 import json
 import os
-import re
+import sys
 import time
-import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -36,14 +35,21 @@ from pymilvus import (
     utility,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from es_common import (  # noqa: E402
+    ES_BATCH,
+    bulk_insert_es,
+    connect_elasticsearch,
+    ensure_es_index,
+    extract_frame_info,
+    frame_doc_from_record,
+)
+
 # ── Config ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
-ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-ES_USER = os.getenv("ES_USER", "")
-ES_PASS = os.getenv("ES_PASS", "")
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 BATCH1_DIR = DATA_ROOT / "Data" / "Batch1"
@@ -52,27 +58,13 @@ MEDIA_DIR = DATA_ROOT / "media-info"
 
 EMBEDDING_DIM = 1024
 MILVUS_BATCH = 8000
-ES_BATCH = 1000
 
 COLLECTION_NAME = "data_frames"
-ES_INDEX = "video_texts"
 
 TAG_ITEM_MAX_LEN = 32
 TAGS_MAX_COUNT = 100
 
 CHECKPOINT_FILE = Path(__file__).resolve().parent / ".load_checkpoint.json"
-
-
-# ── Text normalization ──────────────────────────────────────────────────────
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
 
 
 # ── Milvus ──────────────────────────────────────────────────────────────────
@@ -119,42 +111,6 @@ def ensure_milvus_collection() -> Collection:
     return col
 
 
-# ── Elasticsearch ───────────────────────────────────────────────────────────
-def connect_elasticsearch() -> Elasticsearch:
-    print(f"Connecting to Elasticsearch at {ES_URL}...")
-    if ES_USER and ES_PASS:
-        es = Elasticsearch(ES_URL, basic_auth=(ES_USER, ES_PASS))
-    else:
-        es = Elasticsearch(ES_URL)
-    if not es.ping():
-        raise ConnectionError("Cannot ping Elasticsearch")
-    print("Elasticsearch connected.")
-    return es
-
-
-def ensure_es_index(es: Elasticsearch) -> None:
-    if es.indices.exists(index=ES_INDEX):
-        print(f"Index '{ES_INDEX}' exists.")
-        return
-
-    mapping = {
-        "mappings": {
-            "properties": {
-                "video_id": {"type": "keyword"},
-                "video_path": {"type": "keyword"},
-                "frame_id": {"type": "integer"},
-                "frame_idx": {"type": "integer"},
-                "frame_path": {"type": "keyword"},
-                "ocr_text": {"type": "text"},
-                "asr_text": {"type": "text"},
-                "timestamp": {"type": "float"},
-            }
-        }
-    }
-    es.indices.create(index=ES_INDEX, body=mapping)
-    print(f"Created index '{ES_INDEX}'.")
-
-
 # ── YouTube URL mapping ─────────────────────────────────────────────────────
 def load_youtube_urls() -> dict[str, str]:
     youtube_map: dict[str, str] = {}
@@ -190,16 +146,6 @@ def load_checkpoint() -> set[str]:
 def save_checkpoint(processed: set[str]) -> None:
     with open(CHECKPOINT_FILE, "w") as f:
         json.dump({"processed": sorted(processed)}, f)
-
-
-# ── Extract metadata from file_path ─────────────────────────────────────────
-def extract_frame_info(file_path: str) -> tuple[str, int, str]:
-    """Extract video_path, frame_id, frame_path from a file_path like 'keyframes/L21/L21_V001/0001.webp'."""
-    parts = file_path.split("/")
-    video_path = "/".join(parts[:-1])  # keyframes/L21/L21_V001
-    frame_file = parts[-1]  # 0001.webp
-    frame_id = int(frame_file.split(".")[0])  # 1
-    return video_path, frame_id, file_path
 
 
 # ── Data loading ────────────────────────────────────────────────────────────
@@ -291,19 +237,10 @@ def load_batch(
         milvus_buffer[12].append(tags)          # tags
         milvus_buffer[13].append(embedding.tolist())  # embedding
 
-        # ES buffer
-        es_buffer.append(
-            {
-                "video_id": video_id,
-                "video_path": video_path,
-                "frame_id": frame_id,
-                "frame_idx": frame_idx,
-                "frame_path": frame_path,
-                "ocr_text": normalize_text(record.get("ocr_text", "")),
-                "asr_text": normalize_text(record.get("audio_text", "")),
-                "timestamp": pts_time,
-            }
-        )
+        # ES buffer (ocr_text / asr_text from ocr_text / audio_text)
+        es_doc = frame_doc_from_record(record)
+        if es_doc is not None:
+            es_buffer.append(es_doc)
 
         # Flush Milvus
         if len(milvus_buffer[0]) >= MILVUS_BATCH:
@@ -313,7 +250,7 @@ def load_batch(
 
         # Flush ES
         if len(es_buffer) >= ES_BATCH:
-            _bulk_insert_es(es, es_buffer)
+            bulk_insert_es(es, es_buffer)
             es_buffer = []
 
         processed.add(file_path)
@@ -328,24 +265,11 @@ def load_batch(
         col.insert(milvus_buffer)
         total_frames += len(milvus_buffer[0])
     if es_buffer:
-        _bulk_insert_es(es, es_buffer)
+        bulk_insert_es(es, es_buffer)
 
     elapsed = time.time() - t0
     print(f"  Done: {count} records, {total_frames} frames in {elapsed:.1f}s")
     return count, total_frames
-
-
-def _bulk_insert_es(es: Elasticsearch, docs: list[dict[str, object]]) -> None:
-    body: list[dict[str, object]] = []
-    for doc in docs:
-        body.append({"index": {"_index": ES_INDEX}})
-        body.append(doc)
-    resp = es.bulk(body=body, refresh="wait_for")
-    if resp.get("errors"):
-        errors = [item for item in resp["items"] if item.get("index", {}).get("error")]
-        print(f"  ES bulk: {len(errors)} errors out of {len(docs)} docs")
-        for err in errors[:3]:
-            print(f"    {err['index']['error']}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -393,7 +317,7 @@ def load(
     print(f"\nDone! {total_frames} frames loaded in {elapsed:.1f}s")
     print(f"  Videos: {total_videos} processed")
     print(f"  Milvus: {COLLECTION_NAME} ({col.num_entities} entities)")
-    print(f"  ES: {ES_INDEX}")
+    print(f"  ES: video_texts")
 
 
 if __name__ == "__main__":
