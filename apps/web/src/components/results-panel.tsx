@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import type { FrameResult } from "@/lib/api";
+
+/** How many frames to paint initially / on each scroll page. */
+const PAGE_SIZE = 48;
 
 interface ResultsPanelProps {
   frames: FrameResult[];
@@ -19,16 +22,46 @@ export function ResultsPanel({
   onFrameDetail,
   isLoading,
 }: ResultsPanelProps) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const scrollRootRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [frames]);
+
+  const visibleFrames = useMemo(
+    () => frames.slice(0, visibleCount),
+    [frames, visibleCount]
+  );
+
   const groupedFrames = useMemo(() => {
-    if (viewMode === "continuous") return [frames];
+    if (viewMode === "continuous") return [visibleFrames];
     const groups = new Map<string, FrameResult[]>();
-    frames.forEach((frame) => {
+    visibleFrames.forEach((frame) => {
       const key = frame.video_id;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(frame);
     });
     return Array.from(groups.values());
-  }, [frames, viewMode]);
+  }, [visibleFrames, viewMode]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const root = scrollRootRef.current;
+    if (!sentinel || !root || visibleCount >= frames.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((count) => Math.min(count + PAGE_SIZE, frames.length));
+        }
+      },
+      { root, rootMargin: "400px", threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [frames.length, visibleCount]);
 
   if (isLoading) {
     return (
@@ -62,10 +95,14 @@ export function ResultsPanel({
   }
 
   return (
-    <main className="flex-1 bg-surface-container-lowest overflow-y-auto p-container-padding">
+    <main
+      ref={scrollRootRef}
+      className="flex-1 bg-surface-container-lowest overflow-y-auto p-container-padding"
+    >
       <div className="flex justify-between items-center mb-4">
         <span className="text-label-md text-on-surface-variant">
-          {frames.length} {frames.length === 1 ? "result" : "results"}
+          Showing {visibleFrames.length} of {frames.length}{" "}
+          {frames.length === 1 ? "result" : "results"}
           {viewMode === "grouped" && groupedFrames.length > 1 && (
             <> · {groupedFrames.length} videos</>
           )}
@@ -73,7 +110,10 @@ export function ResultsPanel({
       </div>
       <div className="flex flex-col gap-6">
         {groupedFrames.map((group, groupIndex) => (
-          <div key={viewMode === "grouped" ? group[0].video_id : groupIndex} className="flex flex-col gap-2">
+          <div
+            key={viewMode === "grouped" ? group[0].video_id : groupIndex}
+            className="flex flex-col gap-2"
+          >
             {viewMode === "grouped" && (
               <div className="flex items-center gap-2 sticky top-0 bg-surface-container-lowest/95 backdrop-blur-sm py-1 z-10">
                 <Icon name="movie" size={16} className="text-on-surface-variant" />
@@ -116,6 +156,15 @@ export function ResultsPanel({
           </div>
         ))}
       </div>
+      {visibleCount < frames.length && (
+        <div
+          ref={sentinelRef}
+          className="h-8 flex items-center justify-center text-label-sm text-on-surface-variant"
+          aria-hidden
+        >
+          Loading more…
+        </div>
+      )}
     </main>
   );
 }
