@@ -52,7 +52,8 @@ export default function Home() {
           image: q.type === "image" ? q.content : undefined,
           tags: q.tags?.length ? q.tags : undefined,
           tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
-          keywords: q.keywords?.length ? q.keywords : undefined,
+          ocr_keywords: q.ocrKeywords?.length ? q.ocrKeywords : undefined,
+          asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
           topk: q.topK ?? 100,
           enhance: q.enhance ?? false,
         }));

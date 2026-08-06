@@ -5,7 +5,7 @@ import type { DragStartEvent, DragEndEvent, Modifier } from "@dnd-kit/core";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Icon } from "./icon";
-import { QueryBox, type BoxQuery } from "./query-box";
+import { QueryBox, QueryBoxStatic, type BoxQuery } from "./query-box";
 import { listVideos } from "@/lib/api";
 import type { VideoResult } from "@/lib/api";
 
@@ -37,7 +37,13 @@ export function FilterPanel({
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [dndReady, setDndReady] = useState(false);
   const isDraggingRef = useRef(false);
+
+  // Defer DndContext until after hydrate — dnd-kit a11y IDs differ SSR vs client.
+  useEffect(() => {
+    setDndReady(true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -229,22 +235,43 @@ export function FilterPanel({
             <Icon name="add" size={18} />
           </button>
         </div>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
-            <div className="flex flex-col gap-stack-gap">
-              {queries.map((query, index) => (
-                <QueryBox
-                  key={query.id}
-                  query={query}
-                  index={index}
-                  onUpdate={(updates) => updateQuery(query.id, updates)}
-                  onRemove={() => removeQuery(query.id)}
-                  canRemove={queries.length > 1}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        {dndReady ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-stack-gap">
+                {queries.map((query, index) => (
+                  <QueryBox
+                    key={query.id}
+                    query={query}
+                    index={index}
+                    onUpdate={(updates) => updateQuery(query.id, updates)}
+                    onRemove={() => removeQuery(query.id)}
+                    canRemove={queries.length > 1}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className="flex flex-col gap-stack-gap">
+            {queries.map((query, index) => (
+              <QueryBoxStatic
+                key={query.id}
+                query={query}
+                index={index}
+                onUpdate={(updates) => updateQuery(query.id, updates)}
+                onRemove={() => removeQuery(query.id)}
+                canRemove={queries.length > 1}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Action Buttons */}

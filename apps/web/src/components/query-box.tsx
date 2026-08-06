@@ -15,7 +15,8 @@ export interface BoxQuery {
   enabled: boolean;
   tags?: string[];
   tagMatchMode?: "and" | "or";
-  keywords?: string[];
+  ocrKeywords?: string[];
+  asrKeywords?: string[];
   topK?: number;
   enhance?: boolean;
 }
@@ -28,21 +29,34 @@ interface QueryBoxProps {
   canRemove: boolean;
 }
 
-export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryBoxProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: query.id });
+type SortableBindings = ReturnType<typeof useSortable> | null;
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
+/** Static box for SSR / pre-hydrate — same markup, no dnd-kit IDs. */
+export function QueryBoxStatic(props: QueryBoxProps) {
+  return <QueryBoxInner {...props} sortable={null} />;
+}
+
+/** Sortable box — must render inside DndContext + SortableContext. */
+export function QueryBox(props: QueryBoxProps) {
+  const sortable = useSortable({ id: props.query.id });
+  return <QueryBoxInner {...props} sortable={sortable} />;
+}
+
+function QueryBoxInner({
+  query,
+  index,
+  onUpdate,
+  onRemove,
+  canRemove,
+  sortable,
+}: QueryBoxProps & { sortable: SortableBindings }) {
+  const style = sortable
+    ? {
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        opacity: sortable.isDragging ? 0.5 : 1,
+      }
+    : undefined;
   const [showTags, setShowTags] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,8 +72,14 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
     }
   };
 
+  const nodeRef = sortable?.setNodeRef;
+
   return (
-    <div ref={setNodeRef} style={style} className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0 relative">
+    <div
+      ref={nodeRef}
+      style={style}
+      className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0 relative"
+    >
       {/* Index badge */}
       <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded bg-primary text-on-primary flex items-center justify-center text-label-xs">
         {index + 1}
@@ -77,8 +97,8 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           <button
             aria-label="Drag to reorder"
             className="text-outline hover:text-on-surface transition-colors p-1 cursor-grab active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
+            {...(sortable?.attributes ?? {})}
+            {...(sortable?.listeners ?? {})}
           >
             <Icon name="drag_indicator" size={16} />
           </button>
@@ -228,7 +248,9 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
         >
           <Icon name="key" size={14} className="text-outline" />
           <span className="text-label-sm text-on-surface-variant">
-            Keywords {query.keywords && query.keywords.length > 0 && `(${query.keywords.length})`}
+            Keywords
+            {((query.ocrKeywords?.length ?? 0) + (query.asrKeywords?.length ?? 0)) > 0 &&
+              ` (${(query.ocrKeywords?.length ?? 0) + (query.asrKeywords?.length ?? 0)})`}
           </span>
           <Icon
             name={showKeywords ? "expand_less" : "expand_more"}
@@ -237,12 +259,23 @@ export function QueryBox({ query, index, onUpdate, onRemove, canRemove }: QueryB
           />
         </button>
         {showKeywords && (
-          <div className="p-3">
-            <TagInput
-              tags={query.keywords || []}
-              onChange={(keywords) => onUpdate({ keywords })}
-              placeholder="Add keyword..."
-            />
+          <div className="p-3 space-y-3">
+            <div>
+              <span className="text-label-sm text-on-surface-variant">OCR</span>
+              <TagInput
+                tags={query.ocrKeywords || []}
+                onChange={(ocrKeywords) => onUpdate({ ocrKeywords })}
+                placeholder="Add OCR keyword..."
+              />
+            </div>
+            <div>
+              <span className="text-label-sm text-on-surface-variant">ASR</span>
+              <TagInput
+                tags={query.asrKeywords || []}
+                onChange={(asrKeywords) => onUpdate({ asrKeywords })}
+                placeholder="Add ASR keyword..."
+              />
+            </div>
           </div>
         )}
       </div>
