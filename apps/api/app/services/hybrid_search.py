@@ -25,7 +25,7 @@ from app.services.embed import (
     enhance_query,
 )
 from app.services.es_client import es_client
-from app.services.milvus_client import get_milvus_client
+from app.services.milvus_client import clamp_milvus_topk, get_milvus_client
 from app.services.object_filter import filter_frames
 
 Frame = dict[str, Any]
@@ -70,8 +70,10 @@ def _enrich_frames(frames: Iterable[Frame]) -> list[Frame]:
         seen.add(key)
         meta = video_meta.get(f.get("video_id", ""))
         f["title"] = meta.get("title", "")
-        f["description"] = meta.get("description", "")
-        f["keywords"] = meta.get("keywords", [])
+        # Omit bulky per-video fields from every hit — they dominate JSON size at
+        # large topk and the UI does not render them on result cards.
+        f["description"] = ""
+        f["keywords"] = []
         f["author"] = meta.get("author", "")
         f["publish_date"] = meta.get("publish_date", "")
         f["watch_url"] = f.get("youtube_url") or meta.get("watch_url", "")
@@ -122,7 +124,7 @@ def search_text(
         query = enhance_query(query)
     if query:
         vec: list[float] = embed_text([query])[0].tolist()
-        frames = get_milvus_client().search(vec, topk=topk * 2)
+        frames = get_milvus_client().search(vec, topk=clamp_milvus_topk(topk * 2))
     else:
         return []
     frames = filter_frames(frames, tags, tag_mode)
@@ -154,7 +156,7 @@ def search_image(
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = embed_image(image_bytes).tolist()
-    frames = get_milvus_client().search(vec, topk=topk * 2)
+    frames = get_milvus_client().search(vec, topk=clamp_milvus_topk(topk * 2))
     frames = filter_frames(frames, tags, tag_mode)
     frames = _filter_by_keywords(
         frames,
@@ -311,7 +313,9 @@ def _retrieve_boxes(
     first, then search deeper inside only those videos."""
     vectors = _box_vectors(boxes, enhance)
 
-    stage1_topk = max(topk, STAGE1_TOPK) if two_stage else topk * 2
+    # Overfetch for filters/RRF, but never exceed Milvus's ANN ceiling.
+    raw_stage1 = max(topk, STAGE1_TOPK) if two_stage else topk * 2
+    stage1_topk = clamp_milvus_topk(raw_stage1)
     per_box = _grouped_search(boxes, vectors, stage1_topk)
     per_box = _apply_box_object_filters(boxes, per_box)
     per_box = _apply_box_keywords(boxes, per_box)
@@ -336,7 +340,9 @@ def _retrieve_boxes(
     if video_expr is None:
         return per_box, vectors
 
-    deep = _grouped_search(boxes, vectors, max(topk, STAGE2_TOPK), extra_expr=video_expr)
+    deep = _grouped_search(
+        boxes, vectors, clamp_milvus_topk(max(topk, STAGE2_TOPK)), extra_expr=video_expr
+    )
     deep = _apply_box_object_filters(boxes, deep)
     deep = _apply_box_keywords(boxes, deep)
     for i in active:

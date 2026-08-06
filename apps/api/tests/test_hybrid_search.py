@@ -131,3 +131,24 @@ def test_enrich_dedupes_by_frame_key():
 def test_enrich_sets_thumbnail_url():
     enriched = hs._enrich_frames([frame("V1", 7)])
     assert enriched[0]["thumbnail_url"] == "/api/keyframes/V1/7"
+
+
+def test_enrich_omits_bulky_video_fields(monkeypatch):
+    monkeypatch.setattr(
+        hs.video_meta,
+        "get",
+        lambda _vid: {
+            "title": "T",
+            "description": "very long description " * 50,
+            "keywords": ["a", "b", "c"],
+            "author": "me",
+            "publish_date": "01/01/2024",
+            "watch_url": "https://example.com",
+        },
+    )
+    enriched = hs._enrich_frames([frame("V1", 1)])
+    assert enriched[0]["title"] == "T"
+    assert enriched[0]["description"] == ""
+    assert enriched[0]["keywords"] == []
+    assert enriched[0]["author"] == "me"
+

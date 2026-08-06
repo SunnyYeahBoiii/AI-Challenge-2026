@@ -9,7 +9,14 @@ MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
 COLLECTION_NAME = "data_frames"
 SEARCH_EF = int(os.getenv("MILVUS_SEARCH_EF", "128"))
-QUERY_LIMIT = 16384
+# Hard ceiling enforced by Milvus ANN search (limit / HNSW ef).
+MILVUS_MAX_TOPK = 16384
+QUERY_LIMIT = MILVUS_MAX_TOPK
+
+
+def clamp_milvus_topk(topk: int) -> int:
+    """Clamp a requested ANN topk into Milvus's valid [1, MILVUS_MAX_TOPK] range."""
+    return max(1, min(int(topk), MILVUS_MAX_TOPK))
 
 Frame = dict[str, Any]
 
@@ -55,12 +62,13 @@ class MilvusClient:
         in the same order as `embeddings`."""
         if not embeddings:
             return []
-        params = {"metric_type": "IP", "params": {"ef": max(SEARCH_EF, topk)}}
+        limit = clamp_milvus_topk(topk)
+        params = {"metric_type": "IP", "params": {"ef": max(SEARCH_EF, limit)}}
         results = self.col.search(
             data=list(embeddings),
             anns_field="embedding",
             param=params,
-            limit=topk,
+            limit=limit,
             expr=expr,
             output_fields=OUTPUT_FIELDS,
         )
