@@ -5,6 +5,8 @@ from typing import Any
 
 from elasticsearch import Elasticsearch
 
+from app.services.text_normalize import normalize_text
+
 logger = logging.getLogger(__name__)
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
@@ -15,12 +17,28 @@ MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
 
 FrameKey = tuple[Any, Any]
 
-# Documents in `video_texts` are frame-level and only carry ocr_text / asr_text.
-_SOURCE_FIELDS = {
-    "all": ["ocr_text^3", "asr_text^2"],
-    "ocr": ["ocr_text"],
-    "asr": ["asr_text"],
-}
+
+def _normalized_keywords(keywords: Sequence[str]) -> list[str]:
+    return [kw for kw in (normalize_text(k) for k in keywords) if kw]
+
+
+def _fuzzy_field_group(
+    keywords: Sequence[str], field: str, mode: str
+) -> dict[str, Any] | None:
+    """Build a bool should-group of fuzzy matches against one text field."""
+    normalized = _normalized_keywords(keywords)
+    if not normalized:
+        return None
+    clauses = [
+        {"multi_match": {"query": kw, "fields": [field], "fuzziness": "AUTO"}}
+        for kw in normalized
+    ]
+    return {
+        "bool": {
+            "should": clauses,
+            "minimum_should_match": 1 if mode == "or" else len(clauses),
+        }
+    }
 
 
 class ESClient:
@@ -38,13 +56,15 @@ class ESClient:
     ) -> list[dict[str, Any]]:
         must: list[dict[str, Any]] = []
         if query:
-            must.append({
-                "multi_match": {
-                    "query": query,
-                    "fields": ["ocr_text^3", "asr_text^2"],
-                    "fuzziness": "AUTO",
-                }
-            })
+            normalized = normalize_text(query)
+            if normalized:
+                must.append({
+                    "multi_match": {
+                        "query": normalized,
+                        "fields": ["ocr_text^3", "asr_text^2"],
+                        "fuzziness": "AUTO",
+                    }
+                })
         body: dict[str, Any] = {"size": size}
         if must:
             body["query"] = {"bool": {"must": must}}
@@ -68,30 +88,51 @@ class ESClient:
     def match_frames_by_keywords(
         self,
         frame_keys: Iterable[FrameKey],
-        keywords: Sequence[str],
+        keywords: Sequence[str] | None = None,
         mode: str = "and",
         source: str = "all",
+        *,
+        ocr_keywords: Sequence[str] | None = None,
+        asr_keywords: Sequence[str] | None = None,
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
-        `frame_keys` is an iterable of (video_id, frame_index) tuples. Both sides
-        of the join are frame-level: matching on video_id alone would let one
-        matching frame drag in every other frame of the same video.
+        OCR keywords fuzzy-match `ocr_text` only; ASR keywords match `asr_text`
+        only. When both groups are non-empty they are AND-ed. Within each group,
+        `mode` controls and/or.
+
+        Legacy `keywords` + `source` still work when the dedicated lists are empty:
+        ocr/asr map to one field; all duplicates keywords into both groups.
         """
         keys = list(frame_keys)
-        if not keywords or not keys:
+        ocr = list(ocr_keywords or [])
+        asr = list(asr_keywords or [])
+        if not ocr and not asr and keywords:
+            if source == "ocr":
+                ocr = list(keywords)
+            elif source == "asr":
+                asr = list(keywords)
+            else:
+                ocr = list(keywords)
+                asr = list(keywords)
+
+        if (not ocr and not asr) or not keys:
             return set(keys)
 
         video_ids = sorted({vid for vid, _ in keys})
         frame_ids = sorted({idx for _, idx in keys})
-        fields = _SOURCE_FIELDS.get(source, _SOURCE_FIELDS["all"])
-        clauses = [
-            {"multi_match": {"query": kw, "fields": fields, "fuzziness": "AUTO"}}
-            for kw in keywords
-        ]
+        must: list[dict[str, Any]] = []
+        ocr_group = _fuzzy_field_group(ocr, "ocr_text", mode)
+        asr_group = _fuzzy_field_group(asr, "asr_text", mode)
+        if ocr_group:
+            must.append(ocr_group)
+        if asr_group:
+            must.append(asr_group)
+        if not must:
+            return set(keys)
+
         bool_query: dict[str, Any] = {
-            "should": clauses,
-            "minimum_should_match": 1 if mode == "or" else len(clauses),
+            "must": must,
             "filter": [
                 {"terms": {"video_id": video_ids}},
                 {"terms": {"frame_id": frame_ids}},
@@ -110,7 +151,8 @@ class ESClient:
             # "the keyword matched nothing". Say so instead.
             logger.warning(
                 "keyword match hit the %d-doc page size; some matches were dropped "
-                "(raise ES_MAX_KEYWORD_HITS)", size
+                "(raise ES_MAX_KEYWORD_HITS)",
+                size,
             )
         matched = {
             (hit["_source"]["video_id"], hit["_source"]["frame_id"])

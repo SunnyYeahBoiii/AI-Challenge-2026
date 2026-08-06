@@ -4,6 +4,7 @@ import json
 
 from app.services import video_meta
 from app.services.es_client import ESClient
+from app.services.text_normalize import normalize_text
 
 
 # ── video_meta ──────────────────────────────────────────────────────────────
@@ -62,6 +63,10 @@ def _client(hits):
     return client
 
 
+def _must(client):
+    return client.es.body["query"]["bool"]["must"]
+
+
 def test_no_keywords_keeps_everything():
     client = _client([])
     keys = [("V1", 1), ("V1", 2)]
@@ -71,13 +76,15 @@ def test_no_keywords_keeps_everything():
 def test_filter_is_frame_level_not_video_level():
     """One matching frame must not drag in the rest of its video."""
     client = _client([{"video_id": "V1", "frame_id": 1}])
-    matched = client.match_frames_by_keywords([("V1", 1), ("V1", 2)], ["hello"])
+    matched = client.match_frames_by_keywords(
+        [("V1", 1), ("V1", 2)], ocr_keywords=["hello"]
+    )
     assert matched == {("V1", 1)}
 
 
 def test_query_filters_on_both_video_and_frame():
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1), ("V2", 4)], ["hello"])
+    client.match_frames_by_keywords([("V1", 1), ("V2", 4)], ocr_keywords=["hello"])
     filters = client.es.body["query"]["bool"]["filter"]
     assert {"terms": {"video_id": ["V1", "V2"]}} in filters
     assert {"terms": {"frame_id": [1, 4]}} in filters
@@ -85,22 +92,75 @@ def test_query_filters_on_both_video_and_frame():
 
 def test_and_mode_requires_every_keyword():
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1)], ["a", "b"], mode="and")
-    assert client.es.body["query"]["bool"]["minimum_should_match"] == 2
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["a", "b"], mode="and")
+    ocr_group = _must(client)[0]["bool"]
+    assert ocr_group["minimum_should_match"] == 2
 
 
 def test_or_mode_requires_one_keyword():
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1)], ["a", "b"], mode="or")
-    assert client.es.body["query"]["bool"]["minimum_should_match"] == 1
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["a", "b"], mode="or")
+    ocr_group = _must(client)[0]["bool"]
+    assert ocr_group["minimum_should_match"] == 1
 
 
-def test_keyword_source_selects_fields():
+def test_ocr_keywords_search_ocr_field_only():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
+    must = _must(client)
+    assert len(must) == 1
+    clause = must[0]["bool"]["should"][0]["multi_match"]
+    assert clause["fields"] == ["ocr_text"]
+    assert clause["fuzziness"] == "AUTO"
+
+
+def test_asr_keywords_search_asr_field_only():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], asr_keywords=["chao"])
+    must = _must(client)
+    assert len(must) == 1
+    clause = must[0]["bool"]["should"][0]["multi_match"]
+    assert clause["fields"] == ["asr_text"]
+
+
+def test_ocr_and_asr_groups_are_anded():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)],
+        ocr_keywords=["1172"],
+        asr_keywords=["chao mung"],
+    )
+    must = _must(client)
+    assert len(must) == 2
+    fields = {
+        group["bool"]["should"][0]["multi_match"]["fields"][0] for group in must
+    }
+    assert fields == {"ocr_text", "asr_text"}
+
+
+def test_query_keywords_are_normalized():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], asr_keywords=["Chào Mừng!"])
+    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
+    assert clause["query"] == normalize_text("Chào Mừng!")
+    assert clause["query"] == "chao mung"
+
+
+def test_legacy_source_ocr_maps_to_ocr_field():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
-    clause = client.es.body["query"]["bool"]["should"][0]["multi_match"]
+    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
     assert clause["fields"] == ["ocr_text"]
 
+
+def test_legacy_source_asr_maps_to_asr_field():
+    client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="asr")
-    clause = client.es.body["query"]["bool"]["should"][0]["multi_match"]
+    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
     assert clause["fields"] == ["asr_text"]
+
+
+def test_legacy_source_all_ands_both_fields():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ["a"], source="all")
+    assert len(_must(client)) == 2

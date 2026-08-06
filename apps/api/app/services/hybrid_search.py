@@ -82,15 +82,24 @@ def _enrich_frames(frames: Iterable[Frame]) -> list[Frame]:
 
 def _filter_by_keywords(
     frames: list[Frame],
-    keywords: Sequence[str] | None,
+    ocr_keywords: Sequence[str] | None = None,
+    asr_keywords: Sequence[str] | None = None,
     mode: str = "and",
+    *,
+    keywords: Sequence[str] | None = None,
     source: str = "all",
 ) -> list[Frame]:
     """Drop frames whose OCR/ASR text does not match, in one ES round-trip."""
-    if not keywords or not frames:
+    has_any = bool(ocr_keywords) or bool(asr_keywords) or bool(keywords)
+    if not has_any or not frames:
         return frames
     matched = es_client.match_frames_by_keywords(
-        [_frame_key(f) for f in frames], keywords, mode=mode, source=source
+        [_frame_key(f) for f in frames],
+        keywords=keywords,
+        mode=mode,
+        source=source,
+        ocr_keywords=ocr_keywords,
+        asr_keywords=asr_keywords,
     )
     return [f for f in frames if _frame_key(f) in matched]
 
@@ -105,6 +114,8 @@ def search_text(
     tag_mode: str = "and",
     keyword_mode: str = "and",
     keyword_source: str = "all",
+    ocr_keywords: Sequence[str] | None = None,
+    asr_keywords: Sequence[str] | None = None,
 ) -> list[Frame]:
     """Text search: enhance -> embed -> Milvus -> Polars tags -> ES keywords."""
     if enhance and query:
@@ -115,7 +126,14 @@ def search_text(
     else:
         return []
     frames = filter_frames(frames, tags, tag_mode)
-    frames = _filter_by_keywords(frames, keywords, keyword_mode, keyword_source)
+    frames = _filter_by_keywords(
+        frames,
+        ocr_keywords=ocr_keywords,
+        asr_keywords=asr_keywords,
+        mode=keyword_mode,
+        keywords=keywords,
+        source=keyword_source,
+    )
     frames = _enrich_frames(frames)
     for f in frames:
         f["score"] = f.get("vector_score", 0.0)
@@ -131,12 +149,21 @@ def search_image(
     tag_mode: str = "and",
     keyword_mode: str = "and",
     keyword_source: str = "all",
+    ocr_keywords: Sequence[str] | None = None,
+    asr_keywords: Sequence[str] | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = embed_image(image_bytes).tolist()
     frames = get_milvus_client().search(vec, topk=topk * 2)
     frames = filter_frames(frames, tags, tag_mode)
-    frames = _filter_by_keywords(frames, keywords, keyword_mode, keyword_source)
+    frames = _filter_by_keywords(
+        frames,
+        ocr_keywords=ocr_keywords,
+        asr_keywords=asr_keywords,
+        mode=keyword_mode,
+        keywords=keywords,
+        source=keyword_source,
+    )
     frames = _enrich_frames(frames)
     for f in frames:
         f["score"] = f.get("vector_score", 0.0)
@@ -268,9 +295,11 @@ def _apply_box_keywords(
     for i, box in enumerate(boxes):
         per_box[i] = _filter_by_keywords(
             per_box[i],
-            box.get("keywords"),
-            box.get("key_match_mode", "and"),
-            box.get("keyword_source", "all"),
+            ocr_keywords=box.get("ocr_keywords"),
+            asr_keywords=box.get("asr_keywords"),
+            mode=box.get("key_match_mode", "and"),
+            keywords=box.get("keywords"),
+            source=box.get("keyword_source", "all"),
         )
     return per_box
 

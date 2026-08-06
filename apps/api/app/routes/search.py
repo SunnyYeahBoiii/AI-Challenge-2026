@@ -32,6 +32,8 @@ def api_search():
             tag_mode=data.tag_mode,
             keyword_mode=data.keyword_mode,
             keyword_source=data.keyword_source,
+            ocr_keywords=data.ocr_keywords,
+            asr_keywords=data.asr_keywords,
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
@@ -51,6 +53,12 @@ def api_search_image():
     topk = int(request.form.get("topk", 20))
     tags = request.form.getlist("tags") if request.form.get("tags") else []
     keywords = request.form.getlist("keywords") if request.form.get("keywords") else []
+    ocr_keywords = (
+        request.form.getlist("ocr_keywords") if request.form.get("ocr_keywords") else []
+    )
+    asr_keywords = (
+        request.form.getlist("asr_keywords") if request.form.get("asr_keywords") else []
+    )
     image_bytes = file.read()
     try:
         results = search_image(
@@ -61,6 +69,8 @@ def api_search_image():
             tag_mode=request.form.get("tag_mode", "and"),
             keyword_mode=request.form.get("keyword_mode", "and"),
             keyword_source=request.form.get("keyword_source", "all"),
+            ocr_keywords=ocr_keywords,
+            asr_keywords=asr_keywords,
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500

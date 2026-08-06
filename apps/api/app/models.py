@@ -1,4 +1,5 @@
 from typing import Literal
+
 from pydantic import BaseModel, model_validator
 
 
@@ -11,6 +12,9 @@ class SearchRequest(BaseModel):
     text: str = ""
     tags: list[str] = []
     tag_mode: Literal["and", "or"] = "and"
+    ocr_keywords: list[str] = []
+    asr_keywords: list[str] = []
+    # Legacy single-list API; expanded into ocr/asr when those are empty.
     keywords: list[str] = []
     keyword_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
@@ -24,12 +28,29 @@ class SearchRequest(BaseModel):
             raise ValueError("tags require a text query")
         return self
 
+    @model_validator(mode="after")
+    def expand_legacy_keywords(self) -> "SearchRequest":
+        """Map legacy keywords+keyword_source into ocr/asr lists when unset."""
+        if self.ocr_keywords or self.asr_keywords or not self.keywords:
+            return self
+        if self.keyword_source == "ocr":
+            self.ocr_keywords = list(self.keywords)
+        elif self.keyword_source == "asr":
+            self.asr_keywords = list(self.keywords)
+        else:
+            # source=all: same keywords on both fields (AND across sources).
+            self.ocr_keywords = list(self.keywords)
+            self.asr_keywords = list(self.keywords)
+        return self
+
 
 class BoxQuery(BaseModel):
     text: str = ""
     image: str = ""  # base64 encoded
     tags: list[str] = []
     tag_match_mode: Literal["and", "or"] = "and"
+    ocr_keywords: list[str] = []
+    asr_keywords: list[str] = []
     keywords: list[str] = []
     key_match_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
@@ -41,6 +62,20 @@ class BoxQuery(BaseModel):
         """Require text or image content because tags only refine vector results."""
         if self.tags and not (self.text.strip() or self.image.strip()):
             raise ValueError("tags require text or image content")
+        return self
+
+    @model_validator(mode="after")
+    def expand_legacy_keywords(self) -> "BoxQuery":
+        """Map legacy keywords+keyword_source into ocr/asr lists when unset."""
+        if self.ocr_keywords or self.asr_keywords or not self.keywords:
+            return self
+        if self.keyword_source == "ocr":
+            self.ocr_keywords = list(self.keywords)
+        elif self.keyword_source == "asr":
+            self.asr_keywords = list(self.keywords)
+        else:
+            self.ocr_keywords = list(self.keywords)
+            self.asr_keywords = list(self.keywords)
         return self
 
 
