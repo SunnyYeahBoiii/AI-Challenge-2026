@@ -1,46 +1,47 @@
 # Data Import Guide
 
-How to load keyframe data into Milvus (embeddings) and Elasticsearch (metadata) for the FrameSeeker search system.
+Load pre-computed CLIP embeddings + metadata into Milvus (vector search) và Elasticsearch (full-text search).
 
 ## Prerequisites
 
 - Docker Desktop running
 - Python 3.11+ with `uv` installed
-- ~20 GB disk space (35k keyframe images + database storage)
-- GPU optional but recommended (CPU works but is ~10x slower)
+- Dữ liệu đã có trong `data/Data/Batch{1,2}/`
 
-## Architecture
+## Cấu trúc dữ liệu
 
 ```
 data/
-├── keyframes/keyframes/{L21-L24}/{video_id}/*.webp   → CLIP embed → Milvus
-├── map_keyframes/map_keyframes/{L21-L24}/{video_id}.csv  → frame metadata → Milvus
-└── media-info-aic25-b1/media-info/{video_id}.json       → video metadata → Elasticsearch
+├── Data/
+│   ├── Batch1/
+│   │   ├── clip-embeddings-batch1-aic25.npy   # (N, 1024) float32 embeddings
+│   │   └── concatenate-data.json               # metadata per frame
+│   └── Batch2/
+│       ├── clip-embeddings-batch2-aic25.npy
+│       └── concatenate-data.json
+├── keyframes/                                  # Ảnh keyframe .webp
+└── media-info/                                 # JSON metadata YouTube per video
 ```
 
-- **Milvus collection `keyframes`**: 35,396 frame embeddings (1024-dim) + shot/timing metadata
-- **Elasticsearch index `videos`**: 873 video metadata docs (title, description, keywords)
+- **Milvus collection `data_frames`**: frame embeddings (1024-dim) + timing/tags metadata
+- **Elasticsearch index `video_texts`**: OCR text + ASR text per frame (full-text search)
 
-## Step 1: Start databases
+## Bước 1: Khởi động dịch vụ
 
 ```bash
-docker compose up milvus elasticsearch -d
+docker compose up -d milvus elasticsearch
 ```
 
-Wait for health checks (~30s):
+Đợi health checks (~30s):
 
 ```bash
-docker compose ps  # both should show "healthy"
+docker compose ps
+# milvus và elasticsearch phải ở trạng thái "healthy"
 ```
 
-## Step 2: Configure environment
+## Bước 2: Cấu hình Environment
 
-```bash
-cd apps/api
-cp .env.example .env
-```
-
-`.env` should contain:
+File `apps/api/.env` đã có sẵn:
 
 ```
 MILVUS_URI=http://localhost:19530
@@ -48,100 +49,107 @@ MILVUS_TOKEN=
 ES_URL=http://localhost:9200
 ES_USER=elastic
 ES_PASS=
-OPENAI_API_KEY=
-SECRET_KEY=dev-secret-key
-FLASK_ENV=development
 ```
 
-## Step 3: Install Python dependencies
+## Bước 3: Cài dependencies
 
 ```bash
 cd apps/api
 uv sync
 ```
 
-## Step 4: Run data loading
+## Bước 4: Import dữ liệu
 
 ```bash
+cd apps/api
+
+# Import cả 2 batch
 uv run python scripts/load_data.py
+
+# Import từng batch
+uv run python scripts/load_data.py --batch 1
+uv run python scripts/load_data.py --batch 2
+
+# Test nhanh - chỉ 100 records
+uv run python scripts/load_data.py --limit 100
+
+# Dry run - kiểm tra logic, không insert thật
+uv run python scripts/load_data.py --dry-run --limit 50
 ```
 
-Expected output:
+Output mẫu:
 
 ```
-Loading CLIP model on cpu...
-CLIP model loaded.
 Connecting to Milvus at http://localhost:19530...
 Milvus connected.
-Created collection 'keyframes'.
+Collection 'data_frames' exists.
 Connecting to Elasticsearch at http://localhost:9200...
 Elasticsearch connected.
-Created index 'videos'.
+Index 'video_texts' exists.
+Loaded 873 YouTube URL mappings.
 
-Found 873 videos to process.
-
-[1/873] L21_V001: 525 frames | 525 total embedded | 1.2 frames/s
-[2/873] L21_V002: 312 frames | 837 total embedded | 1.1 frames/s
-...
-Done! 35396 frames loaded in 2847.3s
-  Milvus collection: keyframes (35396 entities)
-  ES index: videos
+Loading from Batch1...
+  JSON: data/Data/Batch1/concatenate-data.json
+  NPY: data/Data/Batch1/clip-embeddings-batch1-aic25.npy
+  Loaded 17698 JSON records.
+  Loaded 17698 embeddings with shape (17698, 1024).
+  [1000] 1000 frames | 142.3 frames/s
+  [2000] 2000 frames | 145.1 frames/s
+  Done: 17698 records, 17698 frames in 123.4s
 ```
 
-Timing estimate:
-- GPU (M1/M2/CUDA): ~15-30 minutes
-- CPU: ~30-60 minutes
-
-## Step 5: Verify
+## Bước 5: Verify
 
 ```bash
-# Check Milvus
-curl -s http://localhost:19530/v2/vectordb/collections/list | python3 -m json.tool
+# Kiểm tra Milvus
+uv run python -c "
+from dotenv import load_dotenv; load_dotenv('apps/api/.env')
+from pymilvus import connections, Collection
+connections.connect(uri='http://localhost:19530')
+col = Collection('data_frames')
+print(f'Entities: {col.num_entities}')
+"
 
-# Check Elasticsearch
-curl -s http://localhost:9200/videos/_count | python3 -m json.tool
-# Should return: {"count": 873}
+# Kiểm tra Elasticsearch
+curl -s http://localhost:9200/video_texts/_count | python3 -m json.tool
+```
 
-# Test search (after starting API)
-docker compose up api -d
-curl -s -X POST http://localhost:5000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{"text": "red car", "topk": 5}' | python3 -m json.tool
+Hoặc mở UI:
+- **Attu** (Milvus): http://localhost:3001
+- **Kibana** (ES): http://localhost:5601
+
+## Checkpoint & Resume
+
+Script tự động lưu checkpoint tại `apps/api/scripts/.load_checkpoint.json`. Records đã import sẽ bị bỏ qua khi chạy lại.
+
+Để re-import toàn bộ:
+
+```bash
+rm apps/api/scripts/.load_checkpoint.json
+```
+
+Để xóa sạch data:
+
+```bash
+# Xóa Milvus collection
+uv run python -c "
+from pymilvus import connections, utility
+connections.connect(uri='http://localhost:19530')
+utility.drop_collection('data_frames')
+print('Dropped data_frames')
+"
+
+# Xóa ES index
+curl -X DELETE http://localhost:9200/video_texts
 ```
 
 ## Troubleshooting
 
-**Milvus connection refused**
-```bash
-docker compose logs milvus | tail -20
-# Common: port 19530 already in use → stop other milvus container
-```
-
-**Elasticsearch yellow status**
-```bash
-curl -s http://localhost:9200/_cluster/health?pretty
-# yellow = single node (normal), red = disk space issue
-```
-
-**CLIP model download fails**
-```bash
-# Model downloads to ~/.cache/huggingface on first run
-# If behind proxy, set HF_ENDPOINT before running:
-export HF_ENDPOINT=https://hf-mirror.com
-```
-
-**Out of memory on CPU**
-- Reduce `BATCH_SIZE` in `scripts/load_data.py` (default 64, try 16)
-- Script processes one video at a time, so memory usage is bounded by largest video
-
-**Resume after partial run**
-- Milvus auto-increments IDs, duplicate frames get new IDs
-- For clean re-run: delete collection first
-```bash
-uv run python -c "
-from pymilvus import connections, utility
-connections.connect(uri='http://localhost:19530')
-utility.drop_collection('keyframes')
-print('Dropped.')
-"
-```
+| Vấn đề | Giải pháp |
+|--------|-----------|
+| Milvus connection refused | `docker compose logs milvus` — đợi health check hoặc port 19530 bị冲突 |
+| ES connection refused | Kiểm tra `ES_URL` trong `.env`, `docker compose logs elasticsearch` |
+| JSON/NPY count mismatch | Script tự cắt về min cả hai, xem log warning |
+| Muốn thêm OCR/ASR text | Chạy `uv run python scripts/index_es.py` (tách riêng) |
+| Muốn tạo index mới từ đầu | Thêm `recreate=True` vào `ensure_es_index()` |
+| Duplicate frames | Xóa checkpoint + drop collection trước khi chạy lại |
