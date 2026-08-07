@@ -24,7 +24,7 @@ OUTPUT_FIELDS = [
     "video_id", "video_path", "youtube_url",
     "frame_index", "frame_idx", "frame_path",
     "shot_idx", "start_time", "end_time",
-    "pts_time", "fps", "timestamp", "tags",
+    "pts_time", "fps", "timestamp",
 ]
 
 
@@ -33,7 +33,6 @@ def _hit_to_frame(hit: Any, score_key: str = "vector_score") -> Frame:
     frame: Frame = {"id": str(hit.id)}
     for field in OUTPUT_FIELDS:
         frame[field] = entity.get(field)
-    frame["tags"] = list(entity.get("tags") or [])
     frame[score_key] = float(hit.score)
     return frame
 
@@ -42,7 +41,6 @@ def _row_to_frame(row: dict[str, Any]) -> Frame:
     frame: Frame = {"id": str(row.get("id", ""))}
     for field in OUTPUT_FIELDS:
         frame[field] = row.get(field)
-    frame["tags"] = list(row.get("tags") or [])
     return frame
 
 

@@ -14,6 +14,7 @@ def normalize_text(text: str) -> str:
     """
     if not text:
         return ""
+    text = text.replace("Đ", "D").replace("đ", "d")
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     text = text.lower()
