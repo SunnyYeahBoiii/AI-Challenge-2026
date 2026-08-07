@@ -28,6 +28,10 @@ OUTPUT_FIELDS = [
 ]
 
 
+def _to_native(v: Any) -> Any:
+    return v.item() if hasattr(v, "item") else v
+
+
 def _hit_to_frame(hit: Any, score_key: str = "vector_score") -> Frame:
     entity = hit.entity
     frame: Frame = {"id": str(hit.id)}

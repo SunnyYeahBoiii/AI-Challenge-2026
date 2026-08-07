@@ -139,6 +139,16 @@ Import all records:
 ```bash
 cd apps/api
 uv run python scripts/load_data.py
+
+# Import từng batch
+uv run python scripts/load_data.py --batch 1
+uv run python scripts/load_data.py --batch 2
+
+# Test nhanh - chỉ 100 records
+uv run python scripts/load_data.py --limit 100
+
+# Dry run - kiểm tra logic, không insert thật
+uv run python scripts/load_data.py --dry-run --limit 50
 ```
 
 Import a small sample without writing to the databases:
