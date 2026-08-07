@@ -17,9 +17,12 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile
     ports:
-      - "5000:5000"
+      - "5001:5000"
     env_file:
       - ./apps/api/.env
+    environment:
+      - MILVUS_URI=http://milvus:19530
+      - ES_URL=http://elasticsearch:9200
     depends_on:
       milvus:
         condition: service_healthy
@@ -28,6 +31,7 @@ services:
     volumes:
       - ./apps/api/app:/app/app
       - ./data/objects:/app/data/objects:ro
+      - ./data/media-info:/app/data/media-info:ro
     develop:
       watch:
         - action: sync

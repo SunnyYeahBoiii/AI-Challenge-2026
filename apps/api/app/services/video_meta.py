@@ -11,7 +11,11 @@ import threading
 from pathlib import Path
 from typing import Any
 
-MEDIA_DIR = Path(__file__).resolve().parents[4] / "data" / "media-info"
+_BASE = Path(__file__).resolve()
+MEDIA_DIR = next(
+    (p / "data" / "media-info" for p in [_BASE, *_BASE.parents] if (p / "data" / "media-info").exists()),
+    _BASE,
+)
 
 _META: dict[str, dict[str, Any]] = {}
 _loaded = False

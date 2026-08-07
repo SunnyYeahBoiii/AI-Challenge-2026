@@ -28,11 +28,15 @@ OUTPUT_FIELDS = [
 ]
 
 
+def _to_native(v: Any) -> Any:
+    return v.item() if hasattr(v, "item") else v
+
+
 def _hit_to_frame(hit: Any, score_key: str = "vector_score") -> Frame:
     entity = hit.entity
     frame: Frame = {"id": str(hit.id)}
     for field in OUTPUT_FIELDS:
-        frame[field] = entity.get(field)
+        frame[field] = _to_native(entity.get(field))
     frame["tags"] = list(entity.get("tags") or [])
     frame[score_key] = float(hit.score)
     return frame
@@ -41,7 +45,7 @@ def _hit_to_frame(hit: Any, score_key: str = "vector_score") -> Frame:
 def _row_to_frame(row: dict[str, Any]) -> Frame:
     frame: Frame = {"id": str(row.get("id", ""))}
     for field in OUTPUT_FIELDS:
-        frame[field] = row.get(field)
+        frame[field] = _to_native(row.get(field))
     frame["tags"] = list(row.get("tags") or [])
     return frame
 

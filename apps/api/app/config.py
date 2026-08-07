@@ -10,7 +10,7 @@ load_dotenv()
 # search. Query-time encoding (app/services/embed.py) and ingestion must agree.
 MODEL_ID = os.getenv("CLIP_MODEL_ID", "hf-hub:apple/DFN5B-CLIP-ViT-H-14-384")
 API_DIR = Path(__file__).resolve().parent.parent
-PROJECT_DIR = API_DIR.parents[1]
+PROJECT_DIR = API_DIR if (API_DIR / "data").exists() else API_DIR.parents[1]
 DEFAULT_OBJECT_DETECTIONS_PATH = (PROJECT_DIR / "data" / "objects" / "object_detections.parquet")
 
 
