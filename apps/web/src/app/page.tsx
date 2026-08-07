@@ -6,6 +6,7 @@ import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
+import { YoutubePlayerDialog } from "@/components/youtube-player-dialog";
 import { Icon } from "@/components/icon";
 import type { FrameResult } from "@/lib/api";
 import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
@@ -21,6 +22,9 @@ export default function Home() {
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showYoutubePlayer, setShowYoutubePlayer] = useState(false);
+  const [youtubePlayerUrl, setYoutubePlayerUrl] = useState("");
+  const [youtubePlayerVideoId, setYoutubePlayerVideoId] = useState("");
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [healthStatus, setHealthStatus] = useState<string>("loading");
 
@@ -191,6 +195,23 @@ export default function Home() {
 
           <div className="flex items-center gap-3">
             <button
+              onClick={() => {
+                if (selectedFrame) {
+                  setYoutubePlayerUrl(selectedFrame.watch_url);
+                  setYoutubePlayerVideoId(selectedFrame.video_id);
+                } else if (videoId.trim()) {
+                  setYoutubePlayerUrl("");
+                  setYoutubePlayerVideoId(videoId.trim());
+                }
+                setShowYoutubePlayer(true);
+              }}
+              title="Open YouTube Player"
+              className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+            >
+              <Icon name="play_circle" size={18} />
+              YouTube Player
+            </button>
+            <button
               onClick={() => setShowSubmitConfirm(true)}
               disabled={!canSubmit}
               title={canSubmit ? "Submit to DRES" : "Select a frame or fill Frame ID and Video ID first"}
@@ -265,10 +286,33 @@ export default function Home() {
             setSelectedFrame(frame);
             handleFrameSelect(frame);
           }}
+          onOpenYoutube={(watchUrl, videoId) => {
+            setYoutubePlayerUrl(watchUrl);
+            setYoutubePlayerVideoId(videoId);
+            setSelectedFrame(null);
+            setShowYoutubePlayer(true);
+          }}
         />
       )}
 
       {showDresSettings && <DresSettingsDialog onClose={() => setShowDresSettings(false)} />}
+
+      {showYoutubePlayer && (
+        <YoutubePlayerDialog
+          watchUrl={youtubePlayerUrl}
+          videoId={youtubePlayerVideoId || undefined}
+          submissionType={submissionType}
+          onSubmissionTypeChange={setSubmissionType}
+          onClose={() => setShowYoutubePlayer(false)}
+          onSubmit={(submission) => {
+            setFrameId(submission.frameId);
+            setVideoId(submission.videoId);
+            setTimeSec(submission.timeSec);
+            setShowYoutubePlayer(false);
+            setShowSubmitConfirm(true);
+          }}
+        />
+      )}
 
       {showSubmitConfirm && canSubmit && (
         <SubmissionConfirmationDialog

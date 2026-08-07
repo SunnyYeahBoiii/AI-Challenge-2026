@@ -21,6 +21,7 @@ interface FrameDetailDialogProps {
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
   onFrameNavigate?: (frame: FrameResult) => void;
+  onOpenYoutube?: (watchUrl: string, videoId: string) => void;
 }
 
 export function FrameDetailDialog({
@@ -30,6 +31,7 @@ export function FrameDetailDialog({
   onClose,
   onSubmit,
   onFrameNavigate,
+  onOpenYoutube,
 }: FrameDetailDialogProps) {
   const [similarFrames, setSimilarFrames] = useState<FrameResult[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
@@ -176,6 +178,15 @@ export function FrameDetailDialog({
                   <span>Time</span>
                   <span className="text-white font-medium">{currentFrame.pts_time.toFixed(1)}s</span>
                 </div>
+              )}
+              {onOpenYoutube && (
+                <button
+                  onClick={() => onOpenYoutube(frame.watch_url, frame.video_id)}
+                  className="mt-1 flex items-center gap-1 text-label-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  <Icon name="open_in_new" size={12} />
+                  YouTube Player
+                </button>
               )}
             </div>
           </div>
