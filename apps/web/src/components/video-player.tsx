@@ -108,7 +108,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setLoading(true);
       setError(null);
 
-      const player = new window.YT!.Player(containerRef.current, {
+      // YT.Player replaces its target element with an <iframe>, which React doesn't know about.
+      // Mount it on a plain node React never diffs, so unmount only ever removes containerRef's
+      // whole subtree in one shot instead of trying to remove a child YT already swapped out.
+      const mountNode = document.createElement("div");
+      mountNode.className = "h-full w-full";
+      containerRef.current.appendChild(mountNode);
+
+      const player = new window.YT!.Player(mountNode, {
         videoId,
         playerVars: {
           autoplay: 0,
@@ -159,6 +166,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         intervalRef.current = undefined;
         playerRef.current = null;
         player.destroy();
+        mountNode.remove();
       };
     }, [apiReady, videoId]);
 
