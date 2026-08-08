@@ -108,7 +108,9 @@ export function ResultsPanel({
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(frame);
     });
-    return Array.from(groups.values());
+    return Array.from(groups.values())
+      .sort((a, b) => Math.max(...b.map((f) => f.score)) - Math.max(...a.map((f) => f.score)))
+      .map((group) => [...group].sort((a, b) => a.frame_idx - b.frame_idx));
   }, [visibleFrames, viewMode]);
 
   useEffect(() => {
