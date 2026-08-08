@@ -208,3 +208,33 @@ export async function healthCheck(): Promise<HealthStatus> {
   const { data } = await api.get("/health");
   return data;
 }
+
+// ====== Admin / model API ======
+
+export interface ModelStatus {
+  state: "none" | "loading" | "ready" | "error";
+  model_id: string | null;
+  collection_name: string | null;
+  embedding_dim: number | null;
+  error: string | null;
+}
+
+export async function getModelStatus(): Promise<{ status: ModelStatus; available_models: string[] }> {
+  const { data } = await api.get("/admin/model");
+  return data;
+}
+
+/**
+ * Pass `null` for `modelId` to unload the active model without loading another one.
+ * `collectionName` overrides the model's default Milvus collection — leave empty to use the default.
+ */
+export async function setActiveModel(
+  modelId: string | null,
+  collectionName?: string
+): Promise<{ status: ModelStatus }> {
+  const { data } = await api.post("/admin/model", {
+    model_id: modelId,
+    collection_name: collectionName || undefined,
+  });
+  return data;
+}

@@ -5,6 +5,7 @@ import { FilterPanel, type SearchFilter } from "@/components/filter-panel";
 import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
+import { ModelSettingsDialog } from "@/components/model-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { Icon } from "@/components/icon";
 import type { FrameResult } from "@/lib/api";
@@ -20,6 +21,7 @@ export default function Home() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
+  const [showModelSettings, setShowModelSettings] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [dresSessionId, setDresSessionId] = useState<string | null>(null);
   const [dresUsername, setDresUsername] = useState<string | null>(null);
@@ -221,6 +223,13 @@ export default function Home() {
                 DRES Settings
               </button>
             )}
+            <button
+              onClick={() => setShowModelSettings(true)}
+              className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+            >
+              <Icon name="model_training" size={18} />
+              Model Settings
+            </button>
             <div className="flex items-center gap-1.5 ml-2">
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -286,6 +295,10 @@ export default function Home() {
           onClose={() => setShowDresSettings(false)}
           onLoginSuccess={handleDresLogin}
         />
+      )}
+
+      {showModelSettings && (
+        <ModelSettingsDialog onClose={() => setShowModelSettings(false)} />
       )}
 
       {showSubmitConfirm && canSubmit && (
