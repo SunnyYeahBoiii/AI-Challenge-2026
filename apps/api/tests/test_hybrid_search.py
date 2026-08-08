@@ -19,6 +19,29 @@ def frame(video_id, frame_index, pts_time=0.0, score=0.0):
 
 
 # ── Tag expressions ─────────────────────────────────────────────────────────
+def test_apply_box_keywords_forwards_ocr_and_asr_mode(monkeypatch):
+    """box dict's ocr_match_mode/asr_match_mode must reach es_client as-is."""
+    captured = {}
+
+    def fake_match(frame_keys, keywords=None, mode="and", source="all", **kwargs):
+        captured.update(kwargs)
+        return set(frame_keys)
+
+    monkeypatch.setattr(hs.es_client, "match_frames_by_keywords", fake_match)
+
+    box = {
+        "ocr_keywords": ["a"],
+        "asr_keywords": ["b"],
+        "ocr_match_mode": "or",
+        "asr_match_mode": "and",
+    }
+    frames = [frame("V1", 1)]
+    hs._apply_box_keywords([box], [frames])
+
+    assert captured["ocr_mode"] == "or"
+    assert captured["asr_mode"] == "and"
+
+
 # ── RRF ─────────────────────────────────────────────────────────────────────
 def test_rrf_rewards_frames_matched_by_several_boxes():
     box1 = [frame("V1", 1, score=0.9), frame("V1", 2, score=0.8)]

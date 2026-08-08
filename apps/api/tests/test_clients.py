@@ -138,6 +138,34 @@ def test_ocr_and_asr_groups_are_anded():
     assert fields == {"ocr_text", "asr_text"}
 
 
+def test_ocr_mode_and_asr_mode_are_independent():
+    """or on OCR, and on ASR: each group keeps its own minimum_should_match."""
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)],
+        ocr_keywords=["a", "b"],
+        asr_keywords=["c", "d"],
+        ocr_mode="or",
+        asr_mode="and",
+    )
+    must = _must(client)
+    groups = {
+        group["bool"]["should"][0]["multi_match"]["fields"][0]: group["bool"]
+        for group in must
+    }
+    assert groups["ocr_text"]["minimum_should_match"] == 1
+    assert groups["asr_text"]["minimum_should_match"] == 2
+
+
+def test_ocr_mode_and_asr_mode_fall_back_to_mode():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["a", "b"], mode="or"
+    )
+    ocr_group = _must(client)[0]["bool"]
+    assert ocr_group["minimum_should_match"] == 1
+
+
 def test_query_keywords_are_normalized():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], asr_keywords=["Chào Mừng!"])
