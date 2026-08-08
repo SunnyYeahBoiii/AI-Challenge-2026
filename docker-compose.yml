@@ -23,6 +23,7 @@ services:
     environment:
       - MILVUS_URI=http://milvus:19530
       - ES_URL=http://elasticsearch:9200
+      - HF_HOME=/root/.cache/huggingface
     depends_on:
       milvus:
         condition: service_healthy
@@ -30,8 +31,10 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api/app:/app/app
+      - ./apps/api/weights:/app/weights:ro
       - ./data/objects:/app/data/objects:ro
       - ./data/media-info:/app/data/media-info:ro
+      - hf_cache:/root/.cache/huggingface
     develop:
       watch:
         - action: sync
@@ -97,3 +100,4 @@ services:
 volumes:
   milvus_data:
   es_data:
+  hf_cache:
