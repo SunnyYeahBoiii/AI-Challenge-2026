@@ -137,17 +137,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           },
           onStateChange: (e) => {
             cbs.current.onStateChange?.(e.data);
+            // Fires once per transition (pause, seek settling, etc.) so the panel snaps to the real position even without the polling interval running.
+            const t = player.getCurrentTime();
+            cbs.current.onTimeUpdate?.(t);
             if (e.data === window.YT!.PlayerState.PLAYING) {
               if (!intervalRef.current) {
                 intervalRef.current = setInterval(() => {
-                  const t = playerRef.current?.getCurrentTime();
-                  if (t !== undefined) cbs.current.onTimeUpdate?.(t);
+                  const t2 = playerRef.current?.getCurrentTime();
+                  if (t2 !== undefined) cbs.current.onTimeUpdate?.(t2);
                 }, 250);
               }
-            } else if (
-              e.data === window.YT!.PlayerState.PAUSED ||
-              e.data === window.YT!.PlayerState.ENDED
-            ) {
+            } else {
               clearInterval(intervalRef.current);
               intervalRef.current = undefined;
             }
