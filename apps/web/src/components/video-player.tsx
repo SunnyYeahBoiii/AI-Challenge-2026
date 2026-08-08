@@ -93,6 +93,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<YTPlayer | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+    // seekTo() resumes playback even from a paused/cued state; when set, the next PLAYING
+    // transition it causes gets paused right back instead of being forced before the seeked
+    // frame has buffered (which would just show black instead of the frame).
+    const pauseAfterSeekRef = useRef(false);
     const apiReady = useYouTubeApi();
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -129,6 +133,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             setLoading(false);
             const t = cbs.current.initialTime;
             if (t !== undefined) {
+              pauseAfterSeekRef.current = true;
               setTimeout(() => {
                 player.seekTo(t, true);
               }, 0);
@@ -136,6 +141,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             cbs.current.onReady?.();
           },
           onStateChange: (e) => {
+            if (
+              e.data === window.YT!.PlayerState.PLAYING &&
+              pauseAfterSeekRef.current
+            ) {
+              pauseAfterSeekRef.current = false;
+              player.pauseVideo();
+              return;
+            }
             cbs.current.onStateChange?.(e.data);
             // Fires once per transition (pause, seek settling, etc.) so the panel snaps to the real position even without the polling interval running.
             const t = player.getCurrentTime();
@@ -174,7 +187,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       ref,
       () => ({
         seekTo(seconds: number) {
-          playerRef.current?.seekTo(seconds, true);
+          const player = playerRef.current;
+          if (!player) return;
+          if (player.getPlayerState() !== window.YT?.PlayerState.PLAYING) {
+            pauseAfterSeekRef.current = true;
+          }
+          player.seekTo(seconds, true);
         },
         getCurrentTime() {
           return playerRef.current?.getCurrentTime() ?? 0;
