@@ -41,7 +41,6 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 BATCH_DIRS = {
     1: DATA_ROOT / "Data" / "Batch1",
-    2: DATA_ROOT / "Data" / "Batch2",
 }
 
 
@@ -102,7 +101,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Index OCR/ASR frame text into Elasticsearch (no Milvus)"
     )
-    parser.add_argument("--batch", type=int, choices=[1, 2], help="Load specific batch")
+    parser.add_argument("--batch", type=int, choices=[1], help="Load specific batch")
     parser.add_argument("--all", action="store_true", help="Load both batches")
     parser.add_argument("--limit", type=int, help="Max records to index")
     parser.add_argument("--dry-run", action="store_true", help="Parse only; skip ES writes")
@@ -114,7 +113,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.all and args.batch is None:
-        parser.error("Specify --batch 1|2 or --all")
+        parser.error("Specify --batch 1 or --all")
 
     dirs = list(BATCH_DIRS.values()) if args.all else [BATCH_DIRS[args.batch]]
 
