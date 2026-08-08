@@ -21,6 +21,8 @@ export default function Home() {
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [dresSessionId, setDresSessionId] = useState<string | null>(null);
+  const [dresUsername, setDresUsername] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [healthStatus, setHealthStatus] = useState<string>("loading");
 
@@ -35,6 +37,33 @@ export default function Home() {
       .then((h) => setHealthStatus(h.status))
       .catch(() => setHealthStatus("error"));
   }, []);
+
+  useEffect(() => {
+    setDresSessionId(sessionStorage.getItem("dresSessionId"));
+    setDresUsername(sessionStorage.getItem("dresUsername"));
+  }, []);
+
+  const handleDresLogin = useCallback((sessionId: string, username: string) => {
+    sessionStorage.setItem("dresSessionId", sessionId);
+    sessionStorage.setItem("dresUsername", username);
+    setDresSessionId(sessionId);
+    setDresUsername(username);
+  }, []);
+
+  const handleDresLogout = useCallback(() => {
+    const sessionId = dresSessionId;
+    sessionStorage.removeItem("dresSessionId");
+    sessionStorage.removeItem("dresUsername");
+    setDresSessionId(null);
+    setDresUsername(null);
+    if (sessionId) {
+      fetch("/api/dres/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch(() => {});
+    }
+  }, [dresSessionId]);
 
   const handleSearch = useCallback(async (newFilter: SearchFilter) => {
     setIsLoading(true);
@@ -199,13 +228,33 @@ export default function Home() {
               Submit
             </button>
             <div className="h-6 w-px bg-outline-variant mx-2" />
-            <button
-              onClick={() => setShowDresSettings(true)}
-              className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-            >
-              <Icon name="settings" size={18} />
-              DRES Settings
-            </button>
+            {dresSessionId && dresUsername ? (
+              <div className="flex items-center gap-1.5">
+                <span
+                  title="Logged in to DRES"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
+                >
+                  <Icon name="groups" size={18} />
+                  {dresUsername}
+                </span>
+                <button
+                  onClick={handleDresLogout}
+                  title="Log out of DRES"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                >
+                  <Icon name="logout" size={18} />
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDresSettings(true)}
+                className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+              >
+                <Icon name="settings" size={18} />
+                DRES Settings
+              </button>
+            )}
             <div className="flex items-center gap-1.5 ml-2">
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -268,7 +317,12 @@ export default function Home() {
         />
       )}
 
-      {showDresSettings && <DresSettingsDialog onClose={() => setShowDresSettings(false)} />}
+      {showDresSettings && (
+        <DresSettingsDialog
+          onClose={() => setShowDresSettings(false)}
+          onLoginSuccess={handleDresLogin}
+        />
+      )}
 
       {showSubmitConfirm && canSubmit && (
         <SubmissionConfirmationDialog
@@ -276,6 +330,7 @@ export default function Home() {
           videoId={videoId.trim()}
           timestamp={Number.parseFloat(timeSec) || 0}
           submissionType={submissionType}
+          sessionId={dresSessionId}
           onClose={() => setShowSubmitConfirm(false)}
         />
       )}

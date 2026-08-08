@@ -5,9 +5,10 @@ import { Icon } from "./icon";
 
 interface DresSettingsDialogProps {
   onClose: () => void;
+  onLoginSuccess: (sessionId: string, username: string) => void;
 }
 
-export function DresSettingsDialog({ onClose }: DresSettingsDialogProps) {
+export function DresSettingsDialog({ onClose, onLoginSuccess }: DresSettingsDialogProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -15,13 +16,16 @@ export function DresSettingsDialog({ onClose }: DresSettingsDialogProps) {
   const handleLogin = async () => {
     setStatus("loading");
     try {
-      const res = await fetch("/api/dres/login", {
+      const res = await fetch("/api/dres/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.sessionId) {
+        onLoginSuccess(data.sessionId, data.username || username);
         setStatus("success");
+        onClose();
       } else {
         setStatus("error");
       }

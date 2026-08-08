@@ -8,6 +8,7 @@ interface SubmissionConfirmationDialogProps {
   videoId: string;
   timestamp: number;
   submissionType: "track" | "qa" | "kis";
+  sessionId: string | null;
   onClose: () => void;
 }
 
@@ -16,12 +17,20 @@ export function SubmissionConfirmationDialog({
   videoId,
   timestamp,
   submissionType,
+  sessionId,
   onClose,
 }: SubmissionConfirmationDialogProps) {
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "correct" | "wrong" | "duplicate" | "error"
+  >("idle");
   const [response, setResponse] = useState<string | null>(null);
 
   const handleSubmit = async () => {
+    if (!sessionId) {
+      setResponse("Not logged in to DRES — open DRES Settings and log in first.");
+      setStatus("error");
+      return;
+    }
     setStatus("loading");
     try {
       const res = await fetch(`/api/dres/submit/${submissionType}`, {
@@ -31,11 +40,22 @@ export function SubmissionConfirmationDialog({
           frame_id: frameId,
           video_path: videoId,
           timestamp,
+          sessionId,
         }),
       });
       const data = await res.json();
       setResponse(JSON.stringify(data, null, 2));
-      setStatus(res.ok ? "success" : "error");
+      if (!res.ok) {
+        setStatus("error");
+      } else if (data.submission === "WRONG") {
+        setStatus("wrong");
+      } else if (data.status === false) {
+        setStatus("duplicate");
+      } else if (data.submission === "CORRECT") {
+        setStatus("correct");
+      } else {
+        setStatus("error");
+      }
     } catch {
       setResponse("Submission failed");
       setStatus("error");
@@ -90,10 +110,22 @@ export function SubmissionConfirmationDialog({
           </div>
 
           {/* Response */}
-          {status === "success" && (
+          {status === "correct" && (
             <div className="flex items-center gap-2 text-body-sm text-green-700 bg-green-50 p-2 rounded">
               <Icon name="check_circle" size={16} />
-              Submitted successfully
+              Correct — submission accepted
+            </div>
+          )}
+          {status === "wrong" && (
+            <div className="flex items-center gap-2 text-body-sm text-on-tertiary-container bg-tertiary-container/50 p-2 rounded">
+              <Icon name="cancel" size={16} />
+              Wrong — try a different answer
+            </div>
+          )}
+          {status === "duplicate" && (
+            <div className="flex items-center gap-2 text-body-sm text-on-tertiary-container bg-tertiary-container/50 p-2 rounded">
+              <Icon name="content_copy" size={16} />
+              Already submitted — see response below
             </div>
           )}
           {status === "error" && (
@@ -115,11 +147,16 @@ export function SubmissionConfirmationDialog({
             onClick={onClose}
             className="px-4 py-2 rounded border border-outline-variant text-label-md text-on-surface-variant hover:bg-surface-container transition-colors"
           >
-            {status === "success" ? "Close" : "Cancel"}
+            {status === "correct" || status === "wrong" || status === "duplicate" ? "Close" : "Cancel"}
           </button>
           <button
             onClick={handleSubmit}
-            disabled={status === "loading" || status === "success"}
+            disabled={
+              status === "loading" ||
+              status === "correct" ||
+              status === "wrong" ||
+              status === "duplicate"
+            }
             className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
           >
             {status === "loading" ? "Submitting..." : "Submit"}
