@@ -8,9 +8,10 @@ interface FrameNavigatorProps {
   frames: FrameResult[];
   currentArrayIndex: number;
   onFrameSelect: (frame: FrameResult) => void;
+  onFullscreen: (frame: FrameResult) => void;
 }
 
-export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: FrameNavigatorProps) {
+export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFullscreen }: FrameNavigatorProps) {
   const { visibleFrames, currentOffset } = useMemo(() => {
     const windowSize = Math.min(3, frames.length);
     let start = currentArrayIndex - Math.floor(windowSize / 2);
@@ -41,9 +42,10 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: Fra
           return (
             <div
               key={frame.id}
-              onClick={() => onFrameSelect(frame)}
+              onClick={() => (isCurrent ? onFullscreen(frame) : onFrameSelect(frame))}
+              title={isCurrent ? "View frame fullscreen" : undefined}
               className={`
-                relative aspect-video w-40 flex-shrink-0 rounded-lg overflow-hidden cursor-pointer
+                group relative aspect-video w-40 flex-shrink-0 rounded-lg overflow-hidden cursor-pointer
                 transition-all duration-300
                 ${isCurrent ? "ring-2 ring-primary-container" : "ring-1 ring-outline-variant hover:ring-white/30"}
               `}
@@ -58,6 +60,15 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect }: Fra
                   {frame.frame_index}
                 </span>
               </div>
+              {isCurrent && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                  <Icon
+                    name="fullscreen"
+                    size={20}
+                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  />
+                </div>
+              )}
             </div>
           );
         })}

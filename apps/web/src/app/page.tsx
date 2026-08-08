@@ -278,10 +278,6 @@ export default function Home() {
             setSelectedFrame(null);
             setShowSubmitConfirm(true);
           }}
-          onFrameNavigate={(frame) => {
-            setSelectedFrame(frame);
-            handleFrameSelect(frame);
-          }}
         />
       )}
 
