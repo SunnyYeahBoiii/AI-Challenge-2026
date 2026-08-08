@@ -14,6 +14,8 @@ class SearchRequest(BaseModel):
     tag_mode: Literal["and", "or"] = "and"
     ocr_keywords: list[str] = []
     asr_keywords: list[str] = []
+    ocr_match_mode: Literal["and", "or"] | None = None
+    asr_match_mode: Literal["and", "or"] | None = None
     # Legacy single-list API; expanded into ocr/asr when those are empty.
     keywords: list[str] = []
     keyword_mode: Literal["and", "or"] = "and"
@@ -51,6 +53,8 @@ class BoxQuery(BaseModel):
     tag_match_mode: Literal["and", "or"] = "and"
     ocr_keywords: list[str] = []
     asr_keywords: list[str] = []
+    ocr_match_mode: Literal["and", "or"] | None = None
+    asr_match_mode: Literal["and", "or"] | None = None
     keywords: list[str] = []
     key_match_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"

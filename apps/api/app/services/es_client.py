@@ -94,12 +94,14 @@ class ESClient:
         *,
         ocr_keywords: Sequence[str] | None = None,
         asr_keywords: Sequence[str] | None = None,
+        ocr_mode: str | None = None,
+        asr_mode: str | None = None,
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
         OCR keywords fuzzy-match `ocr_text` only; ASR keywords match `asr_text`
         only. When both groups are non-empty they are AND-ed. Within each group,
-        `mode` controls and/or.
+        `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
 
         Legacy `keywords` + `source` still work when the dedicated lists are empty:
         ocr/asr map to one field; all duplicates keywords into both groups.
@@ -122,8 +124,8 @@ class ESClient:
         video_ids = sorted({vid for vid, _ in keys})
         frame_ids = sorted({idx for _, idx in keys})
         must: list[dict[str, Any]] = []
-        ocr_group = _fuzzy_field_group(ocr, "ocr_text", mode)
-        asr_group = _fuzzy_field_group(asr, "asr_text", mode)
+        ocr_group = _fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode)
+        asr_group = _fuzzy_field_group(asr, "asr_text", asr_mode or mode)
         if ocr_group:
             must.append(ocr_group)
         if asr_group:

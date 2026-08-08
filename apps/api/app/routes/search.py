@@ -41,6 +41,8 @@ def api_search():
             keyword_source=data.keyword_source,
             ocr_keywords=data.ocr_keywords,
             asr_keywords=data.asr_keywords,
+            ocr_mode=data.ocr_match_mode,
+            asr_mode=data.asr_match_mode,
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
@@ -80,6 +82,8 @@ def api_search_image():
             keyword_source=request.form.get("keyword_source", "all"),
             ocr_keywords=ocr_keywords,
             asr_keywords=asr_keywords,
+            ocr_mode=request.form.get("ocr_match_mode") or None,
+            asr_mode=request.form.get("asr_match_mode") or None,
         )
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500

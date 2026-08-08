@@ -90,6 +90,8 @@ def _filter_by_keywords(
     *,
     keywords: Sequence[str] | None = None,
     source: str = "all",
+    ocr_mode: str | None = None,
+    asr_mode: str | None = None,
 ) -> list[Frame]:
     """Drop frames whose OCR/ASR text does not match, in one ES round-trip."""
     has_any = bool(ocr_keywords) or bool(asr_keywords) or bool(keywords)
@@ -102,6 +104,8 @@ def _filter_by_keywords(
         source=source,
         ocr_keywords=ocr_keywords,
         asr_keywords=asr_keywords,
+        ocr_mode=ocr_mode,
+        asr_mode=asr_mode,
     )
     return [f for f in frames if _frame_key(f) in matched]
 
@@ -118,6 +122,8 @@ def search_text(
     keyword_source: str = "all",
     ocr_keywords: Sequence[str] | None = None,
     asr_keywords: Sequence[str] | None = None,
+    ocr_mode: str | None = None,
+    asr_mode: str | None = None,
 ) -> list[Frame]:
     """Text search: enhance -> embed -> Milvus -> Polars tags -> ES keywords."""
     if enhance and query:
@@ -135,6 +141,8 @@ def search_text(
         mode=keyword_mode,
         keywords=keywords,
         source=keyword_source,
+        ocr_mode=ocr_mode,
+        asr_mode=asr_mode,
     )
     frames = _enrich_frames(frames)
     for f in frames:
@@ -153,6 +161,8 @@ def search_image(
     keyword_source: str = "all",
     ocr_keywords: Sequence[str] | None = None,
     asr_keywords: Sequence[str] | None = None,
+    ocr_mode: str | None = None,
+    asr_mode: str | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = embed_image(image_bytes).tolist()
@@ -165,6 +175,8 @@ def search_image(
         mode=keyword_mode,
         keywords=keywords,
         source=keyword_source,
+        ocr_mode=ocr_mode,
+        asr_mode=asr_mode,
     )
     frames = _enrich_frames(frames)
     for f in frames:
@@ -302,6 +314,8 @@ def _apply_box_keywords(
             mode=box.get("key_match_mode", "and"),
             keywords=box.get("keywords"),
             source=box.get("keyword_source", "all"),
+            ocr_mode=box.get("ocr_match_mode"),
+            asr_mode=box.get("asr_match_mode"),
         )
     return per_box
 
