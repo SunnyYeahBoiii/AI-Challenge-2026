@@ -8,6 +8,8 @@ export interface FrameResult {
   id: string;
   video_id: string;
   frame_index: number;
+  /** Ground-truth BTC frame number for this exact keyframe (INT64 in Milvus, no float rounding). */
+  frame_idx: number;
   shot_idx: number;
   start_time: number;
   end_time: number;
