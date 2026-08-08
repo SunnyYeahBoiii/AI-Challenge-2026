@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from app.services import hybrid_search as hs
+from app.services.encoders import manager
 
 
 class FakeMilvus:
@@ -45,10 +46,11 @@ def stub(monkeypatch):
         embed_calls["image"] += 1
         return np.array([[9.0] * 4 for _ in images], dtype=np.float32)
 
-    monkeypatch.setattr(hs, "embed_text", fake_embed_text)
-    monkeypatch.setattr(hs, "embed_images", fake_embed_images)
+    monkeypatch.setattr(manager, "embed_text", fake_embed_text)
+    monkeypatch.setattr(manager, "embed_images", fake_embed_images)
+    monkeypatch.setattr(manager, "active_collection_name", lambda: "fake_collection")
     monkeypatch.setattr(hs, "enhance_queries", lambda qs: [q.upper() for q in qs])
-    monkeypatch.setattr(hs, "get_milvus_client", lambda: fake)
+    monkeypatch.setattr(hs, "get_milvus_client", lambda collection_name: fake)
     monkeypatch.setattr(hs, "filter_frames", lambda frames, *args, **kwargs: frames)
     monkeypatch.setattr(hs, "_filter_by_keywords", lambda frames, *a, **k: frames)
     return fake, embed_calls
@@ -185,10 +187,11 @@ def test_two_stage_narrows_to_shared_videos(monkeypatch):
             return stage1 if len(calls) == 1 else stage2
 
     monkeypatch.setattr(
-        hs, "embed_text", lambda texts: np.array([[1.0] * 4 for _ in texts], dtype=np.float32)
+        manager, "embed_text", lambda texts: np.array([[1.0] * 4 for _ in texts], dtype=np.float32)
     )
+    monkeypatch.setattr(manager, "active_collection_name", lambda: "fake_collection")
     monkeypatch.setattr(hs, "enhance_queries", lambda qs: list(qs))
-    monkeypatch.setattr(hs, "get_milvus_client", lambda: TwoStageMilvus())
+    monkeypatch.setattr(hs, "get_milvus_client", lambda collection_name: TwoStageMilvus())
     monkeypatch.setattr(hs, "filter_frames", lambda frames, *args, **kwargs: frames)
     monkeypatch.setattr(hs, "_filter_by_keywords", lambda frames, *a, **k: frames)
 
