@@ -2,13 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY apps/api/pyproject.toml .
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir uv
+
+# Install from the lockfile (not `pip install -e .`): torchscale's PyPI metadata
+# pins fairscale==0.4.0, which conflicts with open-clip-torch's fairscale range.
+# uv.lock already resolved this via [tool.uv].override-dependencies in
+# pyproject.toml; plain pip has no equivalent and fails to resolve.
+COPY apps/api/pyproject.toml apps/api/uv.lock ./
+RUN uv sync --frozen --no-install-project
 
 COPY apps/api/app/ app/
 COPY data/objects/object_detections.parquet /app/data/objects/object_detections.parquet
 
 ENV OBJECT_DETECTIONS_PATH=/app/data/objects/object_detections.parquet
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 5000
 
