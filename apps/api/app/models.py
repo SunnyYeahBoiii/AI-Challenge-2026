@@ -103,6 +103,7 @@ class FrameResult(BaseModel):
     id: str
     video_id: str
     frame_index: int
+    frame_idx: int = 0
     shot_idx: int = 0
     start_time: float = 0.0
     end_time: float = 0.0
