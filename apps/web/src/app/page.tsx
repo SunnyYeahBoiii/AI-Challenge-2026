@@ -83,6 +83,8 @@ export default function Home() {
           tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
           ocr_keywords: q.ocrKeywords?.length ? q.ocrKeywords : undefined,
           asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
+          ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
+          asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
           topk: q.topK ?? 100,
           enhance: q.enhance ?? false,
         }));

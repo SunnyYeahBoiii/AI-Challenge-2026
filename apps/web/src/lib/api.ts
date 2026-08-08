@@ -58,6 +58,8 @@ export interface SearchTextRequest {
   tag_mode?: "and" | "or";
   ocr_keywords?: string[];
   asr_keywords?: string[];
+  ocr_match_mode?: "and" | "or";
+  asr_match_mode?: "and" | "or";
   keywords?: string[];
   keyword_mode?: "and" | "or";
   keyword_source?: "all" | "ocr" | "asr";
@@ -72,6 +74,8 @@ export interface MultiBoxQuery {
   tag_match_mode?: "and" | "or";
   ocr_keywords?: string[];
   asr_keywords?: string[];
+  ocr_match_mode?: "and" | "or";
+  asr_match_mode?: "and" | "or";
   keywords?: string[];
   key_match_mode?: "and" | "or";
   keyword_source?: "all" | "ocr" | "asr";
