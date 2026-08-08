@@ -21,7 +21,6 @@ interface FrameDetailDialogProps {
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
   onFrameNavigate?: (frame: FrameResult) => void;
-  onOpenYoutube?: (watchUrl: string, videoId: string) => void;
 }
 
 export function FrameDetailDialog({
@@ -31,7 +30,6 @@ export function FrameDetailDialog({
   onClose,
   onSubmit,
   onFrameNavigate,
-  onOpenYoutube,
 }: FrameDetailDialogProps) {
   const [similarFrames, setSimilarFrames] = useState<FrameResult[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
