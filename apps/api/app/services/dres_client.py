@@ -23,11 +23,15 @@ def _parse_body(raw: bytes) -> dict | str:
 
 
 class DresClient:
+    """Stateless wrapper around the DRES REST API.
+
+    Runs behind gunicorn with multiple workers, so nothing about a session
+    can live in process memory — the caller (frontend) holds the sessionId
+    returned by login() and passes it back on every subsequent call.
+    """
+
     def __init__(self):
         self.base_url = Config.DRES_URL.rstrip("/")
-        self.username = Config.DRES_USERNAME
-        self.password = Config.DRES_PASSWORD
-        self._session_id: str | None = None
 
     def _request(self, method: str, path: str, body: dict | None = None,
                  query: dict | None = None) -> dict:
@@ -50,32 +54,25 @@ class DresClient:
         except urllib.error.URLError as e:
             raise DresError(0, str(e.reason), message=f"DRES unreachable: {e.reason}") from e
 
-    def login(self) -> dict:
+    def login(self, username: str, password: str) -> dict:
         result = self._request("POST", "/api/v2/login",
-                               body={"username": self.username, "password": self.password})
-        self._session_id = result.get("sessionId")
-        if not self._session_id:
-            raise DresError(f"DRES login returned no sessionId: {result}")
+                               body={"username": username, "password": password})
+        if not result.get("sessionId"):
+            raise DresError(502, result, message=f"DRES login returned no sessionId: {result}")
         return result
 
-    def _ensure_session(self) -> str:
-        if not self._session_id:
-            self.login()
-        assert self._session_id is not None
-        return self._session_id
+    def logout(self, session_id: str) -> None:
+        self._request("GET", "/api/v2/logout", query={"session": session_id})
 
-    def list_evaluations(self) -> list[dict]:
-        session_id = self._ensure_session()
+    def list_evaluations(self, session_id: str) -> list[dict]:
         return self._request("GET", "/api/v2/client/evaluation/list",
                              query={"session": session_id})
 
-    def list_media_items(self) -> list:
-        session_id = self._ensure_session()
+    def list_media_items(self, session_id: str) -> list:
         return self._request("GET", "/api/v2/client/mediaItem/list",
                              query={"session": session_id, "collection": ""})
 
-    def submit(self, evaluation_id: str, video_id: str, time_ms: int) -> dict:
-        session_id = self._ensure_session()
+    def submit(self, evaluation_id: str, video_id: str, time_ms: int, session_id: str) -> dict:
         body = {
             "answerSets": [
                 {

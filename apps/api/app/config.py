@@ -29,5 +29,3 @@ class Config:
     OBJECT_DETECTIONS_PATH = os.getenv("OBJECT_DETECTIONS_PATH", str(DEFAULT_OBJECT_DETECTIONS_PATH))
 
     DRES_URL = os.getenv("DRES_URL", "")
-    DRES_USERNAME = os.getenv("DRES_USERNAME", "")
-    DRES_PASSWORD = os.getenv("DRES_PASSWORD", "")

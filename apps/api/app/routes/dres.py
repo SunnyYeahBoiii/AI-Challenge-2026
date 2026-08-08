@@ -12,8 +12,13 @@ def _err(e: DresError):
 
 @dres_bp.route("/api/dres/session", methods=["POST"])
 def login():
+    payload = request.get_json(silent=True) or {}
+    username = payload.get("username")
+    password = payload.get("password")
+    if not username or not password:
+        return jsonify({"error": {"description": "username and password required"}}), 400
     try:
-        result = dres_client.login()
+        result = dres_client.login(username, password)
     except DresError as e:
         return _err(e)
     return jsonify({"sessionId": result.get("sessionId"),
@@ -21,10 +26,26 @@ def login():
                     "role": result.get("role")})
 
 
+@dres_bp.route("/api/dres/logout", methods=["POST"])
+def logout():
+    payload = request.get_json(silent=True) or {}
+    session_id = payload.get("sessionId")
+    if not session_id:
+        return jsonify({"error": {"description": "sessionId required"}}), 400
+    try:
+        dres_client.logout(session_id)
+    except DresError:
+        pass
+    return jsonify({"loggedOut": True})
+
+
 @dres_bp.route("/api/dres/evaluations", methods=["GET"])
 def evaluations():
+    session_id = request.args.get("session")
+    if not session_id:
+        return jsonify({"error": {"description": "session query param required"}}), 400
     try:
-        evals = dres_client.list_evaluations()
+        evals = dres_client.list_evaluations(session_id)
     except DresError as e:
         return _err(e)
     active = [
@@ -36,8 +57,11 @@ def evaluations():
 
 @dres_bp.route("/api/dres/media-items", methods=["GET"])
 def media_items():
+    session_id = request.args.get("session")
+    if not session_id:
+        return jsonify({"error": {"description": "session query param required"}}), 400
     try:
-        items = dres_client.list_media_items()
+        items = dres_client.list_media_items(session_id)
     except DresError as e:
         return _err(e)
     sample = items[:50] if isinstance(items, list) else items
@@ -50,12 +74,15 @@ def submit(task_type):
     video_path = payload.get("video_path") or payload.get("videoId")
     timestamp = payload.get("timestamp", payload.get("timeMs"))
     frame_id = payload.get("frame_id")
+    session_id = payload.get("sessionId")
+    if not session_id:
+        return jsonify({"error": {"description": "sessionId required — log in first"}}), 400
     if not video_path or timestamp is None:
         return jsonify({"error": {"description": "video_path and timestamp required"}}), 400
     evaluation_id = payload.get("evaluationId")
     if not evaluation_id:
         try:
-            evals = dres_client.list_evaluations()
+            evals = dres_client.list_evaluations(session_id)
         except DresError as e:
             return _err(e)
         active = [e for e in evals if e.get("status") == "ACTIVE"]
@@ -64,7 +91,7 @@ def submit(task_type):
         evaluation_id = active[0]["id"]
     time_ms = int(float(timestamp) * 1000) if isinstance(timestamp, (int, float)) else int(timestamp)
     try:
-        result = dres_client.submit(evaluation_id, video_path, time_ms)
+        result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
     except DresError as e:
         return _err(e)
     result["evaluationId"] = evaluation_id
