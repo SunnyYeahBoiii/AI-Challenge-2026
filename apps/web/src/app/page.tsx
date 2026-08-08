@@ -191,45 +191,9 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Submission Inputs */}
-            <div className="flex gap-2">
-              <input
-                className="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors"
-                type="text"
-                placeholder="Frame ID"
-                aria-label="Frame ID"
-                value={frameId}
-                onChange={(e) => setFrameId(e.target.value)}
-              />
-              <input
-                className="w-48 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors text-ellipsis overflow-hidden whitespace-nowrap"
-                type="text"
-                placeholder="Video ID"
-                aria-label="Video ID"
-                value={videoId}
-                onChange={(e) => setVideoId(e.target.value)}
-              />
-              <input
-                className="w-40 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1.5 font-mono text-mono-sm focus:border-primary focus:ring-0 outline-none transition-colors"
-                type="text"
-                placeholder="Time (s)"
-                aria-label="Time in seconds"
-                value={timeSec}
-                onChange={(e) => setTimeSec(e.target.value)}
-              />
-            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowSubmitConfirm(true)}
-              disabled={!canSubmit}
-              title={canSubmit ? "Submit to DRES" : "Select a frame or fill Frame ID and Video ID first"}
-              className="bg-primary-container text-on-primary-container text-label-md px-4 py-1.5 rounded hover:bg-primary-fixed transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Submit
-            </button>
-            <div className="h-6 w-px bg-outline-variant mx-2" />
             {dresSessionId && dresUsername ? (
               <div className="flex items-center gap-1.5">
                 <span
@@ -295,6 +259,8 @@ export default function Home() {
           onFrameSelect={handleFrameSelect}
           onFrameDetail={handleFrameDetail}
           isLoading={isLoading}
+          submissionType={submissionType}
+          dresSessionId={dresSessionId}
         />
       </div>
 

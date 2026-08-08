@@ -178,6 +178,30 @@ export async function embedImage(
   return data;
 }
 
+// ====== DRES API ======
+
+export interface DresSubmitResult {
+  submission?: string;
+  status?: boolean;
+  [key: string]: unknown;
+}
+
+export async function submitFrameToDres(params: {
+  frameId: string;
+  videoId: string;
+  timestamp: number;
+  submissionType: "track" | "qa" | "kis";
+  sessionId: string;
+}): Promise<DresSubmitResult> {
+  const { data } = await api.post(`/dres/submit/${params.submissionType}`, {
+    frame_id: params.frameId,
+    video_path: params.videoId,
+    timestamp: params.timestamp,
+    sessionId: params.sessionId,
+  });
+  return data;
+}
+
 // ====== Health API ======
 
 export async function healthCheck(): Promise<HealthStatus> {
