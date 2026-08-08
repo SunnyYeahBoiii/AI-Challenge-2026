@@ -3,8 +3,8 @@
 Requires a live Milvus (and Elasticsearch if the queries use keywords).
 
     cd apps/api
-    uv run python scripts/bench_search.py --boxes 3 --repeat 5
-    uv run python scripts/bench_search.py --mode sequential --no-enhance
+    uv run python scripts/bench_search.py --model metaclip --boxes 3 --repeat 5
+    uv run python scripts/bench_search.py --model beit3 --mode sequential --no-enhance
 """
 
 import argparse
@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.services import embed, hybrid_search, milvus_client, video_meta  # noqa: E402
+from app.services import hybrid_search, video_meta  # noqa: E402
+from app.services.encoders import manager  # noqa: E402
 
 DEFAULT_QUERIES = [
     "a pedestrian crossing a busy street",
@@ -63,8 +64,8 @@ class Timer:
 
 def instrument(timer: Timer) -> None:
     timer.wrap(hybrid_search, "enhance_queries", "enhance")
-    timer.wrap(hybrid_search, "embed_text", "embed_text")
-    timer.wrap(hybrid_search, "embed_images", "embed_images")
+    timer.wrap(manager, "embed_text", "embed_text")
+    timer.wrap(manager, "embed_images", "embed_images")
     timer.wrap(hybrid_search, "_grouped_search", "milvus")
     timer.wrap(hybrid_search, "_filter_by_keywords", "es_keywords")
     timer.wrap(hybrid_search, "_enrich_frames", "enrich")
@@ -74,6 +75,7 @@ def instrument(timer: Timer) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True, choices=manager.list_models())
     parser.add_argument("--boxes", type=int, default=3)
     parser.add_argument("--repeat", type=int, default=5)
     parser.add_argument("--topk", type=int, default=200)
@@ -88,10 +90,9 @@ def main() -> int:
         parser.error(f"--boxes must be <= {len(DEFAULT_QUERIES)}")
 
     print(f"Loaded metadata for {video_meta.load()} videos.")
-    print("Warming up model and Milvus connection...")
+    print(f"Warming up {args.model} and its Milvus collection...")
     t0 = time.perf_counter()
-    milvus_client.warmup()
-    embed.warmup()
+    manager.swap(args.model)
     print(f"Warmup: {(time.perf_counter() - t0) * 1000:.0f} ms")
 
     boxes = [
