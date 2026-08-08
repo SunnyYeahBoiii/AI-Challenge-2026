@@ -43,6 +43,7 @@ export function ResultsPanel({
 }: ResultsPanelProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
+  const [lastOpenedKey, setLastOpenedKey] = useState<string | null>(null);
   const [quickSubmit, setQuickSubmit] = useState<
     Record<string, { status: QuickSubmitStatus; message?: string }>
   >({});
@@ -192,11 +193,19 @@ export function ResultsPanel({
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
-              {group.map((frame) => (
+              {group.map((frame) => {
+                const key = `${frame.video_id}-${frame.frame_index}`;
+                const isLastOpened = lastOpenedKey === key;
+                return (
                 <div
-                  key={`${frame.video_id}-${frame.frame_index}`}
-                  className="relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border border-outline-variant rounded-sm hover:border-primary transition-colors"
+                  key={key}
+                  className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors ${
+                    isLastOpened
+                      ? "border-4 border-red-500 hover:border-red-500 ring-2 ring-red-500/50"
+                      : "border-outline-variant hover:border-primary"
+                  }`}
                   onClick={() => {
+                    setLastOpenedKey(key);
                     onFrameSelect(frame);
                     onFrameDetail(frame);
                   }}
@@ -210,6 +219,7 @@ export function ResultsPanel({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setLastOpenedKey(key);
                       setZoomFrame(frame);
                     }}
                     title="View larger"
@@ -219,7 +229,7 @@ export function ResultsPanel({
                     <Icon name="zoom_in" size={16} />
                   </button>
                   {(() => {
-                    const entry = quickSubmit[`${frame.video_id}-${frame.frame_index}`];
+                    const entry = quickSubmit[key];
                     const status = entry?.status;
                     const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
                     const titleByStatus: Record<QuickSubmitStatus, string> = {
@@ -261,7 +271,8 @@ export function ResultsPanel({
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
