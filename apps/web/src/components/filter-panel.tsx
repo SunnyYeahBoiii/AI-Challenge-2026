@@ -110,6 +110,20 @@ export function FilterPanel({
     }
   }, [videoId, queries, mode, onSearch, onValidationError]);
 
+  // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (canSearch && !isLoading) {
+          handleSearch();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [canSearch, isLoading, handleSearch]);
+
   useEffect(() => {
     if (videoId.trim().length < 2) {
       setSuggestions([]);
@@ -285,6 +299,7 @@ export function FilterPanel({
         <button
           onClick={handleSearch}
           disabled={isLoading || !canSearch}
+          title="Search (Ctrl+Enter)"
           className="flex-1 bg-primary-container hover:bg-primary-fixed text-on-primary-container text-label-md py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
         >
           <Icon name="search" size={16} />
