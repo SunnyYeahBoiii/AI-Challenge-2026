@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
+import { MatchModeToggle } from "./match-mode-toggle";
 import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
 
 export interface BoxQuery {
@@ -16,7 +17,9 @@ export interface BoxQuery {
   tags?: string[];
   tagMatchMode?: "and" | "or";
   ocrKeywords?: string[];
+  ocrMatchMode?: "and" | "or";
   asrKeywords?: string[];
+  asrMatchMode?: "and" | "or";
   topK?: number;
   enhance?: boolean;
 }
@@ -220,26 +223,11 @@ function QueryBoxInner({
               suggestions={COCO_CLASS_NAMES}
               allowCustomValues={false}
             />
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-label-sm text-on-surface-variant">Match tags</span>
-              <div className="flex overflow-hidden rounded border border-outline-variant">
-                {(["and", "or"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => onUpdate({ tagMatchMode: mode })}
-                    className={`px-2 py-1 text-label-xs uppercase transition-colors ${
-                      (query.tagMatchMode ?? "and") === mode
-                        ? "bg-primary text-on-primary"
-                        : "text-on-surface-variant hover:bg-surface-container-high"
-                    }`}
-                    aria-pressed={(query.tagMatchMode ?? "and") === mode}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <MatchModeToggle
+              label="Match tags"
+              mode={query.tagMatchMode ?? "and"}
+              onChange={(tagMatchMode) => onUpdate({ tagMatchMode })}
+            />
           </div>
         )}
         <button
@@ -267,6 +255,11 @@ function QueryBoxInner({
                 onChange={(ocrKeywords) => onUpdate({ ocrKeywords })}
                 placeholder="Add OCR keyword..."
               />
+              <MatchModeToggle
+                label="Match OCR"
+                mode={query.ocrMatchMode ?? "and"}
+                onChange={(ocrMatchMode) => onUpdate({ ocrMatchMode })}
+              />
             </div>
             <div>
               <span className="text-label-sm text-on-surface-variant">ASR</span>
@@ -274,6 +267,11 @@ function QueryBoxInner({
                 tags={query.asrKeywords || []}
                 onChange={(asrKeywords) => onUpdate({ asrKeywords })}
                 placeholder="Add ASR keyword..."
+              />
+              <MatchModeToggle
+                label="Match ASR"
+                mode={query.asrMatchMode ?? "and"}
+                onChange={(asrMatchMode) => onUpdate({ asrMatchMode })}
               />
             </div>
           </div>
