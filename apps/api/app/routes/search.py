@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, send_file
 from pymilvus.exceptions import MilvusException
 
 from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
+from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import (
     search_text,
     search_image,
@@ -44,6 +45,8 @@ def api_search():
             ocr_mode=data.ocr_match_mode,
             asr_mode=data.asr_match_mode,
         )
+    except NoActiveModelError as error:
+        return jsonify({"error": str(error)}), 409
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
     except MilvusException as error:
@@ -85,6 +88,8 @@ def api_search_image():
             ocr_mode=request.form.get("ocr_match_mode") or None,
             asr_mode=request.form.get("asr_match_mode") or None,
         )
+    except NoActiveModelError as error:
+        return jsonify({"error": str(error)}), 409
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
     except MilvusException as error:
@@ -104,6 +109,8 @@ def api_search_video():
         return jsonify({"error": str(e)}), 400
     try:
         results = search_video_frames(data.video_id, data.frame_index, data.range)
+    except NoActiveModelError as error:
+        return jsonify({"error": str(error)}), 409
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -121,6 +128,8 @@ def api_search_similar():
         return jsonify({"error": str(e)}), 400
     try:
         results = search_similar_frames(data.video_id, data.frame_index, data.topk)
+    except NoActiveModelError as error:
+        return jsonify({"error": str(error)}), 409
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -144,6 +153,8 @@ def api_frames():
             enhance=data.enhance,
             mode=data.mode,
         )
+    except NoActiveModelError as error:
+        return jsonify({"error": str(error)}), 409
     except ObjectFilterError as error:
         return jsonify({"error": str(error)}), 500
     except MilvusException as error:

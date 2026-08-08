@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
-from app.services.embed import embed_text, embed_image, enhance_query
+from app.services.encoders import manager
+from app.services.encoders.manager import NoActiveModelError
+from app.services.query_enhance import enhance_query
 
 embed_bp = Blueprint("embed", __name__)
 
@@ -14,7 +16,10 @@ def api_embed_text():
     original_text = text
     if enhance:
         text = enhance_query(text)
-    vec = embed_text([text])[0].tolist()
+    try:
+        vec = manager.embed_text([text])[0].tolist()
+    except NoActiveModelError as exc:
+        return jsonify({"error": str(exc)}), 409
     return jsonify({
         "vector": vec,
         "dim": len(vec),
@@ -28,5 +33,8 @@ def api_embed_image():
     if "image" not in request.files:
         return jsonify({"error": "image file is required"}), 400
     file = request.files["image"]
-    vec = embed_image(file.read()).tolist()
+    try:
+        vec = manager.embed_image(file.read()).tolist()
+    except NoActiveModelError as exc:
+        return jsonify({"error": str(exc)}), 409
     return jsonify({"vector": vec, "dim": len(vec), "filename": file.filename})

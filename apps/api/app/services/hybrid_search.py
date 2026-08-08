@@ -17,16 +17,11 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from app.services import video_meta
-from app.services.embed import (
-    embed_image,
-    embed_images,
-    embed_text,
-    enhance_queries,
-    enhance_query,
-)
+from app.services.encoders import manager
 from app.services.es_client import es_client
 from app.services.milvus_client import clamp_milvus_topk, get_milvus_client
 from app.services.object_filter import filter_frames
+from app.services.query_enhance import enhance_queries, enhance_query
 
 Frame = dict[str, Any]
 Box = dict[str, Any]
@@ -129,8 +124,10 @@ def search_text(
     if enhance and query:
         query = enhance_query(query)
     if query:
-        vec: list[float] = embed_text([query])[0].tolist()
-        frames = get_milvus_client().search(vec, topk=clamp_milvus_topk(topk * 2))
+        vec: list[float] = manager.embed_text([query])[0].tolist()
+        frames = get_milvus_client(manager.active_collection_name()).search(
+            vec, topk=clamp_milvus_topk(topk * 2)
+        )
     else:
         return []
     frames = filter_frames(frames, tags, tag_mode)
@@ -165,8 +162,10 @@ def search_image(
     asr_mode: str | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
-    vec: list[float] = embed_image(image_bytes).tolist()
-    frames = get_milvus_client().search(vec, topk=clamp_milvus_topk(topk * 2))
+    vec: list[float] = manager.embed_image(image_bytes).tolist()
+    frames = get_milvus_client(manager.active_collection_name()).search(
+        vec, topk=clamp_milvus_topk(topk * 2)
+    )
     frames = filter_frames(frames, tags, tag_mode)
     frames = _filter_by_keywords(
         frames,
@@ -194,7 +193,9 @@ def search_video_frames(
     nothing.
     """
     try:
-        milvus_frames = get_milvus_client().query_frames(f"video_id == {_quote(video_id)}")
+        milvus_frames = get_milvus_client(manager.active_collection_name()).query_frames(
+            f"video_id == {_quote(video_id)}"
+        )
     except Exception:
         return []
     frames = _enrich_frames(milvus_frames)
@@ -208,7 +209,7 @@ def search_video_frames(
 
 
 def search_similar_frames(video_id: str, frame_index: int, topk: int = 12) -> list[Frame]:
-    milvus = get_milvus_client()
+    milvus = get_milvus_client(manager.active_collection_name())
     embedding = milvus.get_frame_embedding(video_id, frame_index)
     if embedding is None:
         return []
@@ -247,7 +248,7 @@ def _box_vectors(boxes: Sequence[Box], enhance_default: bool) -> list[Vector]:
         if to_enhance:
             enhanced = enhance_queries([texts[i] for i in to_enhance])
             texts.update(dict(zip(to_enhance, enhanced)))
-        encoded = embed_text([texts[i] for i in text_idx])
+        encoded = manager.embed_text([texts[i] for i in text_idx])
         for i, vec in zip(text_idx, encoded):
             vectors[i] = vec.tolist()
 
@@ -261,7 +262,7 @@ def _box_vectors(boxes: Sequence[Box], enhance_default: bool) -> list[Vector]:
             except Exception:
                 continue
         if blobs:
-            encoded = embed_images(blobs)
+            encoded = manager.embed_images(blobs)
             for i, vec in zip(decoded_idx, encoded):
                 vectors[i] = vec.tolist()
 
@@ -283,7 +284,7 @@ def _grouped_search(
     if not groups:
         return per_box
 
-    milvus = get_milvus_client()
+    milvus = get_milvus_client(manager.active_collection_name())
     for expr_key, indices in groups.items():
         batch = [v for i in indices if (v := vectors[i]) is not None]
         batched = milvus.search_batch(batch, topk=topk, expr=expr_key or None)

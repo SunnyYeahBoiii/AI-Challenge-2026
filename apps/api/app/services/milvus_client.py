@@ -3,11 +3,10 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
-from pymilvus import Collection, connections
+from pymilvus import Collection, connections, utility
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
-COLLECTION_NAME = "data_frames"
 SEARCH_EF = int(os.getenv("MILVUS_SEARCH_EF", "128"))
 # Hard ceiling enforced by Milvus ANN search (limit / HNSW ef).
 MILVUS_MAX_TOPK = 16384
@@ -50,10 +49,35 @@ def _row_to_frame(row: dict[str, Any]) -> Frame:
     return frame
 
 
+_connected = False
+_connect_lock = threading.Lock()
+
+
+def _ensure_connected() -> None:
+    global _connected
+    if not _connected:
+        with _connect_lock:
+            if not _connected:
+                connections.connect(alias="default", uri=MILVUS_URI, token=MILVUS_TOKEN)
+                _connected = True
+
+
+def ping() -> bool:
+    """Check Milvus server reachability, independent of any specific collection
+    (e.g. no encoder model may be active yet)."""
+    try:
+        _ensure_connected()
+        utility.list_collections()
+        return True
+    except Exception:
+        return False
+
+
 class MilvusClient:
-    def __init__(self) -> None:
-        connections.connect(alias="default", uri=MILVUS_URI, token=MILVUS_TOKEN)
-        self.col = Collection(COLLECTION_NAME)
+    def __init__(self, collection_name: str) -> None:
+        _ensure_connected()
+        self.collection_name = collection_name
+        self.col = Collection(collection_name)
         self.col.load()
 
     def search_batch(
@@ -100,25 +124,21 @@ class MilvusClient:
 
     def is_connected(self) -> bool:
         try:
-            from pymilvus import utility
-
-            return bool(utility.has_collection(COLLECTION_NAME))
+            return bool(utility.has_collection(self.collection_name))
         except Exception:
             return False
 
 
-_milvus_client: MilvusClient | None = None
-_client_lock = threading.Lock()
+_clients: dict[str, MilvusClient] = {}
+_clients_lock = threading.Lock()
 
 
-def get_milvus_client() -> MilvusClient:
-    global _milvus_client
-    if _milvus_client is None:
-        with _client_lock:
-            if _milvus_client is None:
-                _milvus_client = MilvusClient()
-    return _milvus_client
-
-
-def warmup() -> None:
-    get_milvus_client()
+def get_milvus_client(collection_name: str) -> MilvusClient:
+    client = _clients.get(collection_name)
+    if client is None:
+        with _clients_lock:
+            client = _clients.get(collection_name)
+            if client is None:
+                client = MilvusClient(collection_name)
+                _clients[collection_name] = client
+    return client

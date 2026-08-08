@@ -1,12 +1,12 @@
 from flask import Blueprint, jsonify
-from app.services.milvus_client import get_milvus_client
+from app.services.milvus_client import ping as milvus_ping
 
 health_bp = Blueprint("health", __name__)
 
 @health_bp.route("/api/health")
 def health():
     try:
-        milvus_ok = get_milvus_client().is_connected()
+        milvus_ok = milvus_ping()
     except Exception:
         milvus_ok = False
     try:
