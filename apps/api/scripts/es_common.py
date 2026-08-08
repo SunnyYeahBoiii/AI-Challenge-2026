@@ -84,9 +84,9 @@ def frame_doc_from_record(record: dict[str, Any]) -> dict[str, object] | None:
         return None
     video_path, frame_id, frame_path = extract_frame_info(file_path)
     key_info = record.get("keyframe_info") or {}
-    video_id = str(record.get("video_path", "")).split("/")[-1]
-    frame_idx = int(key_info.get("frame_idx", 0))
-    pts_time = float(key_info.get("pts_time", 0.0))
+    video_id = str(record.get("video_path", "")).rstrip("/").split("/")[-1]
+    frame_idx = int(key_info.get("frame_idx") or 0)
+    pts_time = float(key_info.get("timestamp") or key_info.get("pts_time") or 0.0)
     return {
         "video_id": video_id,
         "video_path": video_path,
