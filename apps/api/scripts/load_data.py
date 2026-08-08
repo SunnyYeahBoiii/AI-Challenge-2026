@@ -1,22 +1,25 @@
 """
-Load pre-computed embeddings + metadata into Milvus and Elasticsearch.
+Load AIC2026 batch b1 (videos L21-L30) pre-computed BGE-VL embeddings +
+metadata into Milvus and Elasticsearch. The embeddings are BGE-VL-large
+vectors, so this loads into BgeVlEncoder.collection_name — the collection the
+BGE-VL-large encoder searches at query time. Loading data for the other
+encoders (MetaCLIP, BEiT-3) is out of scope: it requires re-encoding every
+keyframe with each model, which this script does not do.
 
 Usage:
     cd apps/api
     uv run python scripts/load_data.py
     uv run python scripts/load_data.py --limit 10 --dry-run
-    uv run python scripts/load_data.py --batch 1  # Batch1 only
-    uv run python scripts/load_data.py --batch 2  # Batch2 only
-    uv run python scripts/load_data.py --all      # Both batches
 
 Expects .env in apps/api/ with MILVUS_URI, ES_URL, etc.
-Data files:
-    - data/Data/Batch{1,2}/clip-embeddings-batch{1,2}-aic25.npy
-    - data/Data/Batch{1,2}/concatenate-data.json
-    - data/media-info/*.json (YouTube metadata)
+Data files (index-aligned, chunk k holds rows k*1000..k*1000+999):
+    - data/Data/Batch1/concatenate-data.json        (OCR/ASR + tags per frame)
+    - data/Data/Batch1/embeddings/embeddings-*.npy  (768-dim BGE-VL vectors)
+    - data/Data/Batch1/records/records-*.jsonl      (frame_uid + youtube_url)
 """
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -28,22 +31,23 @@ from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 from pymilvus import (
     Collection,
+    CollectionSchema,
     DataType,
     FieldSchema,
-    CollectionSchema,
     connections,
     utility,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from es_common import (  # noqa: E402
     ES_BATCH,
     bulk_insert_es,
     connect_elasticsearch,
     ensure_es_index,
-    extract_frame_info,
     frame_doc_from_record,
 )
+from app.services.encoders.bge_vl import BgeVlEncoder  # noqa: E402
 
 # ── Config ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -53,13 +57,14 @@ MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 BATCH1_DIR = DATA_ROOT / "Data" / "Batch1"
-BATCH2_DIR = DATA_ROOT / "Data" / "Batch2"
-MEDIA_DIR = DATA_ROOT / "media-info"
 
-EMBEDDING_DIM = 1024
+# This dataset holds precomputed BGE-VL embeddings — load it into the same
+# collection app.services.encoders.bge_vl.BgeVlEncoder searches at query time.
+EMBEDDING_DIM = BgeVlEncoder.embedding_dim
+CHUNK_SIZE = 1000
 MILVUS_BATCH = 8000
 
-COLLECTION_NAME = "data_frames"
+COLLECTION_NAME = BgeVlEncoder.collection_name
 
 TAG_ITEM_MAX_LEN = 32
 TAGS_MAX_COUNT = 100
@@ -111,29 +116,6 @@ def ensure_milvus_collection() -> Collection:
     return col
 
 
-# ── YouTube URL mapping ─────────────────────────────────────────────────────
-def load_youtube_urls() -> dict[str, str]:
-    youtube_map: dict[str, str] = {}
-    if not MEDIA_DIR.exists():
-        print(f"Media info directory not found: {MEDIA_DIR}")
-        return youtube_map
-
-    for json_file in MEDIA_DIR.glob("*.json"):
-        try:
-            with open(json_file, encoding="utf-8") as f:
-                data = json.load(f)
-            watch_url = data.get("watch_url", "")
-            base_name = json_file.stem  # e.g., L21_V001
-            prefix = base_name.split("_")[0]  # e.g., L21
-            video_path = f"keyframes/{prefix}/{base_name}"
-            youtube_map[video_path] = watch_url
-        except Exception as e:
-            print(f"  Error reading {json_file.name}: {e}")
-
-    print(f"Loaded {len(youtube_map)} YouTube URL mappings.")
-    return youtube_map
-
-
 # ── Checkpoint ──────────────────────────────────────────────────────────────
 def load_checkpoint() -> set[str]:
     if CHECKPOINT_FILE.exists():
@@ -150,187 +132,144 @@ def save_checkpoint(processed: set[str]) -> None:
 
 # ── Data loading ────────────────────────────────────────────────────────────
 def load_batch(
-    batch_dir: Path,
-    youtube_map: dict[str, str],
     es: Elasticsearch,
     col: Collection,
     processed: set[str],
     limit: int | None = None,
     dry_run: bool = False,
-) -> tuple[int, int]:
-    json_path = batch_dir / "concatenate-data.json"
-    npy_path = batch_dir.name.replace("Batch", "clip-embeddings-batch").lower()
-    npy_file = batch_dir / f"{npy_path}-aic25.npy"
+) -> int:
+    json_path = BATCH1_DIR / "concatenate-data.json"
+    npy_files = sorted(glob.glob(str(BATCH1_DIR / "embeddings" / "embeddings-*.npy")))
+    jsonl_files = sorted(glob.glob(str(BATCH1_DIR / "records" / "records-*.jsonl")))
 
     if not json_path.exists():
-        print(f"JSON not found: {json_path}")
-        return 0, 0
-    if not npy_file.exists():
-        print(f"NPY not found: {npy_file}")
-        return 0, 0
-
-    print(f"\nLoading from {batch_dir.name}...")
-    print(f"  JSON: {json_path}")
-    print(f"  NPY: {npy_file}")
+        raise FileNotFoundError(json_path)
+    if not npy_files or not jsonl_files:
+        raise FileNotFoundError("Missing embeddings/ or records/ chunks")
 
     with open(json_path, encoding="utf-8") as f:
         json_data = json.load(f)
-    print(f"  Loaded {len(json_data)} JSON records.")
+    n_rows = sum(np.load(f, mmap_mode="r").shape[0] for f in npy_files)
+    print(f"JSON records: {len(json_data)}, embedding rows: {n_rows}, chunks: {len(npy_files)}")
+    if len(json_data) != n_rows:
+        raise ValueError("JSON/embedding count mismatch — aborting")
 
-    embeddings = np.load(npy_file)
-    print(f"  Loaded {len(embeddings)} embeddings with shape {embeddings.shape}.")
+    youtube_urls: dict[str, str] = {}
+    for jsonl_file in jsonl_files:
+        with open(jsonl_file, encoding="utf-8") as f:
+            for line in f:
+                rec = json.loads(line)
+                youtube_urls[rec["frame_uid"]] = rec.get("youtube_url", "")
+    print(f"Loaded {len(youtube_urls)} youtube_url mappings.")
 
-    if len(json_data) != len(embeddings):
-        print(f"  WARNING: JSON ({len(json_data)}) and NPY ({len(embeddings)}) count mismatch!")
-        min_len = min(len(json_data), len(embeddings))
-        json_data = json_data[:min_len]
-        embeddings = embeddings[:min_len]
-
-    total_frames = 0
     milvus_buffer: list[list[object]] = [[] for _ in range(14)]
     es_buffer: list[dict[str, object]] = []
     t0 = time.time()
     count = 0
+    total_frames = 0
+    chunk_embeddings: np.ndarray | None = None
 
-    for i, (record, embedding) in enumerate(zip(json_data, embeddings)):
+    for i, record in enumerate(json_data):
         if limit and count >= limit:
             break
 
         file_path = record.get("file_path", "")
-        video_path, frame_id, frame_path = extract_frame_info(file_path)
-
-        # Skip if already processed (by file_path as unique key)
         if file_path in processed:
             continue
 
-        # Extract metadata
         key_info = record.get("keyframe_info", {})
-        video_id = record.get("video_path", "").split("/")[-1]  # e.g., L21_V001
+        video_id = str(record.get("video_path", "")).rstrip("/").split("/")[-1]
         frame_idx = int(key_info.get("frame_idx", 0))
-        shot_idx = int(key_info.get("shot_idx", 0))
-        start_time = float(key_info.get("start_time", 0.0))
-        end_time = float(key_info.get("end_time", 0.0))
-        pts_time = float(key_info.get("pts_time", 0.0))
-        fps = float(key_info.get("fps", 0.0))
+        frame_uid = f"{video_id}:{frame_idx:08d}"
 
-        # Tags: merge OD_tags and RAM_tags
-        tags = list(set(record.get("OD_tags", []) + record.get("RAM_tags", [])))
-        tags = tags[:TAGS_MAX_COUNT]
+        chunk_idx = i // CHUNK_SIZE
+        row_idx = i % CHUNK_SIZE
+        if chunk_embeddings is None or chunk_idx != (i - 1) // CHUNK_SIZE:
+            chunk_embeddings = np.load(npy_files[chunk_idx])
+            if len(chunk_embeddings) != CHUNK_SIZE and chunk_idx != len(npy_files) - 1:
+                raise ValueError(f"Unexpected chunk size in {npy_files[chunk_idx]}")
+            print(f"  Loaded chunk {chunk_idx}: {npy_files[chunk_idx]}")
+
+        shot_idx = int(key_info.get("shot_idx") or 0)
+        start_time = float(key_info.get("start_time") or 0.0)
+        end_time = float(key_info.get("end_time") or 0.0)
+        pts_time = float(key_info.get("timestamp") or key_info.get("pts_time") or 0.0)
+        fps = float(key_info.get("fps") or 0.0)
+
+        tags = list(set(record.get("OD_tags", []) + record.get("RAM_tags", [])))[:TAGS_MAX_COUNT]
         tags = [t[:TAG_ITEM_MAX_LEN] for t in tags]
 
-        # YouTube URL
-        youtube_url = youtube_map.get(video_path, "")
+        milvus_buffer[0].append(video_id)
+        milvus_buffer[1].append(str(record.get("video_path", "")).rstrip("/"))
+        milvus_buffer[2].append(youtube_urls.get(frame_uid, ""))
+        milvus_buffer[3].append(frame_idx)
+        milvus_buffer[4].append(frame_idx)
+        milvus_buffer[5].append(file_path)
+        milvus_buffer[6].append(shot_idx)
+        milvus_buffer[7].append(start_time)
+        milvus_buffer[8].append(end_time)
+        milvus_buffer[9].append(pts_time)
+        milvus_buffer[10].append(fps)
+        milvus_buffer[11].append(pts_time)
+        milvus_buffer[12].append(tags)
+        milvus_buffer[13].append(chunk_embeddings[row_idx].tolist())
 
-        # Milvus buffer (16 fields)
-        milvus_buffer[0].append(video_id)       # video_id
-        milvus_buffer[1].append(video_path)     # video_path
-        milvus_buffer[2].append(youtube_url)    # youtube_url
-        milvus_buffer[3].append(frame_id)       # frame_index
-        milvus_buffer[4].append(frame_idx)      # frame_idx
-        milvus_buffer[5].append(frame_path)     # frame_path
-        milvus_buffer[6].append(shot_idx)       # shot_idx
-        milvus_buffer[7].append(start_time)     # start_time
-        milvus_buffer[8].append(end_time)       # end_time
-        milvus_buffer[9].append(pts_time)       # pts_time
-        milvus_buffer[10].append(fps)           # fps
-        milvus_buffer[11].append(pts_time)      # timestamp
-        milvus_buffer[12].append(tags)          # tags
-        milvus_buffer[13].append(embedding.tolist())  # embedding
-
-        # ES buffer (ocr_text / asr_text from ocr_text / audio_text)
         es_doc = frame_doc_from_record(record)
         if es_doc is not None:
             es_buffer.append(es_doc)
 
-        # Flush Milvus
-        if len(milvus_buffer[0]) >= MILVUS_BATCH:
-            col.insert(milvus_buffer)
-            total_frames += len(milvus_buffer[0])
-            milvus_buffer = [[] for _ in range(14)]
-
-        # Flush ES
-        if len(es_buffer) >= ES_BATCH:
-            bulk_insert_es(es, es_buffer)
-            es_buffer = []
+        if not dry_run:
+            if len(milvus_buffer[0]) >= MILVUS_BATCH:
+                col.insert(milvus_buffer)
+                total_frames += len(milvus_buffer[0])
+                milvus_buffer = [[] for _ in range(14)]
+            if len(es_buffer) >= ES_BATCH:
+                bulk_insert_es(es, es_buffer)
+                es_buffer = []
 
         processed.add(file_path)
         count += 1
-        if count % 1000 == 0:
+        if count % 5000 == 0:
             elapsed = time.time() - t0
-            fps_rate = total_frames / elapsed if elapsed > 0 else 0
-            print(f"  [{count}] {total_frames} frames | {fps_rate:.1f} frames/s")
+            rate = count / elapsed if elapsed > 0 else 0
+            print(f"  [{count}] {rate:.0f} records/s")
 
-    # Final flush
-    if milvus_buffer[0]:
-        col.insert(milvus_buffer)
-        total_frames += len(milvus_buffer[0])
-    if es_buffer:
-        bulk_insert_es(es, es_buffer)
+    if not dry_run:
+        if milvus_buffer[0]:
+            col.insert(milvus_buffer)
+            total_frames += len(milvus_buffer[0])
+        if es_buffer:
+            bulk_insert_es(es, es_buffer)
 
     elapsed = time.time() - t0
-    print(f"  Done: {count} records, {total_frames} frames in {elapsed:.1f}s")
-    return count, total_frames
+    print(f"  Done: {count} records ({total_frames} inserted) in {elapsed:.1f}s")
+    return count
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
-def load(
-    batch: int | None = None,
-    all_batches: bool = False,
-    limit: int | None = None,
-    dry_run: bool = False,
-) -> None:
+def load(limit: int | None = None, dry_run: bool = False) -> None:
     connect_milvus()
     col = ensure_milvus_collection()
-
     es = connect_elasticsearch()
     ensure_es_index(es)
 
-    youtube_map = load_youtube_urls()
-
-    processed: set[str] = set()
-    total_videos = 0
-    total_frames = 0
-
+    processed = load_checkpoint() if not dry_run else set()
     t0 = time.time()
+    load_batch(es, col, processed, limit, dry_run)
 
-    if all_batches or batch is None:
-        dirs = [BATCH1_DIR, BATCH2_DIR]
-    elif batch == 1:
-        dirs = [BATCH1_DIR]
-    elif batch == 2:
-        dirs = [BATCH2_DIR]
-    else:
-        print(f"Invalid batch: {batch}")
-        return
-
-    for batch_dir in dirs:
-        videos, frames = load_batch(
-            batch_dir, youtube_map, es, col, processed, limit, dry_run
-        )
-        total_videos += videos
-        total_frames += frames
-
-    col.flush()
-    save_checkpoint(processed)
-
-    elapsed = time.time() - t0
-    print(f"\nDone! {total_frames} frames loaded in {elapsed:.1f}s")
-    print(f"  Videos: {total_videos} processed")
-    print(f"  Milvus: {COLLECTION_NAME} ({col.num_entities} entities)")
-    print(f"  ES: video_texts")
+    if not dry_run:
+        col.flush()
+        save_checkpoint(processed)
+        elapsed = time.time() - t0
+        print(f"\nDone in {elapsed:.1f}s")
+        print(f"  Milvus: {COLLECTION_NAME} ({col.num_entities} entities)")
+        print("  ES: video_texts")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Load pre-computed embeddings into Milvus + ES")
-    parser.add_argument("--batch", type=int, choices=[1, 2], help="Load specific batch (1 or 2)")
-    parser.add_argument("--all", action="store_true", help="Load both batches")
+    parser = argparse.ArgumentParser(description="Load AIC2026 b1 embeddings into Milvus + ES")
     parser.add_argument("--limit", type=int, help="Max records to process")
-    parser.add_argument("--dry-run", action="store_true", help="Skip actual insert (for testing)")
+    parser.add_argument("--dry-run", action="store_true", help="Parse only; skip DB writes")
     args = parser.parse_args()
 
-    load(
-        batch=args.batch,
-        all_batches=args.all,
-        limit=args.limit,
-        dry_run=args.dry_run,
-    )
+    load(limit=args.limit, dry_run=args.dry_run)
