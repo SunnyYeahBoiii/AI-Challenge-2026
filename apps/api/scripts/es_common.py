@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import unicodedata
 from typing import Any
 
 from elasticsearch import Elasticsearch
@@ -32,13 +31,10 @@ ES_MAPPING: dict[str, Any] = {
 
 
 def normalize_text(text: str) -> str:
-    """Strip diacritics and keep ascii alphanumerics — must match query-time normalize."""
+    """Lowercase and collapse whitespace — preserves Vietnamese diacritics."""
     if not text:
         return ""
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     text = text.lower()
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 

@@ -191,7 +191,7 @@ def test_query_keywords_are_normalized():
     client.match_frames_by_keywords([("V1", 1)], asr_keywords=["Chào Mừng!"])
     clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
     assert clause["query"] == normalize_text("Chào Mừng!")
-    assert clause["query"] == "chao mung"
+    assert clause["query"] == "chào mừng!"
 
 
 def test_legacy_source_ocr_maps_to_ocr_field():
