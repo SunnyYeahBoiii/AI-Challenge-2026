@@ -22,7 +22,7 @@ def set_model() -> ResponseReturnValue:
         return jsonify({"status": status})
 
     try:
-        status = manager.swap(model_id, collection_name)
+        status = manager.swap_async(model_id, collection_name)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
