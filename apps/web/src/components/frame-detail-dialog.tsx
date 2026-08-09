@@ -324,7 +324,7 @@ export function FrameDetailDialog({
       {showFullscreenImage && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-8"
-          onClick={() => setShowFullscreenImage(false)}
+          onClick={(e) => { e.stopPropagation(); setShowFullscreenImage(false); }}
         >
           <button
             onClick={() => setShowFullscreenImage(false)}
