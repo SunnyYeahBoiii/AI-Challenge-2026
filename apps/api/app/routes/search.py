@@ -168,7 +168,7 @@ def api_frames():
 @search_bp.route("/api/keyframes/<video_id>/<int:frame_index>")
 def serve_keyframe(video_id, frame_index):
     level = video_id[:3]
-    path = KEYFRAMES_DIR / level / video_id / f"{frame_index:04d}.webp"
+    path = KEYFRAMES_DIR / level / video_id / f"{frame_index}.webp"
     if path.exists():
         return send_file(path, mimetype="image/webp")
     return jsonify({"error": "frame not found"}), 404
