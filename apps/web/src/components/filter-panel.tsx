@@ -241,13 +241,23 @@ export function FilterPanel({
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low">
         <div className="flex justify-between items-center px-1 shrink-0">
           <h3 className="text-label-md text-on-surface">Queries</h3>
-          <button
-            onClick={addQuery}
-            aria-label="Add query"
-            className="text-on-surface-variant hover:text-primary transition-colors"
-          >
-            <Icon name="add" size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false }])}
+              aria-label="Clear queries"
+              title="Clear queries"
+              className="text-on-surface-variant hover:text-error transition-colors"
+            >
+              <Icon name="delete" size={18} />
+            </button>
+            <button
+              onClick={addQuery}
+              aria-label="Add query"
+              className="text-on-surface-variant hover:text-primary transition-colors"
+            >
+              <Icon name="add" size={18} />
+            </button>
+          </div>
         </div>
         {dndReady ? (
           <DndContext
