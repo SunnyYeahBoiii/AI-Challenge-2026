@@ -26,6 +26,7 @@ export default function Home() {
   const [dresSessionId, setDresSessionId] = useState<string | null>(null);
   const [dresUsername, setDresUsername] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
+  const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
 
   // Submission state
@@ -137,6 +138,8 @@ export default function Home() {
         onClear={handleClear}
         onValidationError={setSearchError}
         isLoading={isLoading}
+        gridCols={gridCols}
+        onGridColsChange={setGridCols}
       />
 
       {/* Main Content */}
@@ -270,6 +273,7 @@ export default function Home() {
           isLoading={isLoading}
           submissionType={submissionType}
           dresSessionId={dresSessionId}
+          gridCols={gridCols}
         />
       </div>
 

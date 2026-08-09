@@ -30,6 +30,7 @@ interface ResultsPanelProps {
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
+  gridCols?: number;
 }
 
 export function ResultsPanel({
@@ -40,6 +41,7 @@ export function ResultsPanel({
   isLoading,
   submissionType,
   dresSessionId,
+  gridCols = 6,
 }: ResultsPanelProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -134,7 +136,7 @@ export function ResultsPanel({
   if (isLoading) {
     return (
       <div className="p-container-padding">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
           {Array.from({ length: 20 }).map((_, i) => (
             <div
               key={i}
@@ -192,7 +194,7 @@ export function ResultsPanel({
                 <div className="h-px bg-outline-variant flex-1" />
               </div>
             )}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
               {group.map((frame) => {
                 const key = `${frame.video_id}-${frame.frame_index}`;
                 const isLastOpened = lastOpenedKey === key;

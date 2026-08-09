@@ -20,6 +20,8 @@ interface FilterPanelProps {
   onClear: () => void;
   onValidationError: (message: string) => void;
   isLoading?: boolean;
+  gridCols?: number;
+  onGridColsChange?: (cols: number) => void;
 }
 
 export function FilterPanel({
@@ -27,6 +29,8 @@ export function FilterPanel({
   onClear,
   onValidationError,
   isLoading,
+  gridCols = 6,
+  onGridColsChange,
 }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
@@ -235,6 +239,26 @@ export function FilterPanel({
             </div>
           </div>
         </div>
+
+        {/* Grid Columns */}
+        {onGridColsChange && (
+          <div className="mb-4">
+            <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
+              <Icon name="grid_view" size={16} /> Grid Columns
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={2}
+                max={12}
+                value={gridCols}
+                onChange={(e) => onGridColsChange(Number(e.target.value))}
+                className="flex-1 accent-primary"
+              />
+              <span className="text-label-sm text-on-surface-variant w-4 text-center">{gridCols}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Queries List */}
