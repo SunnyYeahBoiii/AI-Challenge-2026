@@ -79,6 +79,56 @@ def swap(model_id: str, collection_name: str | None = None) -> Status:
         return get_status()
 
 
+def swap_async(model_id: str, collection_name: str | None = None) -> Status:
+    """Same as `swap()` but runs the actual load in a background thread.
+
+    Returns immediately with state ``loading`` so the caller can poll ``get_status()``
+    for progress instead of blocking on a single HTTP request.
+    """
+    if model_id not in ENCODER_REGISTRY:
+        raise ValueError(f"Unknown model_id '{model_id}'. Known: {list_models()}")
+
+    global _state, _active, _error, _collection_name
+
+    # Snapshot the collection override before the background thread takes over.
+    _pending_collection = (collection_name or "").strip()
+    _pending_model_id = model_id
+
+    def _worker() -> None:
+        global _state, _active, _error, _collection_name
+        with _lock:
+            if _active is not None:
+                logger.info("Unloading encoder %s", _active.model_id)
+                _active.unload()
+                _active = None
+            _state = "loading"
+            _error = None
+
+        encoder = ENCODER_REGISTRY[_pending_model_id]()
+        try:
+            logger.info("Loading encoder %s", _pending_model_id)
+            encoder.load()
+        except Exception as exc:
+            with _lock:
+                _state = "error"
+                _error = str(exc)
+            logger.exception("Failed to load encoder %s", _pending_model_id)
+            return
+
+        with _lock:
+            _active = encoder
+            _collection_name = _pending_collection or encoder.collection_name
+            _state = "ready"
+        logger.info("Encoder %s ready", _pending_model_id)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+    with _lock:
+        _state = "loading"
+        _error = None
+    return get_status()
+
+
 def unload() -> Status:
     global _state, _active, _error, _collection_name
     with _lock:
