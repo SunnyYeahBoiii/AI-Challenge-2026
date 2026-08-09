@@ -56,15 +56,14 @@ class ESClient:
     ) -> list[dict[str, Any]]:
         must: list[dict[str, Any]] = []
         if query:
-            normalized = normalize_text(query)
-            if normalized:
-                must.append({
-                    "multi_match": {
-                        "query": normalized,
-                        "fields": ["ocr_text^3", "asr_text^2"],
-                        "fuzziness": "AUTO",
-                    }
-                })
+            must.append({
+                "bool": {
+                    "should": [
+                        {"prefix": {"video_id": query}},
+                        {"prefix": {"video_id": query.upper()}},
+                    ],
+                }
+            })
         body: dict[str, Any] = {"size": size}
         if must:
             body["query"] = {"bool": {"must": must}}

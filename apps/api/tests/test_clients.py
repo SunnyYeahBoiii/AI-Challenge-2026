@@ -67,6 +67,26 @@ def _must(client):
     return client.es.body["query"]["bool"]["must"]
 
 
+def test_search_videos_prefix_matches_video_id():
+    client = _client([])
+    client.search_videos(query="K01")
+    should = _must(client)[0]["bool"]["should"]
+    assert {"prefix": {"video_id": "K01"}} in should
+
+
+def test_search_videos_also_tries_uppercase():
+    client = _client([])
+    client.search_videos(query="l21")
+    should = _must(client)[0]["bool"]["should"]
+    assert {"prefix": {"video_id": "L21"}} in should
+
+
+def test_search_videos_without_query_is_match_all():
+    client = _client([])
+    client.search_videos()
+    assert client.es.body["query"] == {"match_all": {}}
+
+
 def test_no_keywords_keeps_everything():
     client = _client([])
     keys = [("V1", 1), ("V1", 2)]
