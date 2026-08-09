@@ -14,6 +14,7 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
   const [selectedModel, setSelectedModel] = useState("");
   const [collectionName, setCollectionName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,12 +33,43 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
     setBusy(true);
     setErrorMessage(null);
     try {
-      const { status } = await setActiveModel(selectedModel, collectionName.trim());
-      setStatus(status);
-      setCollectionName(status.collection_name ?? "");
-      if (status.state === "error") setErrorMessage(status.error);
-    } catch {
-      setErrorMessage("Failed to load model");
+      const { status: initial } = await setActiveModel(selectedModel, collectionName.trim());
+      setStatus(initial);
+      if (initial.state === "error") {
+        setErrorMessage(initial.error);
+        setBusy(false);
+        return;
+      }
+      // Poll until ready or error — avoids proxy / axios timeout on long loads.
+      const start = Date.now();
+      setElapsed(0);
+      const timer = setInterval(() => setElapsed(Math.round((Date.now() - start) / 1000)), 1000);
+      try {
+        while (true) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const { status: s } = await getModelStatus();
+          setStatus(s);
+          setCollectionName(s.collection_name ?? "");
+          if (s.state === "ready") {
+            setErrorMessage(null);
+            break;
+          }
+          if (s.state === "error") {
+            setErrorMessage(s.error ?? "Failed to load model");
+            break;
+          }
+          if (Date.now() - start > 5 * 60 * 1000) {
+            setErrorMessage("Load timed out after 5 minutes");
+            break;
+          }
+        }
+      } finally {
+        clearInterval(timer);
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setStatus((err as { response?: { data?: { status?: ModelStatus } } })?.response?.data?.status ?? null);
+      setErrorMessage(msg ?? "Failed to load model");
     } finally {
       setBusy(false);
     }
@@ -49,8 +81,9 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
     try {
       const { status } = await setActiveModel(null);
       setStatus(status);
-    } catch {
-      setErrorMessage("Failed to unload model");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setErrorMessage(msg ?? "Failed to unload model");
     } finally {
       setBusy(false);
     }
@@ -140,7 +173,7 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
             disabled={busy || !selectedModel}
             className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
           >
-            {busy ? "Loading..." : "Load"}
+            {busy ? `Loading... ${elapsed}s` : "Load"}
           </button>
         </div>
       </div>
