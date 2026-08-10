@@ -7,44 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-
-// ponytail: minimal YT types, pull @types/youtube if full coverage needed
-interface YTPlayer {
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  playVideo(): void;
-  pauseVideo(): void;
-  getCurrentTime(): number;
-  getPlayerState(): number;
-  destroy(): void;
-}
-
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (
-        id: string | HTMLElement,
-        opts: {
-          videoId: string;
-          playerVars?: Record<string, string | number>;
-          events?: {
-            onReady?: (e: { target: YTPlayer }) => void;
-            onStateChange?: (e: { data: number }) => void;
-            onError?: (e: { data: number }) => void;
-          };
-        },
-      ) => YTPlayer;
-      PlayerState: {
-        PLAYING: number;
-        PAUSED: number;
-        BUFFERING: number;
-        ENDED: number;
-        UNSTARTED: number;
-        CUED: number;
-      };
-    };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
+import videojs from "video.js";
 
 export interface VideoPlayerHandle {
   seekTo(seconds: number): void;
@@ -54,160 +17,89 @@ export interface VideoPlayerHandle {
 }
 
 interface VideoPlayerProps {
-  watchUrl: string;
+  src: string;
   initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onReady?: () => void;
-  onStateChange?: (state: number) => void;
-}
-
-function extractVideoId(url: string | undefined): string | null {
-  if (!url) return null;
-  const m = url.match(
-    /(?:v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/,
-  );
-  return m?.[1] ?? null;
-}
-
-function useYouTubeApi(): boolean {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (window.YT?.Player) {
-      setReady(true);
-      return;
-    }
-    if (!document.querySelector('script[src*="iframe_api"]')) {
-      const s = document.createElement("script");
-      s.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(s);
-    }
-    window.onYouTubeIframeAPIReady = () => setReady(true);
-  }, []);
-
-  return ready;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ watchUrl, initialTime, onTimeUpdate, onReady, onStateChange }, ref) => {
+  ({ src, initialTime, onTimeUpdate, onReady }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const playerRef = useRef<YTPlayer | null>(null);
-    const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-    // seekTo() resumes playback even from a paused/cued state; when set, the next PLAYING
-    // transition it causes gets paused right back instead of being forced before the seeked
-    // frame has buffered (which would just show black instead of the frame).
-    const pauseAfterSeekRef = useRef(false);
-    const apiReady = useYouTubeApi();
+    const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const cbs = useRef({ onTimeUpdate, onReady, onStateChange, initialTime });
-    cbs.current = { onTimeUpdate, onReady, onStateChange, initialTime };
-
-    const videoId = extractVideoId(watchUrl);
+    const cbs = useRef({ onTimeUpdate, onReady, initialTime });
+    cbs.current = { onTimeUpdate, onReady, initialTime };
 
     useEffect(() => {
-      if (!apiReady || !videoId || !containerRef.current) return;
+      if (!src || !containerRef.current) return;
 
       setLoading(true);
       setError(null);
 
-      // YT.Player replaces its target element with an <iframe>, which React doesn't know about.
-      // Mount it on a plain node React never diffs, so unmount only ever removes containerRef's
-      // whole subtree in one shot instead of trying to remove a child YT already swapped out.
-      const mountNode = document.createElement("div");
-      mountNode.className = "h-full w-full";
-      containerRef.current.appendChild(mountNode);
+      // video.js's dispose() mutates/removes the DOM node it's given, which
+      // crashes React's own unmount diffing if that node is React-rendered.
+      // So we create the <video> imperatively, outside React's tree, and let
+      // video.js own it end-to-end.
+      const videoEl = document.createElement("video");
+      videoEl.className = "video-js vjs-big-play-centered h-full w-full";
+      containerRef.current.appendChild(videoEl);
 
-      const player = new window.YT!.Player(mountNode, {
-        videoId,
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          rel: 0,
-          modestbranding: 1,
-          start: Math.floor(cbs.current.initialTime ?? 0),
-        },
-        events: {
-          onReady: () => {
-            setLoading(false);
-            const t = cbs.current.initialTime;
-            if (t !== undefined) {
-              pauseAfterSeekRef.current = true;
-              setTimeout(() => {
-                player.seekTo(t, true);
-              }, 0);
-            }
-            cbs.current.onReady?.();
-          },
-          onStateChange: (e) => {
-            if (
-              e.data === window.YT!.PlayerState.PLAYING &&
-              pauseAfterSeekRef.current
-            ) {
-              pauseAfterSeekRef.current = false;
-              player.pauseVideo();
-              return;
-            }
-            cbs.current.onStateChange?.(e.data);
-            // Fires once per transition (pause, seek settling, etc.) so the panel snaps to the real position even without the polling interval running.
-            const t = player.getCurrentTime();
-            cbs.current.onTimeUpdate?.(t);
-            if (e.data === window.YT!.PlayerState.PLAYING) {
-              if (!intervalRef.current) {
-                intervalRef.current = setInterval(() => {
-                  const t2 = playerRef.current?.getCurrentTime();
-                  if (t2 !== undefined) cbs.current.onTimeUpdate?.(t2);
-                }, 250);
-              }
-            } else {
-              clearInterval(intervalRef.current);
-              intervalRef.current = undefined;
-            }
-          },
-          onError: () => {
-            setError("Failed to load video");
-            setLoading(false);
-          },
-        },
+      const player = videojs(videoEl, {
+        controls: true,
+        preload: "auto",
+        sources: [{ src, type: "video/mp4" }],
+      });
+
+      player.on("loadedmetadata", () => {
+        setLoading(false);
+        const t = cbs.current.initialTime;
+        // Unlike the old YouTube iframe API, setting currentTime here never
+        // auto-resumes playback, so no pause-after-seek workaround is needed.
+        if (t !== undefined) player.currentTime(t);
+        cbs.current.onReady?.();
+      });
+
+      player.on("timeupdate", () => {
+        cbs.current.onTimeUpdate?.(player.currentTime() ?? 0);
+      });
+
+      player.on("error", () => {
+        setError("Failed to load video");
+        setLoading(false);
       });
 
       playerRef.current = player;
 
       return () => {
-        clearInterval(intervalRef.current);
-        intervalRef.current = undefined;
+        player.dispose();
+        videoEl.remove();
         playerRef.current = null;
-        player.destroy();
-        mountNode.remove();
       };
-    }, [apiReady, videoId]);
+    }, [src]);
 
     useImperativeHandle(
       ref,
       () => ({
         seekTo(seconds: number) {
-          const player = playerRef.current;
-          if (!player) return;
-          if (player.getPlayerState() !== window.YT?.PlayerState.PLAYING) {
-            pauseAfterSeekRef.current = true;
-          }
-          player.seekTo(seconds, true);
+          playerRef.current?.currentTime(seconds);
         },
         getCurrentTime() {
-          return playerRef.current?.getCurrentTime() ?? 0;
+          return playerRef.current?.currentTime() ?? 0;
         },
         play() {
-          playerRef.current?.playVideo();
+          playerRef.current?.play();
         },
         pause() {
-          playerRef.current?.pauseVideo();
+          playerRef.current?.pause();
         },
       }),
       [],
     );
 
-    if (!videoId) {
+    if (!src) {
       return (
         <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
           Invalid video URL
