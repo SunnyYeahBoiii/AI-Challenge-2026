@@ -121,6 +121,7 @@ class FrameResult(BaseModel):
     publish_date: str = ""
     thumbnail_url: str = ""
     watch_url: str = ""
+    video_url: str = ""
     sequence_idx: int | None = None
     sequence_id: str = ""
 
