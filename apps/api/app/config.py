@@ -23,3 +23,13 @@ class Config:
     OBJECT_DETECTIONS_PATH = os.getenv("OBJECT_DETECTIONS_PATH", str(DEFAULT_OBJECT_DETECTIONS_PATH))
 
     DRES_URL = os.getenv("DRES_URL", "")
+
+    # MinIO/S3 storage for keyframes + videos. ENDPOINT is host[:port] only, no
+    # scheme — swap it (and MINIO_SECURE) between practice (public domain, https)
+    # and competition (Tailscale IP, plain http) via .env, no code change needed.
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+    MINIO_SECURE = os.getenv("MINIO_SECURE", "true").lower() == "true"
+    MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
+    MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
+    MINIO_BUCKET_KEYFRAMES = os.getenv("MINIO_BUCKET_KEYFRAMES", "keyframes")
+    MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos")
