@@ -31,6 +31,7 @@ interface ResultsPanelProps {
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
   gridCols?: number;
+  hasSearched?: boolean;
 }
 
 export function ResultsPanel({
@@ -42,6 +43,7 @@ export function ResultsPanel({
   submissionType,
   dresSessionId,
   gridCols = 6,
+  hasSearched = false,
 }: ResultsPanelProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -96,42 +98,50 @@ export function ResultsPanel({
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [frames]);
+  }, [frames, viewMode]);
 
-  const visibleFrames = useMemo(
-    () => frames.slice(0, visibleCount),
-    [frames, visibleCount]
-  );
-
-  const groupedFrames = useMemo(() => {
-    if (viewMode === "continuous") return [visibleFrames];
+  const allGroups = useMemo(() => {
+    if (viewMode !== "grouped") return null;
     const groups = new Map<string, FrameResult[]>();
-    visibleFrames.forEach((frame) => {
-      const key = frame.video_id;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(frame);
+    frames.forEach((frame) => {
+      if (!groups.has(frame.video_id)) groups.set(frame.video_id, []);
+      groups.get(frame.video_id)!.push(frame);
     });
     return Array.from(groups.values())
       .sort((a, b) => Math.max(...b.map((f) => f.score)) - Math.max(...a.map((f) => f.score)))
       .map((group) => [...group].sort((a, b) => a.frame_idx - b.frame_idx));
-  }, [visibleFrames, viewMode]);
+  }, [frames, viewMode]);
+
+  const totalItems = viewMode === "continuous" ? frames.length : (allGroups?.length ?? 0);
+
+  const groupedFrames = useMemo(() => {
+    if (viewMode === "continuous") return [frames.slice(0, visibleCount)];
+    if (!allGroups) return [];
+    return allGroups.slice(0, visibleCount);
+  }, [viewMode, frames, visibleCount, allGroups]);
+
+  const visibleFrameCount = useMemo(() => {
+    if (viewMode === "continuous") return Math.min(visibleCount, frames.length);
+    if (!allGroups) return 0;
+    return allGroups.slice(0, visibleCount).reduce((sum, g) => sum + g.length, 0);
+  }, [viewMode, visibleCount, frames.length, allGroups]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const root = scrollRootRef.current;
-    if (!sentinel || !root || visibleCount >= frames.length) return;
+    if (!sentinel || !root || visibleCount >= totalItems) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((count) => Math.min(count + PAGE_SIZE, frames.length));
+          setVisibleCount((count) => Math.min(count + PAGE_SIZE, totalItems));
         }
       },
       { root, rootMargin: "400px", threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [frames.length, visibleCount]);
+  }, [totalItems, visibleCount]);
 
   if (isLoading) {
     return (
@@ -152,12 +162,14 @@ export function ResultsPanel({
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center max-w-md">
-          <Icon name="image_search" size={48} className="text-outline-variant mb-3" />
+          <Icon name={hasSearched ? "search_off" : "image_search"} size={48} className="text-outline-variant mb-3" />
           <h2 className="text-headline-sm font-bold text-on-surface mb-2">
-            Start Searching
+            {hasSearched ? "No Results Found" : "Start Searching"}
           </h2>
           <p className="text-body-md text-on-surface-variant">
-            Use the filters on the left and press &quot;Search&quot; to see results.
+            {hasSearched
+              ? "Try adjusting your query or filters."
+              : 'Use the filters on the left and press "Search" to see results.'}
           </p>
         </div>
       </div>
@@ -171,7 +183,7 @@ export function ResultsPanel({
     >
       <div className="flex justify-between items-center mb-4">
         <span className="text-label-md text-on-surface-variant">
-          Showing {visibleFrames.length} of {frames.length}{" "}
+          Showing {visibleFrameCount} of {frames.length}{" "}
           {frames.length === 1 ? "result" : "results"}
           {viewMode === "grouped" && groupedFrames.length > 1 && (
             <> · {groupedFrames.length} videos</>
@@ -279,7 +291,7 @@ export function ResultsPanel({
           </div>
         ))}
       </div>
-      {visibleCount < frames.length && (
+      {visibleCount < totalItems && (
         <div
           ref={sentinelRef}
           className="h-8 flex items-center justify-center text-label-sm text-on-surface-variant"
