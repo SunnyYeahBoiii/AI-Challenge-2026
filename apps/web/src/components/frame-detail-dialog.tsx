@@ -179,7 +179,7 @@ export function FrameDetailDialog({
             <div className="relative w-full aspect-video bg-black flex-shrink-0">
               <VideoPlayer
                 ref={videoRef}
-                watchUrl={frame.watch_url}
+                src={frame.video_url}
                 initialTime={frame.pts_time}
                 onTimeUpdate={(t) => {
                   if (!timeInputFocusedRef.current) {

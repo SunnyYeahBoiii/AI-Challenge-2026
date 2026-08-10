@@ -23,6 +23,7 @@ export interface FrameResult {
   publish_date?: string;
   thumbnail_url: string;
   watch_url: string;
+  video_url: string;
   /** Position of this frame inside a temporal sequence (sequential mode only). */
   sequence_idx?: number;
   /** Groups the frames that belong to the same temporal sequence. */
