@@ -27,6 +27,8 @@ export interface FrameResult {
   sequence_idx?: number;
   /** Groups the frames that belong to the same temporal sequence. */
   sequence_id?: string;
+  ocr_text?: string;
+  asr_text?: string;
 }
 
 export interface VideoResult {

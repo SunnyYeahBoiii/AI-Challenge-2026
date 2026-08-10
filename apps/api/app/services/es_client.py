@@ -161,6 +161,38 @@ class ESClient:
         }
         return {key for key in keys if key in matched}
 
+    def fetch_frame_texts(
+        self, frame_keys: Iterable[FrameKey]
+    ) -> dict[FrameKey, dict[str, str]]:
+        keys = list(frame_keys)
+        if not keys:
+            return {}
+        video_ids = sorted({vid for vid, _ in keys if vid})
+        frame_ids = sorted({idx for _, idx in keys if idx is not None})
+        if not video_ids or not frame_ids:
+            return {}
+        body = {
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"terms": {"video_id": video_ids}},
+                        {"terms": {"frame_id": frame_ids}},
+                    ]
+                }
+            },
+            "_source": ["video_id", "frame_id", "ocr_text", "asr_text"],
+            "size": min(MAX_KEYWORD_HITS, max(len(keys) * 2, 100)),
+        }
+        resp = self.es.search(index=ES_INDEX, body=body)
+        result: dict[FrameKey, dict[str, str]] = {}
+        for hit in resp["hits"]["hits"]:
+            src = hit["_source"]
+            result[(src["video_id"], src["frame_id"])] = {
+                "ocr_text": src.get("ocr_text", "") or "",
+                "asr_text": src.get("asr_text", "") or "",
+            }
+        return result
+
     def is_connected(self) -> bool:
         try:
             return bool(self.es.ping())

@@ -157,7 +157,7 @@ export function FrameDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={`Frame ${currentFrameIndex} details`}
-        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
+        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -169,154 +169,179 @@ export function FrameDetailDialog({
           <Icon name="close" size={20} />
         </button>
 
-        {/* Video + Navigator */}
-        <div className="flex flex-col bg-neutral-900 text-white">
-          {/* Video Section */}
-          <div className="relative w-full aspect-video bg-black flex-shrink-0">
-            <VideoPlayer
-              ref={videoRef}
-              watchUrl={frame.watch_url}
-              initialTime={frame.pts_time}
-              onTimeUpdate={(t) => {
-                // Live sync: every player tick drives the submit panel directly, not the debounced keyframe snap below.
-                if (!timeInputFocusedRef.current) {
-                  userEditedTimeRef.current = true;
-                  setTimeInput(t.toFixed(1));
-                }
-                if (pendingSeekRef.current !== null) {
-                  if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
-                  pendingSeekRef.current = null;
-                  if (pendingSeekTimeoutRef.current) {
-                    clearTimeout(pendingSeekTimeoutRef.current);
-                    pendingSeekTimeoutRef.current = null;
+        <div className="flex flex-1 min-h-0">
+          {/* Left: Video + Navigator + Submission */}
+          <div className="flex flex-col flex-1 min-w-0 bg-neutral-900 text-white">
+            {/* Video Section */}
+            <div className="relative w-full aspect-video bg-black flex-shrink-0">
+              <VideoPlayer
+                ref={videoRef}
+                watchUrl={frame.watch_url}
+                initialTime={frame.pts_time}
+                onTimeUpdate={(t) => {
+                  if (!timeInputFocusedRef.current) {
+                    userEditedTimeRef.current = true;
+                    setTimeInput(t.toFixed(1));
                   }
-                }
-                const frames = allFramesRef.current;
-                if (frames.length === 0) return;
-                const closest = frames.reduce((prev, curr) =>
-                  Math.abs(curr.pts_time - t) < Math.abs(prev.pts_time - t) ? curr : prev
-                );
-                setCurrentFrameIndex(closest.frame_index);
-                const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
-                const isNearEdge = pos <= 1 || pos >= frames.length - 2;
-                // Direct call, no debounce: React bails out on a same-value set, so this only actually
-                // refetches once per real edge crossing -- a timer here would just get reset by the next
-                // 250ms tick before it ever fires (tick period < debounce delay = it never fires).
-                if (isNearEdge) {
-                  setFetchFrameIndex(closest.frame_index);
-                }
-              }}
-              onReady={() => {}}
-            />
-          </div>
-
-          {/* Frame Navigator */}
-          {allFrames.length === 0 && allFramesLoading ? (
-            <div className="flex items-center justify-center py-3 px-4 bg-neutral-900">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-600 border-t-white" />
-            </div>
-          ) : allFrames.length === 0 && allFramesError ? (
-            <div className="flex items-center justify-center py-3 px-4 bg-neutral-900 font-mono text-mono-sm text-red-400">
-              {allFramesError}
-            </div>
-          ) : allFrames.length > 0 && (
-            <FrameNavigator
-                frames={allFrames}
-                currentArrayIndex={currentArrayIndex}
-                onFrameSelect={(f) => {
-                  beginSeek(f.pts_time);
-                  setCurrentFrameIndex(f.frame_index);
-                  videoRef.current?.seekTo(f.pts_time);
-                  const pos = allFrames.findIndex(fr => fr.frame_index === f.frame_index);
-                  const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
+                  if (pendingSeekRef.current !== null) {
+                    if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
+                    pendingSeekRef.current = null;
+                    if (pendingSeekTimeoutRef.current) {
+                      clearTimeout(pendingSeekTimeoutRef.current);
+                      pendingSeekTimeoutRef.current = null;
+                    }
+                  }
+                  const frames = allFramesRef.current;
+                  if (frames.length === 0) return;
+                  const closest = frames.reduce((prev, curr) =>
+                    Math.abs(curr.pts_time - t) < Math.abs(prev.pts_time - t) ? curr : prev
+                  );
+                  setCurrentFrameIndex(closest.frame_index);
+                  const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
+                  const isNearEdge = pos <= 1 || pos >= frames.length - 2;
                   if (isNearEdge) {
-                    setFetchFrameIndex(f.frame_index);
+                    setFetchFrameIndex(closest.frame_index);
                   }
                 }}
-                onFullscreen={() => setShowFullscreenImage(true)}
+                onReady={() => {}}
               />
-          )}
-        </div>
+            </div>
 
-        {/* Submission bar - single row */}
-        <div className="flex items-center gap-4 px-6 py-4 border-t border-neutral-800 bg-neutral-900 overflow-x-auto">
-          {/* Mode Toggles */}
-          <div className="flex items-center gap-4 flex-shrink-0">
-            {(["track", "qa", "kis"] as const).map((mode) => (
-              <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
-                <input
-                  type="radio"
-                  name="detail-mode"
-                  checked={submissionType === mode}
-                  onChange={() => onSubmissionTypeChange(mode)}
-                  className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
+            {/* Frame Navigator */}
+            {allFrames.length === 0 && allFramesLoading ? (
+              <div className="flex items-center justify-center py-3 px-4 bg-neutral-900">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-600 border-t-white" />
+              </div>
+            ) : allFrames.length === 0 && allFramesError ? (
+              <div className="flex items-center justify-center py-3 px-4 bg-neutral-900 font-mono text-mono-sm text-red-400">
+                {allFramesError}
+              </div>
+            ) : allFrames.length > 0 && (
+              <FrameNavigator
+                  frames={allFrames}
+                  currentArrayIndex={currentArrayIndex}
+                  onFrameSelect={(f) => {
+                    beginSeek(f.pts_time);
+                    setCurrentFrameIndex(f.frame_index);
+                    videoRef.current?.seekTo(f.pts_time);
+                    const pos = allFrames.findIndex(fr => fr.frame_index === f.frame_index);
+                    const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
+                    if (isNearEdge) {
+                      setFetchFrameIndex(f.frame_index);
+                    }
+                  }}
+                  onFullscreen={() => setShowFullscreenImage(true)}
                 />
-                <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
-                  {mode.toUpperCase()}
-                </span>
-              </label>
-            ))}
+            )}
+
+            {/* Submission bar */}
+            <div className="flex items-center gap-4 px-6 py-4 border-t border-neutral-800 bg-neutral-900 overflow-x-auto">
+              <div className="flex items-center gap-4 flex-shrink-0">
+                {(["track", "qa", "kis"] as const).map((mode) => (
+                  <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
+                    <input
+                      type="radio"
+                      name="detail-mode"
+                      checked={submissionType === mode}
+                      onChange={() => onSubmissionTypeChange(mode)}
+                      className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
+                    />
+                    <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
+                      {mode.toUpperCase()}
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <input
+                className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
+                type="text"
+                aria-label="Frame ID"
+                value={computedFrameId}
+                readOnly
+                title="ground-truth frame_idx, or floor(timestamp * fps) if time is edited"
+              />
+
+              <input
+                className={`${inputClass} w-28 flex-shrink-0`}
+                type="text"
+                aria-label="Video ID"
+                placeholder="Video ID"
+                value={videoIdInput}
+                onChange={(e) => setVideoIdInput(e.target.value)}
+              />
+
+              <div className="flex gap-1 flex-shrink-0">
+                <input
+                  className={`${inputClass} w-20`}
+                  type="text"
+                  aria-label="Time in seconds"
+                  placeholder="Time (s)"
+                  value={timeInput}
+                  onChange={(e) => {
+                    userEditedTimeRef.current = true;
+                    setTimeInput(e.target.value);
+                  }}
+                  onFocus={() => { timeInputFocusedRef.current = true; }}
+                  onBlur={() => { timeInputFocusedRef.current = false; }}
+                />
+                <button
+                  onClick={() => {
+                    const t = videoRef.current?.getCurrentTime();
+                    if (t === undefined) return;
+                    userEditedTimeRef.current = true;
+                    setTimeInput(t.toFixed(1));
+                  }}
+                  title="Use current player time"
+                  className="bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 rounded px-2 transition-colors flex-shrink-0"
+                >
+                  <Icon name="videocam" size={16} className="text-white" />
+                </button>
+              </div>
+
+              <button
+                onClick={() =>
+                  onSubmit({
+                    frameId: String(computedFrameId),
+                    videoId: videoIdInput,
+                    timeSec: timeInput,
+                  })
+                }
+                disabled={!videoIdInput.trim()}
+                className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Submit Frame {computedFrameId}
+              </button>
+            </div>
           </div>
 
-          <input
-            className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
-            type="text"
-            aria-label="Frame ID"
-            value={computedFrameId}
-            readOnly
-            title="ground-truth frame_idx, or floor(timestamp * fps) if time is edited"
-          />
-
-          <input
-            className={`${inputClass} w-28 flex-shrink-0`}
-            type="text"
-            aria-label="Video ID"
-            placeholder="Video ID"
-            value={videoIdInput}
-            onChange={(e) => setVideoIdInput(e.target.value)}
-          />
-
-          <div className="flex gap-1 flex-shrink-0">
-            <input
-              className={`${inputClass} w-20`}
-              type="text"
-              aria-label="Time in seconds"
-              placeholder="Time (s)"
-              value={timeInput}
-              onChange={(e) => {
-                userEditedTimeRef.current = true;
-                setTimeInput(e.target.value);
-              }}
-              onFocus={() => { timeInputFocusedRef.current = true; }}
-              onBlur={() => { timeInputFocusedRef.current = false; }}
-            />
-            <button
-              onClick={() => {
-                const t = videoRef.current?.getCurrentTime();
-                if (t === undefined) return;
-                userEditedTimeRef.current = true;
-                setTimeInput(t.toFixed(1));
-              }}
-              title="Use current player time"
-              className="bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 rounded px-2 transition-colors flex-shrink-0"
-            >
-              <Icon name="videocam" size={16} className="text-white" />
-            </button>
+          {/* Right: Metadata panel */}
+          <div className="w-80 flex-shrink-0 border-l border-neutral-800 bg-neutral-900 text-white flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-neutral-800 flex-shrink-0">
+              <h3 className="text-label-md font-semibold text-gray-300">Frame Metadata</h3>
+              <p className="text-mono-sm text-gray-500 mt-0.5">Frame {currentFrame.frame_index}</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+              <div>
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+                  <Icon name="text_fields" size={14} />
+                  OCR Text
+                </h4>
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                  {currentFrame.ocr_text || <span className="text-gray-600 italic">No OCR text</span>}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+                  <Icon name="graphic_eq" size={14} />
+                  ASR Text
+                </h4>
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                  {currentFrame.asr_text || <span className="text-gray-600 italic">No ASR text</span>}
+                </div>
+              </div>
+            </div>
           </div>
-
-          <button
-            onClick={() =>
-              onSubmit({
-                frameId: String(computedFrameId),
-                videoId: videoIdInput,
-                timeSec: timeInput,
-              })
-            }
-            disabled={!videoIdInput.trim()}
-            className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Submit Frame {computedFrameId}
-          </button>
         </div>
       </div>
 

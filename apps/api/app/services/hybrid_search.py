@@ -199,6 +199,11 @@ def search_video_frames(
     except Exception:
         return []
     frames = _enrich_frames(milvus_frames)
+    texts = es_client.fetch_frame_texts([_frame_key(f) for f in frames])
+    for f in frames:
+        t = texts.get(_frame_key(f), {})
+        f["ocr_text"] = t.get("ocr_text", "")
+        f["asr_text"] = t.get("asr_text", "")
     frames.sort(key=lambda f: int(f.get("frame_index") or 0))
     if frame_index is None:
         return frames
