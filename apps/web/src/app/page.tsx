@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { FilterPanel, type SearchFilter } from "@/components/filter-panel";
 import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
@@ -19,6 +19,7 @@ export default function Home() {
   const [frames, setFrames] = useState<FrameResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -28,6 +29,7 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
+  const searchIdRef = useRef(0);
 
   // Submission state
   const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">("kis");
@@ -69,11 +71,14 @@ export default function Home() {
   }, [dresSessionId]);
 
   const handleSearch = useCallback(async (newFilter: SearchFilter) => {
+    const currentSearchId = ++searchIdRef.current;
     setIsLoading(true);
     setSearchError(null);
+    setHasSearched(true);
     try {
       if (newFilter.videoId) {
         const data = await searchVideoFrames(newFilter.videoId);
+        if (currentSearchId !== searchIdRef.current) return;
         setFrames(sortFrames(data.results));
       } else {
         const enabledQueries = newFilter.queries.filter(
@@ -91,21 +96,24 @@ export default function Home() {
           topk: q.topK ?? 100,
           enhance: q.enhance ?? false,
         }));
-        // Request-level topk drives merge_rrf / merge_temporal; box topk alone is ignored.
         const topk = Math.max(...enabledQueries.map((q) => q.topK ?? 100), 1);
         const data = await multiBoxSearch({
           box_queries: boxQueries,
           mode: newFilter.mode,
           topk,
         });
+        if (currentSearchId !== searchIdRef.current) return;
         setFrames(sortFrames(data.results));
       }
     } catch (error) {
+      if (currentSearchId !== searchIdRef.current) return;
       console.error("Search failed:", error);
       setSearchError(error instanceof Error ? error.message : "Search failed. Check the API connection and try again.");
       setFrames([]);
     } finally {
-      setIsLoading(false);
+      if (currentSearchId === searchIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -116,6 +124,7 @@ export default function Home() {
     setFrameId("");
     setVideoId("");
     setTimeSec("");
+    setHasSearched(false);
   }, []);
 
   const handleFrameSelect = useCallback((frame: FrameResult) => {
@@ -274,6 +283,7 @@ export default function Home() {
           submissionType={submissionType}
           dresSessionId={dresSessionId}
           gridCols={gridCols}
+          hasSearched={hasSearched}
         />
       </div>
 
