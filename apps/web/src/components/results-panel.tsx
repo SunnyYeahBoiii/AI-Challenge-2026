@@ -64,6 +64,8 @@ export function ResultsPanel({
 
   const handleQuickSubmit = async (frame: FrameResult) => {
     const key = `${frame.video_id}-${frame.frame_index}`;
+    // QA needs a free-text answer — use the frame detail → confirm dialog instead.
+    if (submissionType === "qa") return;
     if (!dresSessionId) {
       setQuickSubmit((s) => ({ ...s, [key]: { status: "error", message: "Not logged in to DRES" } }));
       setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
@@ -242,7 +244,7 @@ export function ResultsPanel({
                   >
                     <Icon name="zoom_in" size={16} />
                   </button>
-                  {(() => {
+                  {submissionType !== "qa" && (() => {
                     const entry = quickSubmit[key];
                     const status = entry?.status;
                     const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
