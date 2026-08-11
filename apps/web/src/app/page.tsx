@@ -36,6 +36,7 @@ export default function Home() {
   const [frameId, setFrameId] = useState("");
   const [videoId, setVideoId] = useState("");
   const [timeSec, setTimeSec] = useState("");
+  const [qaAnswer, setQaAnswer] = useState("");
 
   useEffect(() => {
     healthCheck()
@@ -124,6 +125,7 @@ export default function Home() {
     setFrameId("");
     setVideoId("");
     setTimeSec("");
+    setQaAnswer("");
     setHasSearched(false);
   }, []);
 
@@ -298,6 +300,7 @@ export default function Home() {
             setFrameId(submission.frameId);
             setVideoId(submission.videoId);
             setTimeSec(submission.timeSec);
+            setQaAnswer(submission.answer ?? "");
             setSelectedFrame(null);
             setShowSubmitConfirm(true);
           }}
@@ -322,6 +325,7 @@ export default function Home() {
           timestamp={Number.parseFloat(timeSec) || 0}
           submissionType={submissionType}
           sessionId={dresSessionId}
+          answer={qaAnswer}
           onClose={() => setShowSubmitConfirm(false)}
         />
       )}
