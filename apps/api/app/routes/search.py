@@ -14,7 +14,7 @@ from app.services.hybrid_search import (
 )
 from app.services.object_filter import ObjectFilterError
 
-KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes" / "keyframes"
+KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes"
 
 search_bp = Blueprint("search", __name__)
 

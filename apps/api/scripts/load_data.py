@@ -40,14 +40,16 @@ from pymilvus import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from es_common import (  # noqa: E402
+from es_common import (
     ES_BATCH,
     bulk_insert_es,
     connect_elasticsearch,
     ensure_es_index,
     frame_doc_from_record,
 )
-from app.services.encoders.bge_vl import BgeVlEncoder  # noqa: E402
+from app.services.encoders.metaclip import MetaClipEncoder
+from app.services.encoders.beit3 import Beit3Encoder
+from app.services.encoders.bge_vl import BgeVlEncoder
 
 # ── Config ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -58,13 +60,11 @@ MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 BATCH1_DIR = DATA_ROOT / "Data" / "Batch1"
 
-# This dataset holds precomputed BGE-VL embeddings — load it into the same
-# collection app.services.encoders.bge_vl.BgeVlEncoder searches at query time.
-EMBEDDING_DIM = BgeVlEncoder.embedding_dim
+EMBEDDING_DIM = MetaClipEncoder.embedding_dim
 CHUNK_SIZE = 1000
 MILVUS_BATCH = 8000
 
-COLLECTION_NAME = BgeVlEncoder.collection_name
+COLLECTION_NAME = MetaClipEncoder.collection_name
 
 TAG_ITEM_MAX_LEN = 32
 TAGS_MAX_COUNT = 100
