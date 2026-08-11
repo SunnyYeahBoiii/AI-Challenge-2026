@@ -93,5 +93,30 @@ class DresClient:
             query={"session": session_id},
         )
 
+    def submit_qa(
+        self,
+        evaluation_id: str,
+        answer: str,
+        video_id: str,
+        time_ms: int,
+        session_id: str,
+    ) -> dict:
+        """Submit one QA answer as text: QA-<ANSWER>-<VIDEO_ID>-<TIME(ms)>."""
+        body = {
+            "answerSets": [
+                {
+                    "answers": [
+                        {"text": f"QA-{answer}-{video_id}-{time_ms}"}
+                    ]
+                }
+            ]
+        }
+        return self._request(
+            "POST",
+            f"/api/v2/submit/{evaluation_id}",
+            body=body,
+            query={"session": session_id},
+        )
+
 
 dres_client = DresClient()

@@ -9,6 +9,8 @@ interface SubmissionConfirmationDialogProps {
   timestamp: number;
   submissionType: "track" | "qa" | "kis";
   sessionId: string | null;
+  /** Prefill from frame-detail dialog when type is QA. */
+  answer?: string;
   onClose: () => void;
 }
 
@@ -18,16 +20,30 @@ export function SubmissionConfirmationDialog({
   timestamp,
   submissionType,
   sessionId,
+  answer = "",
   onClose,
 }: SubmissionConfirmationDialogProps) {
   const [status, setStatus] = useState<
     "idle" | "loading" | "correct" | "wrong" | "duplicate" | "error"
   >("idle");
   const [response, setResponse] = useState<string | null>(null);
+  const [qaAnswer, setQaAnswer] = useState(answer);
+
+  const isQa = submissionType === "qa";
+  const timeMs = Math.round(timestamp * 1000);
+  const qaAnswerTrimmed = qaAnswer.trim();
+  const qaPreview = qaAnswerTrimmed
+    ? `QA-${qaAnswerTrimmed}-${videoId}-${timeMs}`
+    : "";
 
   const handleSubmit = async () => {
     if (!sessionId) {
       setResponse("Not logged in to DRES — open DRES Settings and log in first.");
+      setStatus("error");
+      return;
+    }
+    if (isQa && !qaAnswerTrimmed) {
+      setResponse("Enter a QA answer.");
       setStatus("error");
       return;
     }
@@ -41,6 +57,7 @@ export function SubmissionConfirmationDialog({
           video_path: videoId,
           timestamp,
           sessionId,
+          ...(isQa ? { answer: qaAnswer } : {}),
         }),
       });
       const data = await res.json();
@@ -104,10 +121,37 @@ export function SubmissionConfirmationDialog({
             <div className="flex items-center gap-2">
               <span className="text-label-md text-on-surface-variant">Time:</span>
               <span className="font-mono text-mono-sm text-on-surface">
-                {timestamp.toFixed(1)}s
+                {timestamp.toFixed(1)}s ({timeMs}ms)
               </span>
             </div>
           </div>
+
+          {isQa && (
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="qa-answer"
+                className="text-label-md text-on-surface-variant"
+              >
+                QA answer
+              </label>
+              <textarea
+                id="qa-answer"
+                value={qaAnswer}
+                onChange={(e) => setQaAnswer(e.target.value)}
+                placeholder="Type the full answer…"
+                rows={4}
+                className="w-full min-h-[6rem] resize-y rounded border border-outline-variant bg-surface-container-low px-3 py-2 font-mono text-mono-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary-container"
+              />
+              {qaPreview && (
+                <div className="bg-surface-container-low rounded p-3 font-mono text-mono-sm text-on-surface-variant overflow-x-auto">
+                  <div className="text-label-md mb-1 text-on-surface-variant">
+                    Will submit:
+                  </div>
+                  <pre className="whitespace-pre-wrap">{qaPreview}</pre>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Response */}
           {status === "correct" && (
@@ -155,7 +199,8 @@ export function SubmissionConfirmationDialog({
               status === "loading" ||
               status === "correct" ||
               status === "wrong" ||
-              status === "duplicate"
+              status === "duplicate" ||
+              (isQa && !qaAnswerTrimmed)
             }
             className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
           >

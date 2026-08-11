@@ -52,6 +52,8 @@ The client (`app/services/dres_client.py`) follows the documented 3-step flow:
 2. **List evaluations** → `GET /api/v2/client/evaluation/list?session={sessionId}`. Returns array of evaluations; we filter to `status == "ACTIVE"` and expose only `id` + `status` to callers.
 3. **Submit answer** → `POST /api/v2/submit/{evaluationId}?session={sessionId}` with body:
 
+**KIS / track** (`task_type` ∈ `kis`/`track`):
+
 ```json
 {
   "answerSets": [
@@ -69,6 +71,22 @@ The client (`app/services/dres_client.py`) follows the documented 3-step flow:
 ```
 
 `start == end` is required (KIS tasks submit a single timestamp, not a range).
+
+**QA** (`task_type` = `qa`) — frontend sends `answer` as one full string (multi-line allowed). Backend builds a single text answer:
+
+```json
+{
+  "answerSets": [
+    {
+      "answers": [
+        {
+          "text": "QA-<ANSWER>-<VIDEO_ID>-<TIME(ms)>"
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## API Endpoints
 

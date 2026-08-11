@@ -194,12 +194,17 @@ export async function submitFrameToDres(params: {
   timestamp: number;
   submissionType: "track" | "qa" | "kis";
   sessionId: string;
+  /** Required for QA — full answer text (sent as one DRES text answer). */
+  answer?: string;
 }): Promise<DresSubmitResult> {
   const { data } = await api.post(`/dres/submit/${params.submissionType}`, {
     frame_id: params.frameId,
     video_path: params.videoId,
     timestamp: params.timestamp,
     sessionId: params.sessionId,
+    ...(params.submissionType === "qa" && params.answer != null
+      ? { answer: params.answer }
+      : {}),
   });
   return data;
 }

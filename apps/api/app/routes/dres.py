@@ -79,6 +79,17 @@ def submit(task_type):
         return jsonify({"error": {"description": "sessionId required — log in first"}}), 400
     if not video_path or timestamp is None:
         return jsonify({"error": {"description": "video_path and timestamp required"}}), 400
+
+    qa_answer = ""
+    if task_type == "qa":
+        raw_answer = payload.get("answer") or payload.get("text") or ""
+        if isinstance(raw_answer, list):
+            qa_answer = "\n".join(str(a) for a in raw_answer).strip()
+        else:
+            qa_answer = str(raw_answer).strip()
+        if not qa_answer:
+            return jsonify({"error": {"description": "answer required for QA"}}), 400
+
     evaluation_id = payload.get("evaluationId")
     if not evaluation_id:
         try:
@@ -91,7 +102,12 @@ def submit(task_type):
         evaluation_id = active[0]["id"]
     time_ms = int(float(timestamp) * 1000) if isinstance(timestamp, (int, float)) else int(timestamp)
     try:
-        result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
+        if task_type == "qa":
+            result = dres_client.submit_qa(
+                evaluation_id, qa_answer, video_path, time_ms, session_id
+            )
+        else:
+            result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
     except DresError as e:
         return _err(e)
     result["evaluationId"] = evaluation_id

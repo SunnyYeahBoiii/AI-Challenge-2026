@@ -13,6 +13,8 @@ export interface FrameSubmission {
   frameId: string;
   videoId: string;
   timeSec: string;
+  /** Full QA answer text; only used when submission type is QA. */
+  answer?: string;
 }
 
 interface FrameDetailDialogProps {
@@ -36,6 +38,7 @@ export function FrameDetailDialog({
   const [allFramesLoading, setAllFramesLoading] = useState(false);
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
+  const [qaAnswer, setQaAnswer] = useState("");
 
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
@@ -235,83 +238,101 @@ export function FrameDetailDialog({
             )}
 
             {/* Submission bar */}
-            <div className="flex items-center gap-4 px-6 py-4 border-t border-neutral-800 bg-neutral-900 overflow-x-auto">
-              <div className="flex items-center gap-4 flex-shrink-0">
-                {(["track", "qa", "kis"] as const).map((mode) => (
-                  <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
-                    <input
-                      type="radio"
-                      name="detail-mode"
-                      checked={submissionType === mode}
-                      onChange={() => onSubmissionTypeChange(mode)}
-                      className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
-                    />
-                    <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
-                      {mode.toUpperCase()}
-                    </span>
-                  </label>
-                ))}
-              </div>
+            <div className="flex flex-col gap-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900">
+              <div className="flex items-center gap-4 overflow-x-auto">
+                <div className="flex items-center gap-4 flex-shrink-0">
+                  {(["track", "qa", "kis"] as const).map((mode) => (
+                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
+                      <input
+                        type="radio"
+                        name="detail-mode"
+                        checked={submissionType === mode}
+                        onChange={() => onSubmissionTypeChange(mode)}
+                        className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
+                      />
+                      <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
+                        {mode.toUpperCase()}
+                      </span>
+                    </label>
+                  ))}
+                </div>
 
-              <input
-                className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
-                type="text"
-                aria-label="Frame ID"
-                value={computedFrameId}
-                readOnly
-                title="ground-truth frame_idx, or floor(timestamp * fps) if time is edited"
-              />
-
-              <input
-                className={`${inputClass} w-28 flex-shrink-0`}
-                type="text"
-                aria-label="Video ID"
-                placeholder="Video ID"
-                value={videoIdInput}
-                onChange={(e) => setVideoIdInput(e.target.value)}
-              />
-
-              <div className="flex gap-1 flex-shrink-0">
                 <input
-                  className={`${inputClass} w-20`}
+                  className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
                   type="text"
-                  aria-label="Time in seconds"
-                  placeholder="Time (s)"
-                  value={timeInput}
-                  onChange={(e) => {
-                    userEditedTimeRef.current = true;
-                    setTimeInput(e.target.value);
-                  }}
-                  onFocus={() => { timeInputFocusedRef.current = true; }}
-                  onBlur={() => { timeInputFocusedRef.current = false; }}
+                  aria-label="Frame ID"
+                  value={computedFrameId}
+                  readOnly
+                  title="ground-truth frame_idx, or floor(timestamp * fps) if time is edited"
                 />
+
+                <input
+                  className={`${inputClass} w-28 flex-shrink-0`}
+                  type="text"
+                  aria-label="Video ID"
+                  placeholder="Video ID"
+                  value={videoIdInput}
+                  onChange={(e) => setVideoIdInput(e.target.value)}
+                />
+
+                <div className="flex gap-1 flex-shrink-0">
+                  <input
+                    className={`${inputClass} w-20`}
+                    type="text"
+                    aria-label="Time in seconds"
+                    placeholder="Time (s)"
+                    value={timeInput}
+                    onChange={(e) => {
+                      userEditedTimeRef.current = true;
+                      setTimeInput(e.target.value);
+                    }}
+                    onFocus={() => { timeInputFocusedRef.current = true; }}
+                    onBlur={() => { timeInputFocusedRef.current = false; }}
+                  />
+                  <button
+                    onClick={() => {
+                      const t = videoRef.current?.getCurrentTime();
+                      if (t === undefined) return;
+                      userEditedTimeRef.current = true;
+                      setTimeInput(t.toFixed(1));
+                    }}
+                    title="Use current player time"
+                    className="bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 rounded px-2 transition-colors flex-shrink-0"
+                  >
+                    <Icon name="videocam" size={16} className="text-white" />
+                  </button>
+                </div>
+
                 <button
-                  onClick={() => {
-                    const t = videoRef.current?.getCurrentTime();
-                    if (t === undefined) return;
-                    userEditedTimeRef.current = true;
-                    setTimeInput(t.toFixed(1));
-                  }}
-                  title="Use current player time"
-                  className="bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 rounded px-2 transition-colors flex-shrink-0"
+                  onClick={() =>
+                    onSubmit({
+                      frameId: String(computedFrameId),
+                      videoId: videoIdInput,
+                      timeSec: timeInput,
+                      ...(submissionType === "qa" ? { answer: qaAnswer } : {}),
+                    })
+                  }
+                  disabled={
+                    !videoIdInput.trim() ||
+                    (submissionType === "qa" && !qaAnswer.trim())
+                  }
+                  className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Icon name="videocam" size={16} className="text-white" />
+                  Submit Frame {computedFrameId}
                 </button>
               </div>
 
-              <button
-                onClick={() =>
-                  onSubmit({
-                    frameId: String(computedFrameId),
-                    videoId: videoIdInput,
-                    timeSec: timeInput,
-                  })
-                }
-                disabled={!videoIdInput.trim()}
-                className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Submit Frame {computedFrameId}
-              </button>
+              {submissionType === "qa" && (
+                <textarea
+                  id="qa-answer-detail"
+                  value={qaAnswer}
+                  onChange={(e) => setQaAnswer(e.target.value)}
+                  placeholder="QA answer…"
+                  rows={3}
+                  aria-label="QA answer"
+                  className="w-full min-h-[4.5rem] resize-y rounded border border-neutral-700 bg-neutral-800 px-3 py-2 font-mono text-mono-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-container"
+                />
+              )}
             </div>
           </div>
 
