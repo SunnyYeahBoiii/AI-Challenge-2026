@@ -1,7 +1,10 @@
+import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 ENHANCE_TIMEOUT = float(os.getenv("ENHANCE_TIMEOUT", "5"))
 ENHANCE_MAX_WORKERS = int(os.getenv("ENHANCE_MAX_WORKERS", "8"))
@@ -52,6 +55,7 @@ def enhance_query(raw_query: str) -> str:
         )
         enhanced: str = resp.output_text
     except Exception:
+        logger.warning("OpenAI enhance failed for %r", raw_query[:80], exc_info=True)
         return raw_query
     if not enhanced:
         return raw_query
