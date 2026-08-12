@@ -3,7 +3,7 @@ Upload local keyframes + video files to MinIO, mirroring the key layout that
 app/services/storage.py builds public URLs from:
 
     keyframes bucket: {level}/{video_id}/{frame_index}.webp   (level = video_id[:3])
-    videos bucket:     {video_id}.mp4
+    videos bucket:     {level}/{video_id}.mp4
 
 Buckets are created (if missing) with a public-read policy, since storage.py
 returns plain path-style URLs rather than presigned ones.
@@ -90,7 +90,8 @@ def upload_videos(client: Minio, videos_dir: Path) -> int:
     count = 0
     for path in videos_dir.rglob("*.mp4"):
         video_id = _video_id_from_path(path)
-        key = f"{video_id}.mp4"
+        level = video_id[:3]
+        key = f"{level}/{video_id}.mp4"
         client.fput_object(bucket, key, str(path), content_type="video/mp4")
         count += 1
         print(f"  [{count}] {key}")

@@ -44,13 +44,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       // So we create the <video> imperatively, outside React's tree, and let
       // video.js own it end-to-end.
       const videoEl = document.createElement("video");
-      videoEl.className = "video-js vjs-big-play-centered h-full w-full";
+      videoEl.className = "video-js vjs-big-play-centered";
+      videoEl.setAttribute("playsinline", "true");
       containerRef.current.appendChild(videoEl);
 
       const player = videojs(videoEl, {
         controls: true,
         preload: "auto",
+        fill: true,
         sources: [{ src, type: "video/mp4" }],
+        controlBar: {
+          pictureInPictureToggle: false,
+          fullscreenToggle: true,
+        },
       });
 
       player.on("loadedmetadata", () => {
@@ -116,7 +122,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }
 
     return (
-      <div className="relative h-full w-full bg-black">
+      <div className="relative h-full w-full overflow-hidden bg-black">
         <div ref={containerRef} className="h-full w-full" />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black">

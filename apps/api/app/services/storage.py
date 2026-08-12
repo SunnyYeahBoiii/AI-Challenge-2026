@@ -20,4 +20,5 @@ def keyframe_url(video_id: str, frame_index: int) -> str:
 
 
 def video_url(video_id: str) -> str:
-    return f"{_base_url()}/{Config.MINIO_BUCKET_VIDEOS}/{video_id}.mp4"
+    level = video_id[:3]
+    return f"{_base_url()}/{Config.MINIO_BUCKET_VIDEOS}/{level}/{video_id}.mp4"
