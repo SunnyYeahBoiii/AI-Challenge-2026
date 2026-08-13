@@ -6,7 +6,8 @@
 AI-Challenge-2026/
 ├── apps/
 │   ├── web/          # Next.js 16 frontend (port 3000)
-│   └── api/          # Flask backend (port 5000)
+│   ├── api/          # Flask backend (port 5001)
+│   └── trake-colab/  # NestJS TRAKE collab + Prisma/SQLite (port 5002)
 ├── docs/
 │   ├── CONTEXT.md    # Domain glossary
 │   ├── adr/          # Architecture Decision Records

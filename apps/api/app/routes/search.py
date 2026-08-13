@@ -1,6 +1,4 @@
-from pathlib import Path
-
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify
 from pymilvus.exceptions import MilvusException
 
 from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
@@ -13,8 +11,6 @@ from app.services.hybrid_search import (
     search_similar_frames,
 )
 from app.services.object_filter import ObjectFilterError
-
-KEYFRAMES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "keyframes"
 
 search_bp = Blueprint("search", __name__)
 
@@ -163,12 +159,3 @@ def api_frames():
         "results": results,
         "total": len(results),
     })
-
-
-@search_bp.route("/api/keyframes/<video_id>/<int:frame_index>")
-def serve_keyframe(video_id, frame_index):
-    level = video_id[:3]
-    path = KEYFRAMES_DIR / level / video_id / f"{frame_index}.webp"
-    if path.exists():
-        return send_file(path, mimetype="image/webp")
-    return jsonify({"error": "frame not found"}), 404

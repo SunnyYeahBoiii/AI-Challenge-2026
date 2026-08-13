@@ -67,6 +67,16 @@ def _must(client):
     return client.es.body["query"]["bool"]["must"]
 
 
+def _phrase_clause(keyword_clause):
+    """Pull the match_phrase branch out of a phrase-or-fuzzy keyword clause."""
+    return keyword_clause["bool"]["should"][0]
+
+
+def _fuzzy_clause(keyword_clause):
+    """Pull the fuzzy match branch out of a phrase-or-fuzzy keyword clause."""
+    return keyword_clause["bool"]["should"][1]
+
+
 def test_search_videos_prefix_matches_video_id():
     client = _client([])
     client.search_videos(query="K01")
@@ -129,9 +139,8 @@ def test_ocr_keywords_search_ocr_field_only():
     client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
     must = _must(client)
     assert len(must) == 1
-    clause = must[0]["bool"]["should"][0]["multi_match"]
-    assert clause["fields"] == ["ocr_text"]
-    assert clause["fuzziness"] == "AUTO"
+    keyword_clause = must[0]["bool"]["should"][0]
+    assert _phrase_clause(keyword_clause) == {"match_phrase": {"ocr_text": "hd"}}
 
 
 def test_asr_keywords_search_asr_field_only():
@@ -139,8 +148,23 @@ def test_asr_keywords_search_asr_field_only():
     client.match_frames_by_keywords([("V1", 1)], asr_keywords=["chao"])
     must = _must(client)
     assert len(must) == 1
-    clause = must[0]["bool"]["should"][0]["multi_match"]
-    assert clause["fields"] == ["asr_text"]
+    keyword_clause = must[0]["bool"]["should"][0]
+    assert _phrase_clause(keyword_clause) == {"match_phrase": {"asr_text": "chao"}}
+
+
+def test_keywords_also_get_a_typo_tolerant_fallback():
+    """Phrase match stays primary; fuzzy branch requires ALL words present.
+
+    Guards against the multi_match+fuzziness regression from 26af5d6, where a
+    single fuzzy word could match alone and drag in unrelated docs.
+    """
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["chao mung"])
+    keyword_clause = _must(client)[0]["bool"]["should"][0]
+    fuzzy = _fuzzy_clause(keyword_clause)["match"]["ocr_text"]
+    assert fuzzy["query"] == "chao mung"
+    assert fuzzy["fuzziness"] == "AUTO"
+    assert fuzzy["operator"] == "and"
 
 
 def test_ocr_and_asr_groups_are_anded():
@@ -153,7 +177,8 @@ def test_ocr_and_asr_groups_are_anded():
     must = _must(client)
     assert len(must) == 2
     fields = {
-        group["bool"]["should"][0]["multi_match"]["fields"][0] for group in must
+        next(iter(_phrase_clause(group["bool"]["should"][0])["match_phrase"]))
+        for group in must
     }
     assert fields == {"ocr_text", "asr_text"}
 
@@ -170,7 +195,9 @@ def test_ocr_mode_and_asr_mode_are_independent():
     )
     must = _must(client)
     groups = {
-        group["bool"]["should"][0]["multi_match"]["fields"][0]: group["bool"]
+        next(iter(_phrase_clause(group["bool"]["should"][0])["match_phrase"])): group[
+            "bool"
+        ]
         for group in must
     }
     assert groups["ocr_text"]["minimum_should_match"] == 1
@@ -189,23 +216,24 @@ def test_ocr_mode_and_asr_mode_fall_back_to_mode():
 def test_query_keywords_are_normalized():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], asr_keywords=["Chào Mừng!"])
-    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
-    assert clause["query"] == normalize_text("Chào Mừng!")
-    assert clause["query"] == "chào mừng!"
+    keyword_clause = _must(client)[0]["bool"]["should"][0]
+    clause = _phrase_clause(keyword_clause)["match_phrase"]
+    assert clause == {"asr_text": normalize_text("Chào Mừng!")}
+    assert clause == {"asr_text": "chào mừng!"}
 
 
 def test_legacy_source_ocr_maps_to_ocr_field():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
-    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
-    assert clause["fields"] == ["ocr_text"]
+    keyword_clause = _must(client)[0]["bool"]["should"][0]
+    assert _phrase_clause(keyword_clause) == {"match_phrase": {"ocr_text": "a"}}
 
 
 def test_legacy_source_asr_maps_to_asr_field():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="asr")
-    clause = _must(client)[0]["bool"]["should"][0]["multi_match"]
-    assert clause["fields"] == ["asr_text"]
+    keyword_clause = _must(client)[0]["bool"]["should"][0]
+    assert _phrase_clause(keyword_clause) == {"match_phrase": {"asr_text": "a"}}
 
 
 def test_legacy_source_all_ands_both_fields():

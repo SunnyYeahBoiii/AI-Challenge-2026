@@ -16,7 +16,7 @@ from collections import deque
 from collections.abc import Iterable, Sequence
 from typing import Any
 
-from app.services import video_meta
+from app.services import storage, video_meta
 from app.services.encoders import manager
 from app.services.es_client import es_client
 from app.services.milvus_client import clamp_milvus_topk, get_milvus_client
@@ -72,7 +72,8 @@ def _enrich_frames(frames: Iterable[Frame]) -> list[Frame]:
         f["author"] = meta.get("author", "")
         f["publish_date"] = meta.get("publish_date", "")
         f["watch_url"] = f.get("youtube_url") or meta.get("watch_url", "")
-        f["thumbnail_url"] = f"/api/keyframes/{f.get('video_id', '')}/{f.get('frame_index', 0)}"
+        f["thumbnail_url"] = storage.keyframe_url(f.get("video_id", ""), f.get("frame_index", 0))
+        f["video_url"] = storage.video_url(f.get("video_id", ""))
         deduped.append(f)
     return deduped
 

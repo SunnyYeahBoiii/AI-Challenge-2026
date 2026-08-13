@@ -37,7 +37,7 @@ An aggregated relevance score for all frames from the same video. Used when resu
 _Avoid_: group score, aggregate
 
 **DRES**:
-Data Retrieval and Evaluation System — the competition platform for submitting search results. Supports KIS (Keyword In Scene), QA (Question Answering), and TRAKE (Tracking) task types.
+Data Retrieval and Evaluation System — the competition platform for submitting search results. Supports KIS (Keyword In Scene), QA (Question Answering), and TRAKE (Tracking) task types. TRAKE answers are submitted as the text `TR-<VIDEO_ID>-<FRAME_ID1>,<FRAME_ID2>,...` where each FRAME_ID is derived from Selection `pts_time` and fps.
 _Avoid_: submission system, evaluation
 
 **Embedding**:
@@ -55,3 +55,23 @@ _Avoid_: ES, search engine
 **pts_time**:
 The timestamp of a Frame within its Video, in **seconds** (float). Not milliseconds. Used for video seeking and DRES submission.
 _Avoid_: treating as ms, dividing by 1000
+
+**TrakeBoard**:
+The collaborative unit for one open TRAKE task. Holds an ordered set of Events, each Event’s Candidate list, and the Selections that will be submitted to DRES.
+_Avoid_: room, session, workspace, TRAKE board (spacing)
+
+**Event**:
+One required moment in a TRAKE task, described by query text. Has a stable identity for the life of the TrakeBoard; display labels such as E1, E2 are derived from the current order only. Owns its Candidate list and at most one Selection. Events may be added, removed, and reordered (including drag-and-drop) during collaboration.
+_Avoid_: keyframe slot, step, milestone, task (when meaning an Event); treating E1/E2 as stable identifiers
+
+**Candidate**:
+A proposed moment for an Event (Video + pts_time). May come from any Video while searching; not yet the moment submitted for that Event.
+_Avoid_: suggestion, pick, nomination
+
+**Selection**:
+The chosen moment for an Event on a TrakeBoard: an authoritative `pts_time` on the Target Video, plus a Frame id used only as the nearest-Frame preview. The preview Frame may change when `pts_time` moves; opening a Selection always seeks to the stored `pts_time`. All Selections on one TrakeBoard must share the same Target Video.
+_Avoid_: locked frame, final pick, chosen keyframe
+
+**Target Video**:
+The Video that every Selection on a TrakeBoard must share. Chosen when the first Selection is made (or changed only by clearing Selections).
+_Avoid_: board video, locked video

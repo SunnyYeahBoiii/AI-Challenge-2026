@@ -13,7 +13,10 @@ docker compose up --build
 ```
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
+- Backend API: http://localhost:5001
+- TRAKE collab (host machine): http://localhost:5002
+
+Teammates point `NEXT_PUBLIC_TRAKE_COLAB_URL` at the host running `apps/trake-colab`.
 
 ## Rules
 
@@ -27,7 +30,7 @@ docker compose up --build
 
 ## Domain Glossary
 
-See [docs/CONTEXT.md](docs/CONTEXT.md) for terms: Frame, Video, Query, BoxQuery, DRES, Embedding, Milvus, Elasticsearch.
+See [docs/CONTEXT.md](docs/CONTEXT.md) for terms: Frame, Video, Query, BoxQuery, DRES, TrakeBoard, Event, Candidate, Selection, Embedding, Milvus, Elasticsearch.
 
 ## Architecture Decisions
 

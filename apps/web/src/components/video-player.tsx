@@ -7,44 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-
-// ponytail: minimal YT types, pull @types/youtube if full coverage needed
-interface YTPlayer {
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  playVideo(): void;
-  pauseVideo(): void;
-  getCurrentTime(): number;
-  getPlayerState(): number;
-  destroy(): void;
-}
-
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (
-        id: string | HTMLElement,
-        opts: {
-          videoId: string;
-          playerVars?: Record<string, string | number>;
-          events?: {
-            onReady?: (e: { target: YTPlayer }) => void;
-            onStateChange?: (e: { data: number }) => void;
-            onError?: (e: { data: number }) => void;
-          };
-        },
-      ) => YTPlayer;
-      PlayerState: {
-        PLAYING: number;
-        PAUSED: number;
-        BUFFERING: number;
-        ENDED: number;
-        UNSTARTED: number;
-        CUED: number;
-      };
-    };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
+import Hls from "hls.js";
 
 export interface VideoPlayerHandle {
   seekTo(seconds: number): void;
@@ -54,160 +17,108 @@ export interface VideoPlayerHandle {
 }
 
 interface VideoPlayerProps {
-  watchUrl: string;
+  src: string;
+  poster?: string;
   initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onReady?: () => void;
-  onStateChange?: (state: number) => void;
-}
-
-function extractVideoId(url: string | undefined): string | null {
-  if (!url) return null;
-  const m = url.match(
-    /(?:v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/,
-  );
-  return m?.[1] ?? null;
-}
-
-function useYouTubeApi(): boolean {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (window.YT?.Player) {
-      setReady(true);
-      return;
-    }
-    if (!document.querySelector('script[src*="iframe_api"]')) {
-      const s = document.createElement("script");
-      s.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(s);
-    }
-    window.onYouTubeIframeAPIReady = () => setReady(true);
-  }, []);
-
-  return ready;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ watchUrl, initialTime, onTimeUpdate, onReady, onStateChange }, ref) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const playerRef = useRef<YTPlayer | null>(null);
-    const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-    // seekTo() resumes playback even from a paused/cued state; when set, the next PLAYING
-    // transition it causes gets paused right back instead of being forced before the seeked
-    // frame has buffered (which would just show black instead of the frame).
-    const pauseAfterSeekRef = useRef(false);
-    const apiReady = useYouTubeApi();
+  ({ src, poster, initialTime, onTimeUpdate, onReady }, ref) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const hlsRef = useRef<Hls | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const cbs = useRef({ onTimeUpdate, onReady, onStateChange, initialTime });
-    cbs.current = { onTimeUpdate, onReady, onStateChange, initialTime };
-
-    const videoId = extractVideoId(watchUrl);
+    const cbs = useRef({ onTimeUpdate, onReady });
+    cbs.current = { onTimeUpdate, onReady };
 
     useEffect(() => {
-      if (!apiReady || !videoId || !containerRef.current) return;
+      const videoEl = videoRef.current;
+      if (!src || !videoEl) return;
 
       setLoading(true);
       setError(null);
 
-      // YT.Player replaces its target element with an <iframe>, which React doesn't know about.
-      // Mount it on a plain node React never diffs, so unmount only ever removes containerRef's
-      // whole subtree in one shot instead of trying to remove a child YT already swapped out.
-      const mountNode = document.createElement("div");
-      mountNode.className = "h-full w-full";
-      containerRef.current.appendChild(mountNode);
+      const ready = () => {
+        setLoading(false);
+        cbs.current.onReady?.();
+      };
+      const onTimeUpdateEvent = () => {
+        cbs.current.onTimeUpdate?.(videoEl.currentTime ?? 0);
+      };
+      const onError = () => {
+        setError("Failed to load video");
+        setLoading(false);
+      };
 
-      const player = new window.YT!.Player(mountNode, {
-        videoId,
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          rel: 0,
-          modestbranding: 1,
-          start: Math.floor(cbs.current.initialTime ?? 0),
-        },
-        events: {
-          onReady: () => {
-            setLoading(false);
-            const t = cbs.current.initialTime;
-            if (t !== undefined) {
-              pauseAfterSeekRef.current = true;
-              setTimeout(() => {
-                player.seekTo(t, true);
-              }, 0);
-            }
-            cbs.current.onReady?.();
-          },
-          onStateChange: (e) => {
-            if (
-              e.data === window.YT!.PlayerState.PLAYING &&
-              pauseAfterSeekRef.current
-            ) {
-              pauseAfterSeekRef.current = false;
-              player.pauseVideo();
-              return;
-            }
-            cbs.current.onStateChange?.(e.data);
-            // Fires once per transition (pause, seek settling, etc.) so the panel snaps to the real position even without the polling interval running.
-            const t = player.getCurrentTime();
-            cbs.current.onTimeUpdate?.(t);
-            if (e.data === window.YT!.PlayerState.PLAYING) {
-              if (!intervalRef.current) {
-                intervalRef.current = setInterval(() => {
-                  const t2 = playerRef.current?.getCurrentTime();
-                  if (t2 !== undefined) cbs.current.onTimeUpdate?.(t2);
-                }, 250);
-              }
-            } else {
-              clearInterval(intervalRef.current);
-              intervalRef.current = undefined;
-            }
-          },
-          onError: () => {
-            setError("Failed to load video");
-            setLoading(false);
-          },
-        },
-      });
+      videoEl.addEventListener("loadedmetadata", ready);
+      videoEl.addEventListener("timeupdate", onTimeUpdateEvent);
 
-      playerRef.current = player;
+      if (Hls.isSupported()) {
+        // startPosition tells hls.js which fragment to request first, so it
+        // never loads/appends fragment 0 when we actually want to start
+        // elsewhere — unlike seeking after the fact, which races the
+        // "startup" fragment into the SourceBuffer and can leave two
+        // disjoint buffered ranges that the browser's decoder rejects.
+        const hls = new Hls({
+          startPosition: initialTime ?? -1,
+        });
+        hlsRef.current = hls;
+        hls.on(Hls.Events.ERROR, (_evt, data) => {
+          if (data.fatal) onError();
+        });
+        hls.loadSource(src);
+        hls.attachMedia(videoEl);
+      } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari: native HLS, no startPosition equivalent — seek once
+        // metadata is available.
+        videoEl.src = src;
+        if (initialTime !== undefined) {
+          videoEl.addEventListener(
+            "loadedmetadata",
+            () => {
+              videoEl.currentTime = initialTime;
+            },
+            { once: true },
+          );
+        }
+        videoEl.addEventListener("error", onError);
+      } else {
+        onError();
+      }
 
       return () => {
-        clearInterval(intervalRef.current);
-        intervalRef.current = undefined;
-        playerRef.current = null;
-        player.destroy();
-        mountNode.remove();
+        videoEl.removeEventListener("loadedmetadata", ready);
+        videoEl.removeEventListener("timeupdate", onTimeUpdateEvent);
+        videoEl.removeEventListener("error", onError);
+        hlsRef.current?.destroy();
+        hlsRef.current = null;
       };
-    }, [apiReady, videoId]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- poster/initialTime only apply when (re)mounting for a new src
+    }, [src]);
 
     useImperativeHandle(
       ref,
       () => ({
         seekTo(seconds: number) {
-          const player = playerRef.current;
-          if (!player) return;
-          if (player.getPlayerState() !== window.YT?.PlayerState.PLAYING) {
-            pauseAfterSeekRef.current = true;
-          }
-          player.seekTo(seconds, true);
+          if (videoRef.current) videoRef.current.currentTime = seconds;
         },
         getCurrentTime() {
-          return playerRef.current?.getCurrentTime() ?? 0;
+          return videoRef.current?.currentTime ?? 0;
         },
         play() {
-          playerRef.current?.playVideo();
+          videoRef.current?.play();
         },
         pause() {
-          playerRef.current?.pauseVideo();
+          videoRef.current?.pause();
         },
       }),
       [],
     );
 
-    if (!videoId) {
+    if (!src) {
       return (
         <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
           Invalid video URL
@@ -215,18 +126,22 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       );
     }
 
-    if (error) {
-      return (
-        <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
-          {error}
-        </div>
-      );
-    }
-
     return (
-      <div className="relative h-full w-full bg-black">
-        <div ref={containerRef} className="h-full w-full" />
-        {loading && (
+      <div className="relative h-full w-full overflow-hidden bg-black">
+        <video
+          ref={videoRef}
+          className="h-full w-full"
+          controls
+          playsInline
+          poster={poster}
+          style={{ display: error ? "none" : undefined }}
+        />
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
+            {error}
+          </div>
+        )}
+        {loading && !error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="flex flex-col items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-white" />

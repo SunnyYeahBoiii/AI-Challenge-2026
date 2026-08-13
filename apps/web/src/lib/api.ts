@@ -23,6 +23,7 @@ export interface FrameResult {
   publish_date?: string;
   thumbnail_url: string;
   watch_url: string;
+  video_url: string;
   /** Position of this frame inside a temporal sequence (sequential mode only). */
   sequence_idx?: number;
   /** Groups the frames that belong to the same temporal sequence. */
@@ -196,15 +197,35 @@ export async function submitFrameToDres(params: {
   sessionId: string;
   /** Required for QA — full answer text (sent as one DRES text answer). */
   answer?: string;
+  /** Target evaluation (contest) run. Falls back to first ACTIVE run if omitted. */
+  evaluationId?: string;
 }): Promise<DresSubmitResult> {
   const { data } = await api.post(`/dres/submit/${params.submissionType}`, {
     frame_id: params.frameId,
     video_path: params.videoId,
     timestamp: params.timestamp,
     sessionId: params.sessionId,
+    ...(params.evaluationId ? { evaluationId: params.evaluationId } : {}),
     ...(params.submissionType === "qa" && params.answer != null
       ? { answer: params.answer }
       : {}),
+  });
+  return data;
+}
+
+/** TRAKE: TR-<VIDEO_ID>-<FRAME_ID1>,<FRAME_ID2>,... via Flask. */
+export async function submitTrakeToDres(params: {
+  videoId: string;
+  frameIds: number[];
+  sessionId: string;
+  /** Target evaluation (contest) run. Falls back to first ACTIVE run if omitted. */
+  evaluationId?: string;
+}): Promise<DresSubmitResult> {
+  const { data } = await api.post(`/dres/submit/track`, {
+    video_path: params.videoId,
+    frame_ids: params.frameIds,
+    sessionId: params.sessionId,
+    ...(params.evaluationId ? { evaluationId: params.evaluationId } : {}),
   });
   return data;
 }

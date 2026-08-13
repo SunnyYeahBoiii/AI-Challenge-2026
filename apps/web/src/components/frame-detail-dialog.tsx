@@ -17,20 +17,38 @@ export interface FrameSubmission {
   answer?: string;
 }
 
+export interface TrakeEventOption {
+  id: string;
+  displayLabel: string;
+}
+
 interface FrameDetailDialogProps {
   frame: FrameResult;
   submissionType: "track" | "qa" | "kis";
-  onSubmissionTypeChange: (type: "track" | "qa" | "kis") => void;
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
+  /** TRACK: Events available to add into (E1, E2, …). */
+  trakeEvents?: TrakeEventOption[];
+  /** Default Event id when opening the dialog (focused Event on the board). */
+  trakeFocusedEventId?: string | null;
+  onAddToTrake?: (
+    submission: FrameSubmission & {
+      fps: number;
+      frameIdx: number;
+      thumbnailUrl: string;
+      eventId: string;
+    },
+  ) => void;
 }
 
 export function FrameDetailDialog({
   frame,
   submissionType,
-  onSubmissionTypeChange,
   onClose,
   onSubmit,
+  trakeEvents = [],
+  trakeFocusedEventId,
+  onAddToTrake,
 }: FrameDetailDialogProps) {
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
@@ -39,6 +57,33 @@ export function FrameDetailDialog({
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
   const [qaAnswer, setQaAnswer] = useState("");
+  const [trakeTargetEventId, setTrakeTargetEventId] = useState(
+    () =>
+      trakeFocusedEventId &&
+      trakeEvents.some((e) => e.id === trakeFocusedEventId)
+        ? trakeFocusedEventId
+        : (trakeEvents[0]?.id ?? ""),
+  );
+
+  useEffect(() => {
+    if (trakeEvents.length === 0) {
+      setTrakeTargetEventId("");
+      return;
+    }
+    setTrakeTargetEventId((prev) => {
+      if (prev && trakeEvents.some((e) => e.id === prev)) return prev;
+      if (
+        trakeFocusedEventId &&
+        trakeEvents.some((e) => e.id === trakeFocusedEventId)
+      ) {
+        return trakeFocusedEventId;
+      }
+      return trakeEvents[0].id;
+    });
+  }, [trakeEvents, trakeFocusedEventId]);
+
+  const trakeTargetLabel =
+    trakeEvents.find((e) => e.id === trakeTargetEventId)?.displayLabel ?? "Event";
 
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
@@ -47,7 +92,11 @@ export function FrameDetailDialog({
   const pendingSeekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userEditedTimeRef = useRef(false);
   const lastMatchedFrameRef = useRef<FrameResult>(frame);
-  const framePropKeyRef = useRef(`${frame.video_id}:${frame.frame_index}`);
+  // null (not pre-seeded to the initial frame's key) so the sync effect below
+  // also arms pendingSeekRef on first mount, not just on later frame changes —
+  // otherwise the first open's premature timeupdate ticks (before the initial
+  // seek lands) snap currentFrameIndex to the wrong frame.
+  const framePropKeyRef = useRef<string | null>(null);
   const timeInputFocusedRef = useRef(false);
 
   // Escape hatch: clears pendingSeekRef itself if no timeupdate ever lands near the target.
@@ -160,7 +209,7 @@ export function FrameDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={`Frame ${currentFrameIndex} details`}
-        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
+        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -172,20 +221,20 @@ export function FrameDetailDialog({
           <Icon name="close" size={20} />
         </button>
 
-        <div className="flex flex-1 min-h-0">
+        <div className="grid grid-cols-[minmax(0,1fr)_22rem] flex-1 min-h-0">
           {/* Left: Video + Navigator + Submission */}
-          <div className="flex flex-col flex-1 min-w-0 bg-neutral-900 text-white">
-            {/* Video Section */}
-            <div className="relative w-full aspect-video bg-black flex-shrink-0">
+          <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
+            {/* Video — larger but capped so OCR/ASR column always stays visible */}
+            <div className="relative w-full aspect-video max-h-[min(420px,48vh)] overflow-hidden bg-black flex-shrink-0">
               <VideoPlayer
                 ref={videoRef}
-                watchUrl={frame.watch_url}
+                src={frame.video_url}
+                poster={frame.thumbnail_url}
                 initialTime={frame.pts_time}
                 onTimeUpdate={(t) => {
-                  if (!timeInputFocusedRef.current) {
-                    userEditedTimeRef.current = true;
-                    setTimeInput(t.toFixed(1));
-                  }
+                  // Stray timeupdate ticks fire while a seek is still landing (before
+                  // `seeked`); acting on them — even just to display `t` — shows a
+                  // transient, pre-seek time/frame instead of the one actually requested.
                   if (pendingSeekRef.current !== null) {
                     if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
                     pendingSeekRef.current = null;
@@ -193,6 +242,10 @@ export function FrameDetailDialog({
                       clearTimeout(pendingSeekTimeoutRef.current);
                       pendingSeekTimeoutRef.current = null;
                     }
+                  }
+                  if (!timeInputFocusedRef.current) {
+                    userEditedTimeRef.current = true;
+                    setTimeInput(t.toFixed(1));
                   }
                   const frames = allFramesRef.current;
                   if (frames.length === 0) return;
@@ -240,23 +293,6 @@ export function FrameDetailDialog({
             {/* Submission bar */}
             <div className="flex flex-col gap-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900">
               <div className="flex items-center gap-4 overflow-x-auto">
-                <div className="flex items-center gap-4 flex-shrink-0">
-                  {(["track", "qa", "kis"] as const).map((mode) => (
-                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
-                      <input
-                        type="radio"
-                        name="detail-mode"
-                        checked={submissionType === mode}
-                        onChange={() => onSubmissionTypeChange(mode)}
-                        className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
-                      />
-                      <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
-                        {mode.toUpperCase()}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-
                 <input
                   className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
                   type="text"
@@ -303,22 +339,59 @@ export function FrameDetailDialog({
                   </button>
                 </div>
 
+                {submissionType === "track" && (
+                  <select
+                    aria-label="TRAKE event target"
+                    value={trakeTargetEventId}
+                    onChange={(e) => setTrakeTargetEventId(e.target.value)}
+                    disabled={trakeEvents.length === 0}
+                    className={`${inputClass} w-24 flex-shrink-0`}
+                  >
+                    {trakeEvents.length === 0 ? (
+                      <option value="">No events</option>
+                    ) : (
+                      trakeEvents.map((ev) => (
+                        <option key={ev.id} value={ev.id}>
+                          {ev.displayLabel}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    if (submissionType === "track" && onAddToTrake) {
+                      if (!trakeTargetEventId) return;
+                      onAddToTrake({
+                        frameId: String(computedFrameId),
+                        videoId: videoIdInput,
+                        timeSec: timeInput,
+                        fps: currentFrame.fps,
+                        frameIdx: Number(computedFrameId),
+                        thumbnailUrl: currentFrame.thumbnail_url,
+                        eventId: trakeTargetEventId,
+                      });
+                      return;
+                    }
                     onSubmit({
                       frameId: String(computedFrameId),
                       videoId: videoIdInput,
                       timeSec: timeInput,
                       ...(submissionType === "qa" ? { answer: qaAnswer } : {}),
-                    })
-                  }
+                    });
+                  }}
                   disabled={
                     !videoIdInput.trim() ||
-                    (submissionType === "qa" && !qaAnswer.trim())
+                    (submissionType === "qa" && !qaAnswer.trim()) ||
+                    (submissionType === "track" &&
+                      (!onAddToTrake || !trakeTargetEventId))
                   }
                   className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Submit Frame {computedFrameId}
+                  {submissionType === "track"
+                    ? `Add to ${trakeTargetLabel}`
+                    : `Submit Frame ${computedFrameId}`}
                 </button>
               </div>
 
@@ -336,28 +409,28 @@ export function FrameDetailDialog({
             </div>
           </div>
 
-          {/* Right: Metadata panel */}
-          <div className="w-80 flex-shrink-0 border-l border-neutral-800 bg-neutral-900 text-white flex flex-col overflow-hidden">
+          {/* Right: Metadata panel — fixed column so video cannot eat this space */}
+          <div className="min-h-0 border-l border-neutral-800 bg-neutral-900 text-white flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-neutral-800 flex-shrink-0">
               <h3 className="text-label-md font-semibold text-gray-300">Frame Metadata</h3>
               <p className="text-mono-sm text-gray-500 mt-0.5">Frame {currentFrame.frame_index}</p>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-              <div>
-                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+              <div className="flex flex-col min-h-0 flex-1">
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5 flex-shrink-0">
                   <Icon name="text_fields" size={14} />
                   OCR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
                   {currentFrame.ocr_text || <span className="text-gray-600 italic">No OCR text</span>}
                 </div>
               </div>
-              <div>
-                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+              <div className="flex flex-col min-h-0 flex-[1.4]">
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5 flex-shrink-0">
                   <Icon name="graphic_eq" size={14} />
                   ASR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
                   {currentFrame.asr_text || <span className="text-gray-600 italic">No ASR text</span>}
                 </div>
               </div>

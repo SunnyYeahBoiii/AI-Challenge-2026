@@ -7,9 +7,11 @@ import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { ModelSettingsDialog } from "@/components/model-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
+import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
 import type { FrameResult } from "@/lib/api";
 import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
+import { useTrakeBoard } from "@/hooks/use-trake-board";
 
 function sortFrames(frames: FrameResult[]): FrameResult[] {
   return [...frames].sort((a, b) => b.score - a.score);
@@ -26,6 +28,7 @@ export default function Home() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [dresSessionId, setDresSessionId] = useState<string | null>(null);
   const [dresUsername, setDresUsername] = useState<string | null>(null);
+  const [dresEvaluationId, setDresEvaluationId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
@@ -37,6 +40,51 @@ export default function Home() {
   const [videoId, setVideoId] = useState("");
   const [timeSec, setTimeSec] = useState("");
   const [qaAnswer, setQaAnswer] = useState("");
+  const [trakeFrameIds, setTrakeFrameIds] = useState<number[] | null>(null);
+
+  const trake = useTrakeBoard(submissionType === "track");
+
+  const addFrameToEvent = useCallback(
+    (
+      eventId: string,
+      frame: {
+        video_id: string;
+        pts_time: number;
+        frame_idx: number;
+        fps: number;
+        thumbnail_url: string;
+      },
+    ) => {
+      if (!eventId) {
+        setSearchError("Select or add an Event on the TRAKE board first.");
+        return;
+      }
+      trake.setFocusedEventId(eventId);
+      trake.addCandidate({
+        eventId,
+        videoId: frame.video_id,
+        ptsTime: frame.pts_time,
+        previewFrameId: String(frame.frame_idx),
+        fps: frame.fps,
+        frameIdx: frame.frame_idx,
+        thumbnailUrl: frame.thumbnail_url,
+      });
+    },
+    [trake.setFocusedEventId, trake.addCandidate],
+  );
+
+  const addFrameToFocusedEvent = useCallback(
+    (frame: {
+      video_id: string;
+      pts_time: number;
+      frame_idx: number;
+      fps: number;
+      thumbnail_url: string;
+    }) => {
+      addFrameToEvent(trake.focusedEventId ?? "", frame);
+    },
+    [addFrameToEvent, trake.focusedEventId],
+  );
 
   useEffect(() => {
     healthCheck()
@@ -47,6 +95,7 @@ export default function Home() {
   useEffect(() => {
     setDresSessionId(sessionStorage.getItem("dresSessionId"));
     setDresUsername(sessionStorage.getItem("dresUsername"));
+    setDresEvaluationId(sessionStorage.getItem("dresEvaluationId"));
   }, []);
 
   const handleDresLogin = useCallback((sessionId: string, username: string) => {
@@ -56,12 +105,19 @@ export default function Home() {
     setDresUsername(username);
   }, []);
 
+  const handleDresEvaluationSelect = useCallback((evaluationId: string) => {
+    sessionStorage.setItem("dresEvaluationId", evaluationId);
+    setDresEvaluationId(evaluationId);
+  }, []);
+
   const handleDresLogout = useCallback(() => {
     const sessionId = dresSessionId;
     sessionStorage.removeItem("dresSessionId");
     sessionStorage.removeItem("dresUsername");
+    sessionStorage.removeItem("dresEvaluationId");
     setDresSessionId(null);
     setDresUsername(null);
+    setDresEvaluationId(null);
     if (sessionId) {
       fetch("/api/dres/logout", {
         method: "POST",
@@ -139,7 +195,10 @@ export default function Home() {
     setSelectedFrame(frame);
   }, []);
 
-  const canSubmit = frameId.trim().length > 0 && videoId.trim().length > 0;
+  const canSubmit =
+    submissionType === "track"
+      ? Boolean(trakeFrameIds?.length && videoId.trim())
+      : frameId.trim().length > 0 && videoId.trim().length > 0;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -218,7 +277,17 @@ export default function Home() {
                 >
                   <Icon name="groups" size={18} />
                   {dresUsername}
+                  {dresEvaluationId && (
+                    <span className="text-on-surface-variant/70">· {dresEvaluationId}</span>
+                  )}
                 </span>
+                <button
+                  onClick={() => setShowDresSettings(true)}
+                  title="Change DRES evaluation"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                >
+                  <Icon name="tune" size={18} />
+                </button>
                 <button
                   onClick={handleDresLogout}
                   title="Log out of DRES"
@@ -284,23 +353,64 @@ export default function Home() {
           isLoading={isLoading}
           submissionType={submissionType}
           dresSessionId={dresSessionId}
+          dresEvaluationId={dresEvaluationId}
           gridCols={gridCols}
           hasSearched={hasSearched}
+          trakeFocusedLabel={trake.focusedEvent?.displayLabel}
+          onAddToTrake={
+            submissionType === "track"
+              ? (frame) => addFrameToFocusedEvent(frame)
+              : undefined
+          }
         />
       </div>
+
+      {submissionType === "track" && (
+        <TrakeBoardPanel
+          trake={trake}
+          onSubmitTrake={({ videoId: v, frameIds }) => {
+            setVideoId(v);
+            setTrakeFrameIds(frameIds);
+            setFrameId(String(frameIds[0] ?? ""));
+            setTimeSec("0");
+            setShowSubmitConfirm(true);
+          }}
+        />
+      )}
 
       {/* Dialogs */}
       {selectedFrame && (
         <FrameDetailDialog
           frame={selectedFrame}
           submissionType={submissionType}
-          onSubmissionTypeChange={setSubmissionType}
           onClose={() => setSelectedFrame(null)}
+          trakeEvents={
+            trake.board?.events.map((e) => ({
+              id: e.id,
+              displayLabel: e.displayLabel,
+            })) ?? []
+          }
+          trakeFocusedEventId={trake.focusedEventId}
+          onAddToTrake={
+            submissionType === "track"
+              ? (submission) => {
+                  addFrameToEvent(submission.eventId, {
+                    video_id: submission.videoId,
+                    pts_time: Number.parseFloat(submission.timeSec) || 0,
+                    frame_idx: submission.frameIdx,
+                    fps: submission.fps,
+                    thumbnail_url: submission.thumbnailUrl,
+                  });
+                  setSelectedFrame(null);
+                }
+              : undefined
+          }
           onSubmit={(submission) => {
             setFrameId(submission.frameId);
             setVideoId(submission.videoId);
             setTimeSec(submission.timeSec);
             setQaAnswer(submission.answer ?? "");
+            setTrakeFrameIds(null);
             setSelectedFrame(null);
             setShowSubmitConfirm(true);
           }}
@@ -309,8 +419,12 @@ export default function Home() {
 
       {showDresSettings && (
         <DresSettingsDialog
+          sessionId={dresSessionId}
+          username={dresUsername}
+          evaluationId={dresEvaluationId}
           onClose={() => setShowDresSettings(false)}
           onLoginSuccess={handleDresLogin}
+          onEvaluationSelect={handleDresEvaluationSelect}
         />
       )}
 
@@ -325,8 +439,13 @@ export default function Home() {
           timestamp={Number.parseFloat(timeSec) || 0}
           submissionType={submissionType}
           sessionId={dresSessionId}
+          evaluationId={dresEvaluationId}
           answer={qaAnswer}
-          onClose={() => setShowSubmitConfirm(false)}
+          trakeFrameIds={trakeFrameIds ?? undefined}
+          onClose={() => {
+            setShowSubmitConfirm(false);
+            setTrakeFrameIds(null);
+          }}
         />
       )}
     </div>

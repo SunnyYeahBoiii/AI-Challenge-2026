@@ -1,20 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "./icon";
 
-interface DresSettingsDialogProps {
-  onClose: () => void;
-  onLoginSuccess: (sessionId: string, username: string) => void;
+interface DresEvaluation {
+  id: string;
+  status?: string;
 }
 
-export function DresSettingsDialog({ onClose, onLoginSuccess }: DresSettingsDialogProps) {
-  const [username, setUsername] = useState("");
+interface DresSettingsDialogProps {
+  /** Existing session, if the dialog is reopened while already logged in. */
+  sessionId?: string | null;
+  username?: string | null;
+  /** Currently saved evaluation (contest) run, if any. */
+  evaluationId?: string | null;
+  onClose: () => void;
+  onLoginSuccess: (sessionId: string, username: string) => void;
+  onEvaluationSelect: (evaluationId: string) => void;
+}
+
+export function DresSettingsDialog({
+  sessionId,
+  username: initialUsername,
+  evaluationId,
+  onClose,
+  onLoginSuccess,
+  onEvaluationSelect,
+}: DresSettingsDialogProps) {
+  const [username, setUsername] = useState(initialUsername ?? "");
   const [password, setPassword] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [loginStatus, setLoginStatus] = useState<"idle" | "loading" | "success" | "error">(
+    sessionId ? "success" : "idle",
+  );
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId ?? null);
+
+  const [evaluations, setEvaluations] = useState<DresEvaluation[]>([]);
+  const [evalStatus, setEvalStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [selectedEvalId, setSelectedEvalId] = useState(evaluationId ?? "");
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    setEvalStatus("loading");
+    fetch(`/api/dres/evaluations?session=${encodeURIComponent(activeSessionId)}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.description || "Failed to load evaluations");
+        setEvaluations(data.evaluations || []);
+        setEvalStatus("loaded");
+      })
+      .catch(() => setEvalStatus("error"));
+  }, [activeSessionId]);
 
   const handleLogin = async () => {
-    setStatus("loading");
+    setLoginStatus("loading");
     try {
       const res = await fetch("/api/dres/session", {
         method: "POST",
@@ -23,15 +61,22 @@ export function DresSettingsDialog({ onClose, onLoginSuccess }: DresSettingsDial
       });
       const data = await res.json();
       if (res.ok && data.sessionId) {
-        onLoginSuccess(data.sessionId, data.username || username);
-        setStatus("success");
-        onClose();
+        const resolvedUsername = data.username || username;
+        onLoginSuccess(data.sessionId, resolvedUsername);
+        setActiveSessionId(data.sessionId);
+        setLoginStatus("success");
       } else {
-        setStatus("error");
+        setLoginStatus("error");
       }
     } catch {
-      setStatus("error");
+      setLoginStatus("error");
     }
+  };
+
+  const handleSaveEvaluation = () => {
+    if (!selectedEvalId) return;
+    onEvaluationSelect(selectedEvalId);
+    onClose();
   };
 
   return (
@@ -58,38 +103,88 @@ export function DresSettingsDialog({ onClose, onLoginSuccess }: DresSettingsDial
 
         {/* Content */}
         <div className="p-4 flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-label-md text-on-surface-variant">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
-              placeholder="Enter username"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-label-md text-on-surface-variant">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
-              placeholder="Enter password"
-            />
-          </div>
+          {!activeSessionId && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-label-md text-on-surface-variant">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+                  placeholder="Enter username"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-label-md text-on-surface-variant">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+                  placeholder="Enter password"
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                />
+              </div>
 
-          {status === "success" && (
-            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
-              <Icon name="check_circle" size={16} />
-              Connected successfully
-            </div>
+              {loginStatus === "error" && (
+                <div className="flex items-center gap-2 text-sm text-error bg-error-container/30 p-2 rounded">
+                  <Icon name="error" size={16} />
+                  Connection failed
+                </div>
+              )}
+
+              <button
+                onClick={handleLogin}
+                disabled={loginStatus === "loading" || !username || !password}
+                className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50 self-end"
+              >
+                {loginStatus === "loading" ? "Connecting..." : "Login"}
+              </button>
+            </>
           )}
-          {status === "error" && (
-            <div className="flex items-center gap-2 text-sm text-error bg-error-container/30 p-2 rounded">
-              <Icon name="error" size={16} />
-              Connection failed
-            </div>
+
+          {activeSessionId && (
+            <>
+              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                <Icon name="check_circle" size={16} />
+                Connected successfully
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-label-md text-on-surface-variant">
+                  Evaluation (running contest)
+                </label>
+                {evalStatus === "loading" && (
+                  <div className="text-body-sm text-on-surface-variant">Loading running evaluations…</div>
+                )}
+                {evalStatus === "error" && (
+                  <div className="flex items-center gap-2 text-sm text-error bg-error-container/30 p-2 rounded">
+                    <Icon name="error" size={16} />
+                    Failed to load evaluations
+                  </div>
+                )}
+                {evalStatus === "loaded" && evaluations.length === 0 && (
+                  <div className="text-body-sm text-on-surface-variant">No running evaluation found.</div>
+                )}
+                {evalStatus === "loaded" && evaluations.length > 0 && (
+                  <select
+                    value={selectedEvalId}
+                    onChange={(e) => setSelectedEvalId(e.target.value)}
+                    className="bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+                  >
+                    <option value="" disabled>
+                      Select an evaluation…
+                    </option>
+                    {evaluations.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.id} ({ev.status ?? "ACTIVE"})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </>
           )}
         </div>
 
@@ -101,13 +196,15 @@ export function DresSettingsDialog({ onClose, onLoginSuccess }: DresSettingsDial
           >
             Cancel
           </button>
-          <button
-            onClick={handleLogin}
-            disabled={status === "loading" || !username || !password}
-            className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
-          >
-            {status === "loading" ? "Connecting..." : "Login"}
-          </button>
+          {activeSessionId && (
+            <button
+              onClick={handleSaveEvaluation}
+              disabled={!selectedEvalId}
+              className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
+            >
+              Save
+            </button>
+          )}
         </div>
       </div>
     </div>

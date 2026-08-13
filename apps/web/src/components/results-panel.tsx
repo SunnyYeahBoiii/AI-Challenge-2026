@@ -5,6 +5,7 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { submitFrameToDres } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
+import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 /** How many frames to paint initially / on each scroll page. */
 const PAGE_SIZE = 48;
@@ -30,8 +31,13 @@ interface ResultsPanelProps {
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
+  /** Selected DRES evaluation (contest) run to submit against. */
+  dresEvaluationId?: string | null;
   gridCols?: number;
   hasSearched?: boolean;
+  /** TRACK: add frame to focused Event Candidate list. */
+  onAddToTrake?: (frame: FrameResult) => void;
+  trakeFocusedLabel?: string | null;
 }
 
 export function ResultsPanel({
@@ -42,8 +48,11 @@ export function ResultsPanel({
   isLoading,
   submissionType,
   dresSessionId,
+  dresEvaluationId,
   gridCols = 6,
   hasSearched = false,
+  onAddToTrake,
+  trakeFocusedLabel,
 }: ResultsPanelProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -64,8 +73,14 @@ export function ResultsPanel({
 
   const handleQuickSubmit = async (frame: FrameResult) => {
     const key = `${frame.video_id}-${frame.frame_index}`;
-    // QA needs a free-text answer — use the frame detail → confirm dialog instead.
     if (submissionType === "qa") return;
+    if (submissionType === "track") {
+      if (!onAddToTrake) return;
+      onAddToTrake(frame);
+      setQuickSubmit((s) => ({ ...s, [key]: { status: "correct" } }));
+      setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
+      return;
+    }
     if (!dresSessionId) {
       setQuickSubmit((s) => ({ ...s, [key]: { status: "error", message: "Not logged in to DRES" } }));
       setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
@@ -79,6 +94,7 @@ export function ResultsPanel({
         timestamp: frame.pts_time,
         submissionType,
         sessionId: dresSessionId,
+        evaluationId: dresEvaluationId ?? undefined,
       });
       const status: QuickSubmitStatus =
         data.submission === "WRONG"
@@ -215,6 +231,15 @@ export function ResultsPanel({
                 return (
                 <div
                   key={key}
+                  draggable={submissionType === "track"}
+                  onDragStart={(e) => {
+                    if (submissionType !== "track") return;
+                    e.dataTransfer.setData(
+                      TRAKE_FRAME_MIME,
+                      JSON.stringify(frame),
+                    );
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors ${
                     isLastOpened
                       ? "border-4 border-red-500 hover:border-red-500 ring-2 ring-red-500/50"
@@ -248,9 +273,10 @@ export function ResultsPanel({
                     const entry = quickSubmit[key];
                     const status = entry?.status;
                     const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
+                    const isTrack = submissionType === "track";
                     const titleByStatus: Record<QuickSubmitStatus, string> = {
                       loading: "Submitting…",
-                      correct: "Correct",
+                      correct: isTrack ? "Added" : "Correct",
                       wrong: "Wrong",
                       duplicate: "Already submitted",
                       error: entry?.message ?? "Submission failed",
@@ -261,9 +287,15 @@ export function ResultsPanel({
                           e.stopPropagation();
                           handleQuickSubmit(frame);
                         }}
-                        disabled={status === "loading"}
-                        title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}
-                        aria-label="Quick submit frame"
+                        disabled={status === "loading" || (isTrack && !onAddToTrake)}
+                        title={
+                          status
+                            ? titleByStatus[status]
+                            : isTrack
+                              ? `Add to ${trakeFocusedLabel ?? "Event"}`
+                              : `Submit frame ${frame.frame_idx}`
+                        }
+                        aria-label={isTrack ? "Add frame to TRAKE event" : "Quick submit frame"}
                         className={`absolute top-1 left-1 p-1 rounded text-white transition-opacity ${
                           status ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                         } ${status ? style.bg : "bg-black/50 hover:bg-primary-container"}`}
@@ -271,7 +303,7 @@ export function ResultsPanel({
                         {status === "loading" ? (
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                         ) : (
-                          <Icon name={status ? style.icon : "send"} size={16} />
+                          <Icon name={status ? style.icon : isTrack ? "playlist_add" : "send"} size={16} />
                         )}
                       </button>
                     );

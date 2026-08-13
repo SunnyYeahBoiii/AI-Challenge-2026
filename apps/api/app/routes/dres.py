@@ -77,7 +77,20 @@ def submit(task_type):
     session_id = payload.get("sessionId")
     if not session_id:
         return jsonify({"error": {"description": "sessionId required — log in first"}}), 400
-    if not video_path or timestamp is None:
+
+    is_trake = task_type in ("track", "trake")
+    frame_ids = payload.get("frame_ids") or payload.get("frameIds")
+
+    if is_trake:
+        if not video_path:
+            return jsonify({"error": {"description": "video_path required for TRAKE"}}), 400
+        if not isinstance(frame_ids, list) or len(frame_ids) == 0:
+            return jsonify({"error": {"description": "frame_ids required for TRAKE"}}), 400
+        try:
+            frame_ids = [int(fid) for fid in frame_ids]
+        except (TypeError, ValueError):
+            return jsonify({"error": {"description": "frame_ids must be integers"}}), 400
+    elif not video_path or timestamp is None:
         return jsonify({"error": {"description": "video_path and timestamp required"}}), 400
 
     qa_answer = ""
@@ -100,13 +113,29 @@ def submit(task_type):
         if not active:
             return jsonify({"error": {"description": "no active evaluation"}}), 404
         evaluation_id = active[0]["id"]
-    time_ms = int(float(timestamp) * 1000) if isinstance(timestamp, (int, float)) else int(timestamp)
+
     try:
-        if task_type == "qa":
+        if is_trake:
+            result = dres_client.submit_trake(
+                evaluation_id, video_path, frame_ids, session_id
+            )
+            result["frameIds"] = frame_ids
+            result["trakeText"] = f"TR-{video_path}-{','.join(str(f) for f in frame_ids)}"
+        elif task_type == "qa":
+            time_ms = (
+                int(float(timestamp) * 1000)
+                if isinstance(timestamp, (int, float))
+                else int(timestamp)
+            )
             result = dres_client.submit_qa(
                 evaluation_id, qa_answer, video_path, time_ms, session_id
             )
         else:
+            time_ms = (
+                int(float(timestamp) * 1000)
+                if isinstance(timestamp, (int, float))
+                else int(timestamp)
+            )
             result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
     except DresError as e:
         return _err(e)
