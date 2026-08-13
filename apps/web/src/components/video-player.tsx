@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import videojs from "video.js";
+import Hls from "hls.js";
 
 export interface VideoPlayerHandle {
   seekTo(seconds: number): void;
@@ -18,88 +18,101 @@ export interface VideoPlayerHandle {
 
 interface VideoPlayerProps {
   src: string;
+  poster?: string;
   initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onReady?: () => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, initialTime, onTimeUpdate, onReady }, ref) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
+  ({ src, poster, initialTime, onTimeUpdate, onReady }, ref) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const hlsRef = useRef<Hls | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const cbs = useRef({ onTimeUpdate, onReady, initialTime });
-    cbs.current = { onTimeUpdate, onReady, initialTime };
+    const cbs = useRef({ onTimeUpdate, onReady });
+    cbs.current = { onTimeUpdate, onReady };
 
     useEffect(() => {
-      if (!src || !containerRef.current) return;
+      const videoEl = videoRef.current;
+      if (!src || !videoEl) return;
 
       setLoading(true);
       setError(null);
 
-      // video.js's dispose() mutates/removes the DOM node it's given, which
-      // crashes React's own unmount diffing if that node is React-rendered.
-      // So we create the <video> imperatively, outside React's tree, and let
-      // video.js own it end-to-end.
-      const videoEl = document.createElement("video");
-      videoEl.className = "video-js vjs-big-play-centered";
-      videoEl.setAttribute("playsinline", "true");
-      containerRef.current.appendChild(videoEl);
-
-      const player = videojs(videoEl, {
-        controls: true,
-        preload: "auto",
-        fill: true,
-        sources: [{ src, type: "video/mp4" }],
-        controlBar: {
-          pictureInPictureToggle: false,
-          fullscreenToggle: true,
-        },
-      });
-
-      player.on("loadedmetadata", () => {
+      const ready = () => {
         setLoading(false);
-        const t = cbs.current.initialTime;
-        // Unlike the old YouTube iframe API, setting currentTime here never
-        // auto-resumes playback, so no pause-after-seek workaround is needed.
-        if (t !== undefined) player.currentTime(t);
         cbs.current.onReady?.();
-      });
-
-      player.on("timeupdate", () => {
-        cbs.current.onTimeUpdate?.(player.currentTime() ?? 0);
-      });
-
-      player.on("error", () => {
+      };
+      const onTimeUpdateEvent = () => {
+        cbs.current.onTimeUpdate?.(videoEl.currentTime ?? 0);
+      };
+      const onError = () => {
         setError("Failed to load video");
         setLoading(false);
-      });
+      };
 
-      playerRef.current = player;
+      videoEl.addEventListener("loadedmetadata", ready);
+      videoEl.addEventListener("timeupdate", onTimeUpdateEvent);
+
+      if (Hls.isSupported()) {
+        // startPosition tells hls.js which fragment to request first, so it
+        // never loads/appends fragment 0 when we actually want to start
+        // elsewhere — unlike seeking after the fact, which races the
+        // "startup" fragment into the SourceBuffer and can leave two
+        // disjoint buffered ranges that the browser's decoder rejects.
+        const hls = new Hls({
+          startPosition: initialTime ?? -1,
+        });
+        hlsRef.current = hls;
+        hls.on(Hls.Events.ERROR, (_evt, data) => {
+          if (data.fatal) onError();
+        });
+        hls.loadSource(src);
+        hls.attachMedia(videoEl);
+      } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari: native HLS, no startPosition equivalent — seek once
+        // metadata is available.
+        videoEl.src = src;
+        if (initialTime !== undefined) {
+          videoEl.addEventListener(
+            "loadedmetadata",
+            () => {
+              videoEl.currentTime = initialTime;
+            },
+            { once: true },
+          );
+        }
+        videoEl.addEventListener("error", onError);
+      } else {
+        onError();
+      }
 
       return () => {
-        player.dispose();
-        videoEl.remove();
-        playerRef.current = null;
+        videoEl.removeEventListener("loadedmetadata", ready);
+        videoEl.removeEventListener("timeupdate", onTimeUpdateEvent);
+        videoEl.removeEventListener("error", onError);
+        hlsRef.current?.destroy();
+        hlsRef.current = null;
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- poster/initialTime only apply when (re)mounting for a new src
     }, [src]);
 
     useImperativeHandle(
       ref,
       () => ({
         seekTo(seconds: number) {
-          playerRef.current?.currentTime(seconds);
+          if (videoRef.current) videoRef.current.currentTime = seconds;
         },
         getCurrentTime() {
-          return playerRef.current?.currentTime() ?? 0;
+          return videoRef.current?.currentTime ?? 0;
         },
         play() {
-          playerRef.current?.play();
+          videoRef.current?.play();
         },
         pause() {
-          playerRef.current?.pause();
+          videoRef.current?.pause();
         },
       }),
       [],
@@ -113,18 +126,22 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       );
     }
 
-    if (error) {
-      return (
-        <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
-          {error}
-        </div>
-      );
-    }
-
     return (
       <div className="relative h-full w-full overflow-hidden bg-black">
-        <div ref={containerRef} className="h-full w-full" />
-        {loading && (
+        <video
+          ref={videoRef}
+          className="h-full w-full"
+          controls
+          playsInline
+          poster={poster}
+          style={{ display: error ? "none" : undefined }}
+        />
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
+            {error}
+          </div>
+        )}
+        {loading && !error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="flex flex-col items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-white" />
