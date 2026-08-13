@@ -47,7 +47,11 @@ export function FrameDetailDialog({
   const pendingSeekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userEditedTimeRef = useRef(false);
   const lastMatchedFrameRef = useRef<FrameResult>(frame);
-  const framePropKeyRef = useRef(`${frame.video_id}:${frame.frame_index}`);
+  // null (not pre-seeded to the initial frame's key) so the sync effect below
+  // also arms pendingSeekRef on first mount, not just on later frame changes —
+  // otherwise the first open's premature timeupdate ticks (before the initial
+  // seek lands) snap currentFrameIndex to the wrong frame.
+  const framePropKeyRef = useRef<string | null>(null);
   const timeInputFocusedRef = useRef(false);
 
   // Escape hatch: clears pendingSeekRef itself if no timeupdate ever lands near the target.
@@ -160,7 +164,7 @@ export function FrameDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={`Frame ${currentFrameIndex} details`}
-        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
+        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -172,20 +176,20 @@ export function FrameDetailDialog({
           <Icon name="close" size={20} />
         </button>
 
-        <div className="flex flex-1 min-h-0">
+        <div className="grid grid-cols-[minmax(0,1fr)_22rem] flex-1 min-h-0">
           {/* Left: Video + Navigator + Submission */}
-          <div className="flex flex-col flex-1 min-w-0 bg-neutral-900 text-white">
-            {/* Video Section */}
-            <div className="relative w-full aspect-video bg-black flex-shrink-0">
+          <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
+            {/* Video — larger but capped so OCR/ASR column always stays visible */}
+            <div className="relative w-full aspect-video max-h-[min(420px,48vh)] overflow-hidden bg-black flex-shrink-0">
               <VideoPlayer
                 ref={videoRef}
-                watchUrl={frame.watch_url}
+                src={frame.video_url}
+                poster={frame.thumbnail_url}
                 initialTime={frame.pts_time}
                 onTimeUpdate={(t) => {
-                  if (!timeInputFocusedRef.current) {
-                    userEditedTimeRef.current = true;
-                    setTimeInput(t.toFixed(1));
-                  }
+                  // Stray timeupdate ticks fire while a seek is still landing (before
+                  // `seeked`); acting on them — even just to display `t` — shows a
+                  // transient, pre-seek time/frame instead of the one actually requested.
                   if (pendingSeekRef.current !== null) {
                     if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
                     pendingSeekRef.current = null;
@@ -193,6 +197,10 @@ export function FrameDetailDialog({
                       clearTimeout(pendingSeekTimeoutRef.current);
                       pendingSeekTimeoutRef.current = null;
                     }
+                  }
+                  if (!timeInputFocusedRef.current) {
+                    userEditedTimeRef.current = true;
+                    setTimeInput(t.toFixed(1));
                   }
                   const frames = allFramesRef.current;
                   if (frames.length === 0) return;
@@ -336,28 +344,28 @@ export function FrameDetailDialog({
             </div>
           </div>
 
-          {/* Right: Metadata panel */}
-          <div className="w-80 flex-shrink-0 border-l border-neutral-800 bg-neutral-900 text-white flex flex-col overflow-hidden">
+          {/* Right: Metadata panel — fixed column so video cannot eat this space */}
+          <div className="min-h-0 border-l border-neutral-800 bg-neutral-900 text-white flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-neutral-800 flex-shrink-0">
               <h3 className="text-label-md font-semibold text-gray-300">Frame Metadata</h3>
               <p className="text-mono-sm text-gray-500 mt-0.5">Frame {currentFrame.frame_index}</p>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-              <div>
-                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+              <div className="flex flex-col min-h-0 flex-1">
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5 flex-shrink-0">
                   <Icon name="text_fields" size={14} />
                   OCR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
                   {currentFrame.ocr_text || <span className="text-gray-600 italic">No OCR text</span>}
                 </div>
               </div>
-              <div>
-                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5">
+              <div className="flex flex-col min-h-0 flex-[1.4]">
+                <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5 flex-shrink-0">
                   <Icon name="graphic_eq" size={14} />
                   ASR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] max-h-48 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
                   {currentFrame.asr_text || <span className="text-gray-600 italic">No ASR text</span>}
                 </div>
               </div>

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "uv run flask --app app.main run --port 5001 --debug --with-threads",
     "build": "uv run python -m compileall app",
+    "start": "uv run gunicorn -b 0.0.0.0:5001 app.main:app",
     "test": "uv run pytest",
     "lint": "uv run ruff check ."
   }
