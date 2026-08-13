@@ -1,9 +1,8 @@
 """Public URL builders for keyframes/videos hosted on MinIO (path-style S3 addressing).
 
-Read paths never touch the MinIO SDK — they're plain string formatting so a
-request never pays for a client/auth round trip just to build a URL for an
-already-public bucket. The SDK is only needed by upload scripts (see
-scripts/upload_to_minio.py).
+Read paths never touch the MinIO SDK — plain string formatting only. The browser
+talks to MinIO/Cloudflare directly (Range/206 + CORS already work there), so
+playback is not bottlenecked by Flask's single-threaded proxy.
 """
 
 from app.config import Config
@@ -20,5 +19,6 @@ def keyframe_url(video_id: str, frame_index: int) -> str:
 
 
 def video_url(video_id: str) -> str:
+    """Public MinIO HLS playlist URL — video.js/VHS fetches segments via XHR."""
     level = video_id[:3]
-    return f"{_base_url()}/{Config.MINIO_BUCKET_VIDEOS}/{level}/{video_id}.mp4"
+    return f"{_base_url()}/{Config.MINIO_BUCKET_VIDEOS}/{level}/{video_id}/index.m3u8"
