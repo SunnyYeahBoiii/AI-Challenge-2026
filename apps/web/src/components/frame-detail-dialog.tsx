@@ -47,7 +47,11 @@ export function FrameDetailDialog({
   const pendingSeekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userEditedTimeRef = useRef(false);
   const lastMatchedFrameRef = useRef<FrameResult>(frame);
-  const framePropKeyRef = useRef(`${frame.video_id}:${frame.frame_index}`);
+  // null (not pre-seeded to the initial frame's key) so the sync effect below
+  // also arms pendingSeekRef on first mount, not just on later frame changes —
+  // otherwise the first open's premature timeupdate ticks (before the initial
+  // seek lands) snap currentFrameIndex to the wrong frame.
+  const framePropKeyRef = useRef<string | null>(null);
   const timeInputFocusedRef = useRef(false);
 
   // Escape hatch: clears pendingSeekRef itself if no timeupdate ever lands near the target.
@@ -180,12 +184,12 @@ export function FrameDetailDialog({
               <VideoPlayer
                 ref={videoRef}
                 src={frame.video_url}
+                poster={frame.thumbnail_url}
                 initialTime={frame.pts_time}
                 onTimeUpdate={(t) => {
-                  if (!timeInputFocusedRef.current) {
-                    userEditedTimeRef.current = true;
-                    setTimeInput(t.toFixed(1));
-                  }
+                  // Stray timeupdate ticks fire while a seek is still landing (before
+                  // `seeked`); acting on them — even just to display `t` — shows a
+                  // transient, pre-seek time/frame instead of the one actually requested.
                   if (pendingSeekRef.current !== null) {
                     if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
                     pendingSeekRef.current = null;
@@ -193,6 +197,10 @@ export function FrameDetailDialog({
                       clearTimeout(pendingSeekTimeoutRef.current);
                       pendingSeekTimeoutRef.current = null;
                     }
+                  }
+                  if (!timeInputFocusedRef.current) {
+                    userEditedTimeRef.current = true;
+                    setTimeInput(t.toFixed(1));
                   }
                   const frames = allFramesRef.current;
                   if (frames.length === 0) return;
