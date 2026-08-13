@@ -118,5 +118,30 @@ class DresClient:
             query={"session": session_id},
         )
 
+    def submit_trake(
+        self,
+        evaluation_id: str,
+        video_id: str,
+        frame_ids: list[int],
+        session_id: str,
+    ) -> dict:
+        """Submit TRAKE as text: TR-<VIDEO_ID>-<FRAME_ID1>,<FRAME_ID2>,..."""
+        ids = ",".join(str(int(fid)) for fid in frame_ids)
+        body = {
+            "answerSets": [
+                {
+                    "answers": [
+                        {"text": f"TR-{video_id}-{ids}"}
+                    ]
+                }
+            ]
+        }
+        return self._request(
+            "POST",
+            f"/api/v2/submit/{evaluation_id}",
+            body=body,
+            query={"session": session_id},
+        )
+
 
 dres_client = DresClient()
