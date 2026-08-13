@@ -10,6 +10,8 @@ interface SubmissionConfirmationDialogProps {
   timestamp: number;
   submissionType: "track" | "qa" | "kis";
   sessionId: string | null;
+  /** Selected DRES evaluation (contest) run to submit against. */
+  evaluationId?: string | null;
   /** Prefill from frame-detail dialog when type is QA. */
   answer?: string;
   /** TRAKE ordered frame ids for TR-VIDEO-id1,id2,... */
@@ -23,6 +25,7 @@ export function SubmissionConfirmationDialog({
   timestamp,
   submissionType,
   sessionId,
+  evaluationId,
   answer = "",
   trakeFrameIds,
   onClose,
@@ -70,12 +73,14 @@ export function SubmissionConfirmationDialog({
             video_path: videoId,
             frame_ids: trakeFrameIds,
             sessionId,
+            ...(evaluationId ? { evaluationId } : {}),
           }
         : {
             frame_id: frameId,
             video_path: videoId,
             timestamp,
             sessionId,
+            ...(evaluationId ? { evaluationId } : {}),
             ...(isQa ? { answer: qaAnswer } : {}),
           };
       const res = await fetch(`/api/dres/submit/${submissionType}`, {

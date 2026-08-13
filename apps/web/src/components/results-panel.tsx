@@ -31,6 +31,8 @@ interface ResultsPanelProps {
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
+  /** Selected DRES evaluation (contest) run to submit against. */
+  dresEvaluationId?: string | null;
   gridCols?: number;
   hasSearched?: boolean;
   /** TRACK: add frame to focused Event Candidate list. */
@@ -46,6 +48,7 @@ export function ResultsPanel({
   isLoading,
   submissionType,
   dresSessionId,
+  dresEvaluationId,
   gridCols = 6,
   hasSearched = false,
   onAddToTrake,
@@ -91,6 +94,7 @@ export function ResultsPanel({
         timestamp: frame.pts_time,
         submissionType,
         sessionId: dresSessionId,
+        evaluationId: dresEvaluationId ?? undefined,
       });
       const status: QuickSubmitStatus =
         data.submission === "WRONG"

@@ -28,6 +28,7 @@ export default function Home() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [dresSessionId, setDresSessionId] = useState<string | null>(null);
   const [dresUsername, setDresUsername] = useState<string | null>(null);
+  const [dresEvaluationId, setDresEvaluationId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
@@ -94,6 +95,7 @@ export default function Home() {
   useEffect(() => {
     setDresSessionId(sessionStorage.getItem("dresSessionId"));
     setDresUsername(sessionStorage.getItem("dresUsername"));
+    setDresEvaluationId(sessionStorage.getItem("dresEvaluationId"));
   }, []);
 
   const handleDresLogin = useCallback((sessionId: string, username: string) => {
@@ -103,12 +105,19 @@ export default function Home() {
     setDresUsername(username);
   }, []);
 
+  const handleDresEvaluationSelect = useCallback((evaluationId: string) => {
+    sessionStorage.setItem("dresEvaluationId", evaluationId);
+    setDresEvaluationId(evaluationId);
+  }, []);
+
   const handleDresLogout = useCallback(() => {
     const sessionId = dresSessionId;
     sessionStorage.removeItem("dresSessionId");
     sessionStorage.removeItem("dresUsername");
+    sessionStorage.removeItem("dresEvaluationId");
     setDresSessionId(null);
     setDresUsername(null);
+    setDresEvaluationId(null);
     if (sessionId) {
       fetch("/api/dres/logout", {
         method: "POST",
@@ -268,7 +277,17 @@ export default function Home() {
                 >
                   <Icon name="groups" size={18} />
                   {dresUsername}
+                  {dresEvaluationId && (
+                    <span className="text-on-surface-variant/70">· {dresEvaluationId}</span>
+                  )}
                 </span>
+                <button
+                  onClick={() => setShowDresSettings(true)}
+                  title="Change DRES evaluation"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                >
+                  <Icon name="tune" size={18} />
+                </button>
                 <button
                   onClick={handleDresLogout}
                   title="Log out of DRES"
@@ -334,6 +353,7 @@ export default function Home() {
           isLoading={isLoading}
           submissionType={submissionType}
           dresSessionId={dresSessionId}
+          dresEvaluationId={dresEvaluationId}
           gridCols={gridCols}
           hasSearched={hasSearched}
           trakeFocusedLabel={trake.focusedEvent?.displayLabel}
@@ -399,8 +419,12 @@ export default function Home() {
 
       {showDresSettings && (
         <DresSettingsDialog
+          sessionId={dresSessionId}
+          username={dresUsername}
+          evaluationId={dresEvaluationId}
           onClose={() => setShowDresSettings(false)}
           onLoginSuccess={handleDresLogin}
+          onEvaluationSelect={handleDresEvaluationSelect}
         />
       )}
 
@@ -415,6 +439,7 @@ export default function Home() {
           timestamp={Number.parseFloat(timeSec) || 0}
           submissionType={submissionType}
           sessionId={dresSessionId}
+          evaluationId={dresEvaluationId}
           answer={qaAnswer}
           trakeFrameIds={trakeFrameIds ?? undefined}
           onClose={() => {
