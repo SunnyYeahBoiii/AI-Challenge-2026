@@ -41,6 +41,19 @@ services:
           path: ./apps/api/app
           target: /app/app
 
+  trake-colab:
+    build:
+      context: .
+      dockerfile: ./apps/trake-colab/Dockerfile
+    ports:
+      - "5002:5002"
+    env_file:
+      - ./apps/trake-colab/.env
+    environment:
+      - TRAKE_COLAB_PORT=5002
+    volumes:
+      - ./apps/trake-colab/data:/app/apps/trake-colab/data
+
   milvus:
     image: milvusdb/milvus:v2.4.17
     command: ["milvus", "run", "standalone"]
