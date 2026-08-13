@@ -37,7 +37,8 @@ docker compose up --build
 ```
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
+- Backend API: http://localhost:5001
+- TRAKE collab: http://localhost:5002 (`NEXT_PUBLIC_TRAKE_COLAB_URL` for teammates)
 
 ### Option 2: Local Development (Turborepo)
 
@@ -59,7 +60,8 @@ pnpm dev
 ```
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
+- Backend API: http://localhost:5001
+- TRAKE collab: http://localhost:5002 (`NEXT_PUBLIC_TRAKE_COLAB_URL` for teammates)
 
 ### Option 3: Individual Services
 
