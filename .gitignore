@@ -26,3 +26,4 @@ docker-compose.override.yml
 data
 apps/api/scripts/.load_checkpoint.json
 apps/api/weights/
+scripts/logs/
