@@ -210,6 +210,20 @@ export async function submitFrameToDres(params: {
   return data;
 }
 
+/** TRAKE: TR-<VIDEO_ID>-<FRAME_ID1>,<FRAME_ID2>,... via Flask. */
+export async function submitTrakeToDres(params: {
+  videoId: string;
+  frameIds: number[];
+  sessionId: string;
+}): Promise<DresSubmitResult> {
+  const { data } = await api.post(`/dres/submit/track`, {
+    video_path: params.videoId,
+    frame_ids: params.frameIds,
+    sessionId: params.sessionId,
+  });
+  return data;
+}
+
 // ====== Health API ======
 
 export async function healthCheck(): Promise<HealthStatus> {

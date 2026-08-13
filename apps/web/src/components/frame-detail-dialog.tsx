@@ -17,20 +17,38 @@ export interface FrameSubmission {
   answer?: string;
 }
 
+export interface TrakeEventOption {
+  id: string;
+  displayLabel: string;
+}
+
 interface FrameDetailDialogProps {
   frame: FrameResult;
   submissionType: "track" | "qa" | "kis";
-  onSubmissionTypeChange: (type: "track" | "qa" | "kis") => void;
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
+  /** TRACK: Events available to add into (E1, E2, …). */
+  trakeEvents?: TrakeEventOption[];
+  /** Default Event id when opening the dialog (focused Event on the board). */
+  trakeFocusedEventId?: string | null;
+  onAddToTrake?: (
+    submission: FrameSubmission & {
+      fps: number;
+      frameIdx: number;
+      thumbnailUrl: string;
+      eventId: string;
+    },
+  ) => void;
 }
 
 export function FrameDetailDialog({
   frame,
   submissionType,
-  onSubmissionTypeChange,
   onClose,
   onSubmit,
+  trakeEvents = [],
+  trakeFocusedEventId,
+  onAddToTrake,
 }: FrameDetailDialogProps) {
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
@@ -39,6 +57,33 @@ export function FrameDetailDialog({
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
   const [qaAnswer, setQaAnswer] = useState("");
+  const [trakeTargetEventId, setTrakeTargetEventId] = useState(
+    () =>
+      trakeFocusedEventId &&
+      trakeEvents.some((e) => e.id === trakeFocusedEventId)
+        ? trakeFocusedEventId
+        : (trakeEvents[0]?.id ?? ""),
+  );
+
+  useEffect(() => {
+    if (trakeEvents.length === 0) {
+      setTrakeTargetEventId("");
+      return;
+    }
+    setTrakeTargetEventId((prev) => {
+      if (prev && trakeEvents.some((e) => e.id === prev)) return prev;
+      if (
+        trakeFocusedEventId &&
+        trakeEvents.some((e) => e.id === trakeFocusedEventId)
+      ) {
+        return trakeFocusedEventId;
+      }
+      return trakeEvents[0].id;
+    });
+  }, [trakeEvents, trakeFocusedEventId]);
+
+  const trakeTargetLabel =
+    trakeEvents.find((e) => e.id === trakeTargetEventId)?.displayLabel ?? "Event";
 
   const videoRef = useRef<VideoPlayerHandle>(null);
   const allFramesRef = useRef<FrameResult[]>([]);
@@ -248,23 +293,6 @@ export function FrameDetailDialog({
             {/* Submission bar */}
             <div className="flex flex-col gap-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900">
               <div className="flex items-center gap-4 overflow-x-auto">
-                <div className="flex items-center gap-4 flex-shrink-0">
-                  {(["track", "qa", "kis"] as const).map((mode) => (
-                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer group">
-                      <input
-                        type="radio"
-                        name="detail-mode"
-                        checked={submissionType === mode}
-                        onChange={() => onSubmissionTypeChange(mode)}
-                        className="form-radio text-primary-container border-neutral-600 bg-transparent w-4 h-4"
-                      />
-                      <span className="text-label-md text-gray-400 group-hover:text-white transition-colors">
-                        {mode.toUpperCase()}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-
                 <input
                   className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
                   type="text"
@@ -311,22 +339,59 @@ export function FrameDetailDialog({
                   </button>
                 </div>
 
+                {submissionType === "track" && (
+                  <select
+                    aria-label="TRAKE event target"
+                    value={trakeTargetEventId}
+                    onChange={(e) => setTrakeTargetEventId(e.target.value)}
+                    disabled={trakeEvents.length === 0}
+                    className={`${inputClass} w-24 flex-shrink-0`}
+                  >
+                    {trakeEvents.length === 0 ? (
+                      <option value="">No events</option>
+                    ) : (
+                      trakeEvents.map((ev) => (
+                        <option key={ev.id} value={ev.id}>
+                          {ev.displayLabel}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    if (submissionType === "track" && onAddToTrake) {
+                      if (!trakeTargetEventId) return;
+                      onAddToTrake({
+                        frameId: String(computedFrameId),
+                        videoId: videoIdInput,
+                        timeSec: timeInput,
+                        fps: currentFrame.fps,
+                        frameIdx: Number(computedFrameId),
+                        thumbnailUrl: currentFrame.thumbnail_url,
+                        eventId: trakeTargetEventId,
+                      });
+                      return;
+                    }
                     onSubmit({
                       frameId: String(computedFrameId),
                       videoId: videoIdInput,
                       timeSec: timeInput,
                       ...(submissionType === "qa" ? { answer: qaAnswer } : {}),
-                    })
-                  }
+                    });
+                  }}
                   disabled={
                     !videoIdInput.trim() ||
-                    (submissionType === "qa" && !qaAnswer.trim())
+                    (submissionType === "qa" && !qaAnswer.trim()) ||
+                    (submissionType === "track" &&
+                      (!onAddToTrake || !trakeTargetEventId))
                   }
                   className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Submit Frame {computedFrameId}
+                  {submissionType === "track"
+                    ? `Add to ${trakeTargetLabel}`
+                    : `Submit Frame ${computedFrameId}`}
                 </button>
               </div>
 

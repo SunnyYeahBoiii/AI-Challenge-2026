@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "./icon";
+import { buildTrakeSubmitText } from "@/lib/trake-colab";
 
 interface SubmissionConfirmationDialogProps {
   frameId: string;
@@ -11,6 +12,8 @@ interface SubmissionConfirmationDialogProps {
   sessionId: string | null;
   /** Prefill from frame-detail dialog when type is QA. */
   answer?: string;
+  /** TRAKE ordered frame ids for TR-VIDEO-id1,id2,... */
+  trakeFrameIds?: number[];
   onClose: () => void;
 }
 
@@ -21,6 +24,7 @@ export function SubmissionConfirmationDialog({
   submissionType,
   sessionId,
   answer = "",
+  trakeFrameIds,
   onClose,
 }: SubmissionConfirmationDialogProps) {
   const [status, setStatus] = useState<
@@ -30,10 +34,17 @@ export function SubmissionConfirmationDialog({
   const [qaAnswer, setQaAnswer] = useState(answer);
 
   const isQa = submissionType === "qa";
+  const isTrake =
+    submissionType === "track" &&
+    Array.isArray(trakeFrameIds) &&
+    trakeFrameIds.length > 0;
   const timeMs = Math.round(timestamp * 1000);
   const qaAnswerTrimmed = qaAnswer.trim();
   const qaPreview = qaAnswerTrimmed
     ? `QA-${qaAnswerTrimmed}-${videoId}-${timeMs}`
+    : "";
+  const trakePreview = isTrake
+    ? buildTrakeSubmitText(videoId, trakeFrameIds!)
     : "";
 
   const handleSubmit = async () => {
@@ -47,18 +58,30 @@ export function SubmissionConfirmationDialog({
       setStatus("error");
       return;
     }
+    if (isTrake && (!videoId || !trakeFrameIds?.length)) {
+      setResponse("TRAKE requires a video id and ordered frame ids.");
+      setStatus("error");
+      return;
+    }
     setStatus("loading");
     try {
+      const body = isTrake
+        ? {
+            video_path: videoId,
+            frame_ids: trakeFrameIds,
+            sessionId,
+          }
+        : {
+            frame_id: frameId,
+            video_path: videoId,
+            timestamp,
+            sessionId,
+            ...(isQa ? { answer: qaAnswer } : {}),
+          };
       const res = await fetch(`/api/dres/submit/${submissionType}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          frame_id: frameId,
-          video_path: videoId,
-          timestamp,
-          sessionId,
-          ...(isQa ? { answer: qaAnswer } : {}),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       setResponse(JSON.stringify(data, null, 2));
@@ -87,7 +110,6 @@ export function SubmissionConfirmationDialog({
         aria-label="Confirm submission"
         className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-outline-variant"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-outline-variant">
           <h2 className="text-headline-sm text-on-surface font-bold">
             Confirm Submission
@@ -101,110 +123,64 @@ export function SubmissionConfirmationDialog({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-4 flex flex-col gap-4 overflow-y-auto">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-label-md text-on-surface-variant">Type:</span>
-              <span className="text-body-md text-on-surface uppercase font-bold">
-                {submissionType}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-label-md text-on-surface-variant">Frame:</span>
-              <span className="font-mono text-mono-sm text-on-surface">{frameId}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-label-md text-on-surface-variant">Video:</span>
-              <span className="font-mono text-mono-sm text-on-surface">{videoId}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-label-md text-on-surface-variant">Time:</span>
-              <span className="font-mono text-mono-sm text-on-surface">
-                {timestamp.toFixed(1)}s ({timeMs}ms)
-              </span>
-            </div>
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          <div className="text-body-md text-on-surface-variant">
+            Type: <span className="font-bold text-on-surface">{submissionType.toUpperCase()}</span>
           </div>
-
+          <div className="text-body-md text-on-surface-variant">
+            Video: <span className="font-mono text-on-surface">{videoId}</span>
+          </div>
+          {isTrake ? (
+            <div className="rounded-lg bg-surface-container p-3 font-mono text-mono-sm break-all">
+              {trakePreview}
+            </div>
+          ) : (
+            <>
+              <div className="text-body-md text-on-surface-variant">
+                Frame: <span className="font-mono text-on-surface">{frameId}</span>
+              </div>
+              <div className="text-body-md text-on-surface-variant">
+                Time: <span className="font-mono text-on-surface">{timestamp}s</span>
+              </div>
+            </>
+          )}
           {isQa && (
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="qa-answer"
-                className="text-label-md text-on-surface-variant"
-              >
-                QA answer
-              </label>
-              <textarea
-                id="qa-answer"
-                value={qaAnswer}
-                onChange={(e) => setQaAnswer(e.target.value)}
-                placeholder="Type the full answer…"
-                rows={4}
-                className="w-full min-h-[6rem] resize-y rounded border border-outline-variant bg-surface-container-low px-3 py-2 font-mono text-mono-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary-container"
-              />
-              {qaPreview && (
-                <div className="bg-surface-container-low rounded p-3 font-mono text-mono-sm text-on-surface-variant overflow-x-auto">
-                  <div className="text-label-md mb-1 text-on-surface-variant">
-                    Will submit:
-                  </div>
-                  <pre className="whitespace-pre-wrap">{qaPreview}</pre>
-                </div>
-              )}
-            </div>
+            <textarea
+              value={qaAnswer}
+              onChange={(e) => setQaAnswer(e.target.value)}
+              placeholder="QA answer…"
+              rows={3}
+              className="w-full rounded border border-outline-variant bg-surface px-3 py-2 font-mono text-mono-sm"
+            />
           )}
-
-          {/* Response */}
-          {status === "correct" && (
-            <div className="flex items-center gap-2 text-body-sm text-green-700 bg-green-50 p-2 rounded">
-              <Icon name="check_circle" size={16} />
-              Correct — submission accepted
-            </div>
-          )}
-          {status === "wrong" && (
-            <div className="flex items-center gap-2 text-body-sm text-on-tertiary-container bg-tertiary-container/50 p-2 rounded">
-              <Icon name="cancel" size={16} />
-              Wrong — try a different answer
-            </div>
-          )}
-          {status === "duplicate" && (
-            <div className="flex items-center gap-2 text-body-sm text-on-tertiary-container bg-tertiary-container/50 p-2 rounded">
-              <Icon name="content_copy" size={16} />
-              Already submitted — see response below
-            </div>
-          )}
-          {status === "error" && (
-            <div className="flex items-center gap-2 text-body-sm text-on-error-container bg-error-container/50 p-2 rounded">
-              <Icon name="error" size={16} />
-              Submission rejected — see response below
+          {isQa && qaPreview && (
+            <div className="rounded-lg bg-surface-container p-3 font-mono text-mono-sm break-all">
+              {qaPreview}
             </div>
           )}
           {response && (
-            <div className="bg-surface-container-low rounded p-3 font-mono text-mono-sm overflow-x-auto">
-              <pre className="whitespace-pre-wrap">{response}</pre>
-            </div>
+            <pre className="rounded-lg bg-surface-container p-3 text-mono-sm overflow-auto max-h-48">
+              {response}
+            </pre>
+          )}
+          {status !== "idle" && status !== "loading" && (
+            <p className="text-label-md font-bold uppercase">{status}</p>
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end gap-2 p-4 border-t border-outline-variant">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded border border-outline-variant text-label-md text-on-surface-variant hover:bg-surface-container transition-colors"
+            className="px-4 py-2 rounded border border-outline-variant text-label-md"
           >
-            {status === "correct" || status === "wrong" || status === "duplicate" ? "Close" : "Cancel"}
+            Close
           </button>
           <button
             onClick={handleSubmit}
-            disabled={
-              status === "loading" ||
-              status === "correct" ||
-              status === "wrong" ||
-              status === "duplicate" ||
-              (isQa && !qaAnswerTrimmed)
-            }
-            className="px-4 py-2 rounded bg-primary-container text-on-primary-container text-label-md hover:bg-primary-fixed transition-colors disabled:opacity-50"
+            disabled={status === "loading"}
+            className="px-6 py-2 rounded bg-primary-container text-on-primary-container text-label-md font-bold disabled:opacity-50"
           >
-            {status === "loading" ? "Submitting..." : "Submit"}
+            {status === "loading" ? "Submitting…" : "Submit to DRES"}
           </button>
         </div>
       </div>
