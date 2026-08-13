@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Board {
+  id            String   @id
+  title         String
+  targetVideoId String?  @map("target_video_id")
+  createdAt     String   @map("created_at")
+  updatedAt     String   @map("updated_at")
+  events        Event[]
+
+  @@map("boards")
+}
+
+model Event {
+  id        String     @id
+  boardId   String     @map("board_id")
+  position  Int
+  labelText String     @default("") @map("label_text")
+  createdAt String     @map("created_at")
+  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  candidates Candidate[]
+  selection Selection?
+
+  @@index([boardId, position], map: "idx_events_board")
+  @@map("events")
+}
+
+model Candidate {
+  id             String     @id
+  eventId        String     @map("event_id")
+  videoId        String     @map("video_id")
+  ptsTime        Float      @map("pts_time")
+  previewFrameId String     @map("preview_frame_id")
+  fps            Float
+  frameIdx       Int        @map("frame_idx")
+  thumbnailUrl   String     @default("") @map("thumbnail_url")
+  addedBy        String     @default("") @map("added_by")
+  createdAt      String     @map("created_at")
+  event          Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  selections     Selection[]
+
+  @@index([eventId], map: "idx_candidates_event")
+  @@map("candidates")
+}
+
+model Selection {
+  eventId        String  @id @map("event_id")
+  candidateId    String? @map("candidate_id")
+  videoId        String  @map("video_id")
+  ptsTime        Float   @map("pts_time")
+  previewFrameId String  @map("preview_frame_id")
+  fps            Float
+  updatedBy      String  @default("") @map("updated_by")
+  updatedAt      String  @map("updated_at")
+  event          Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  candidate      Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@map("selections")
+}
