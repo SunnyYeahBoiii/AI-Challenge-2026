@@ -5,7 +5,9 @@ COPY apps/web/package.json ./apps/web/
 RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
+ARG NEXT_PUBLIC_TRAKE_COLAB_URL=http://localhost:5002
 WORKDIR /app
+ENV NEXT_PUBLIC_TRAKE_COLAB_URL=$NEXT_PUBLIC_TRAKE_COLAB_URL
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules

@@ -130,7 +130,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       <div className="relative h-full w-full overflow-hidden bg-black">
         <video
           ref={videoRef}
-          className="h-full w-full"
+          className="h-full w-full object-contain"
           controls
           playsInline
           poster={poster}

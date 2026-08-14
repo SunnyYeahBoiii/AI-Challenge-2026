@@ -29,8 +29,9 @@ AI-powered video and image search application. Users input text or image queries
 git clone <repo-url>
 cd AI-Challenge-2026
 
-# Copy environment file and fill in your credentials
+# Copy environment files and fill in your credentials
 cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
 
 # Build and run everything
 docker compose up --build
@@ -38,7 +39,9 @@ docker compose up --build
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5001
-- TRAKE collab: http://localhost:5002 (`NEXT_PUBLIC_TRAKE_COLAB_URL` for teammates)
+- TRAKE collab: http://localhost:5002
+
+> **Teammates**: set `NEXT_PUBLIC_TRAKE_COLAB_URL` in `apps/web/.env` to the IP of the machine running `trake-colab`, then rebuild. See [Configuring TRAKE Collab URL](#configuring-trake-collab-url).
 
 ### Option 2: Local Development (Turborepo)
 
@@ -55,19 +58,26 @@ cp .env.example .env        # Fill in your credentials
 uv sync                      # Create venv and install deps
 cd ../..
 
+# Set up frontend
+cp apps/web/.env.example apps/web/.env
+# Edit apps/web/.env if you need to change NEXT_PUBLIC_TRAKE_COLAB_URL
+
 # Start everything
 pnpm dev
 ```
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5001
-- TRAKE collab: http://localhost:5002 (`NEXT_PUBLIC_TRAKE_COLAB_URL` for teammates)
+- TRAKE collab: http://localhost:5002
+
+> **Teammates**: set `NEXT_PUBLIC_TRAKE_COLAB_URL` in `apps/web/.env` to the IP of the machine running `trake-colab`. See [Configuring TRAKE Collab URL](#configuring-trake-collab-url).
 
 ### Option 3: Individual Services
 
 ```bash
 # Frontend only
 cd apps/web
+cp .env.example .env        # Set NEXT_PUBLIC_TRAKE_COLAB_URL if needed
 pnpm install
 pnpm dev
 
@@ -109,6 +119,7 @@ services:
       - api
     environment:
       - API_BASE_URL=http://api:5000
+      - NEXT_PUBLIC_TRAKE_COLAB_URL=http://trake-colab:5002
 
   api:
     image: ghcr.io/sunnyyeahboiii/ai-challenge-2026/api:latest
@@ -167,9 +178,15 @@ Then run:
 
 ```bash
 cp apps/api/.env.example apps/api/.env
-# Fill in your credentials in apps/api/.env
+cp apps/web/.env.example apps/web/.env
+# Fill in credentials and set NEXT_PUBLIC_TRAKE_COLAB_URL if needed
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+> **Note**: Pre-built web images have `NEXT_PUBLIC_TRAKE_COLAB_URL` baked in. To override, rebuild locally:
+> ```bash
+> docker compose -f docker-compose.prod.yml build --build-arg NEXT_PUBLIC_TRAKE_COLAB_URL=http://your-host:5002 web
+> ```
 
 ## Environment Variables
 
@@ -187,18 +204,69 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
 
 **Web Container**:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `API_BASE_URL` | Backend API URL | `http://api:5000` |
+| Variable | Description | Default | Notes |
+|----------|-------------|---------|-------|
+| `API_BASE_URL` | Backend API URL | `http://api:5000` | Server-side only |
+| `NEXT_PUBLIC_TRAKE_COLAB_URL` | TRAKE collab server URL | `http://localhost:5002` | Client-side, baked at build time |
+
+## Configuring TRAKE Collab URL
+
+One machine in the team runs `trake-colab` (NestJS + SQLite). Other teammates must point their frontend to that machine.
+
+### Who runs trake-colab?
+
+The machine running `trake-colab` uses the default `http://localhost:5002` — no changes needed.
+
+### For teammates (connecting to remote trake-colab)
+
+Set `NEXT_PUBLIC_TRAKE_COLAB_URL` to the host machine's IP:
+
+**Local development** (apps/web/.env):
+
+```bash
+# apps/web/.env
+NEXT_PUBLIC_TRAKE_COLAB_URL=http://192.168.1.100:5002
+```
+
+Then restart the dev server (`pnpm dev` or `docker compose up`).
+
+**Docker** (requires rebuild since `NEXT_PUBLIC_*` is baked at build time):
+
+Edit `docker-compose.yml`:
+
+```yaml
+web:
+  build:
+    args:
+      NEXT_PUBLIC_TRAKE_COLAB_URL: http://192.168.1.100:5002
+  environment:
+    - NEXT_PUBLIC_TRAKE_COLAB_URL=http://192.168.1.100:5002
+```
+
+Then rebuild:
+
+```bash
+docker compose up --build web
+```
+
+Or pass as build arg:
+
+```bash
+docker compose build --build-arg NEXT_PUBLIC_TRAKE_COLAB_URL=http://192.168.1.100:5002 web
+docker compose up -d
+```
+
+> **Note**: `NEXT_PUBLIC_*` variables are embedded into the JavaScript bundle at build time. Changing them requires a rebuild in Docker, but only a dev server restart in local development.
 
 ## Project Structure
 
 ```
 AI-Challenge-2026/
 ├── apps/
-│   ├── web/          # Next.js 16 frontend (port 3000)
-│   └── api/          # Flask backend (port 5000)
-├── docs/             # Project documentation
+│   ├── web/            # Next.js 16 frontend (port 3000)
+│   ├── api/            # Flask backend (port 5000)
+│   └── trake-colab/    # TRAKE collaboration server (port 5002)
+├── docs/               # Project documentation
 ├── docker-compose.yml
 ├── turbo.json
 └── pnpm-workspace.yaml
@@ -221,9 +289,11 @@ AI-Challenge-2026/
 
 1. Clone the repo
 2. Install prerequisites: Node.js 22+, pnpm 9+, Python 3.11+, uv, Docker
-3. Copy `apps/api/.env.example` → `apps/api/.env` and fill in credentials
+3. Copy env files:
+   - `cp apps/api/.env.example apps/api/.env` — fill in credentials
+   - `cp apps/web/.env.example apps/web/.env` — set `NEXT_PUBLIC_TRAKE_COLAB_URL` if connecting to remote trake-colab
 4. Run `docker compose up --build` (Docker) or `pnpm dev` (local)
-5. Verify: open http://localhost:3000, check http://localhost:5000/api/health
+5. Verify: open http://localhost:3000, check http://localhost:5001/api/health
 
 ## Acknowledgments
 

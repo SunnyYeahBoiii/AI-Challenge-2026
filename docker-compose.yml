@@ -5,12 +5,14 @@ services:
       dockerfile: ./apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:5000
+        NEXT_PUBLIC_TRAKE_COLAB_URL: http://trake-colab:5002
     ports:
       - "3000:3000"
     depends_on:
       - api
     environment:
       - API_BASE_URL=http://api:5000
+      - NEXT_PUBLIC_TRAKE_COLAB_URL=http://trake-colab:5002
 
   api:
     build:
@@ -40,6 +42,19 @@ services:
         - action: sync
           path: ./apps/api/app
           target: /app/app
+
+  trake-colab:
+    build:
+      context: .
+      dockerfile: ./apps/trake-colab/Dockerfile
+    ports:
+      - "5002:5002"
+    env_file:
+      - ./apps/trake-colab/.env
+    environment:
+      - TRAKE_COLAB_PORT=5002
+    volumes:
+      - ./apps/trake-colab/data:/app/apps/trake-colab/data
 
   milvus:
     image: milvusdb/milvus:v2.4.17

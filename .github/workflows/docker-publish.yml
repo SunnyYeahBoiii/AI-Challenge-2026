@@ -24,6 +24,9 @@ jobs:
           - image: sunnyyeahboiii/ai-challenge-2026/web
             context: .
             file: ./apps/web/Dockerfile
+          - image: sunnyyeahboiii/ai-challenge-2026/trake-colab
+            context: .
+            file: ./apps/trake-colab/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
