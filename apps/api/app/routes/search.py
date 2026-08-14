@@ -145,7 +145,6 @@ def api_frames():
         results = multi_box_search(
             box_queries=box_list,
             temporal_window=data.temporal_window_seconds,
-            topk=data.topk,
             enhance=data.enhance,
             mode=data.mode,
         )
@@ -155,7 +154,4 @@ def api_frames():
         return jsonify({"error": str(error)}), 500
     except MilvusException as error:
         return _milvus_error_response(error)
-    return jsonify({
-        "results": results,
-        "total": len(results),
-    })
+    return jsonify(results)
