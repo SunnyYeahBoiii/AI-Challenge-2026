@@ -5,8 +5,6 @@ from typing import Any
 
 from elasticsearch import Elasticsearch
 
-from app.services.text_normalize import normalize_text
-
 logger = logging.getLogger(__name__)
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
@@ -18,46 +16,18 @@ MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
 FrameKey = tuple[Any, Any]
 
 
-def _normalized_keywords(keywords: Sequence[str]) -> list[str]:
-    return [kw for kw in (normalize_text(k) for k in keywords) if kw]
-
-
-def _fuzzy_keyword_clause(keyword: str, field: str) -> dict[str, Any]:
-    """Exact phrase (preferred) OR all-words-fuzzy (typo tolerance).
-
-    `operator: and` on the fuzzy branch still requires every word of a
-    multi-word keyword to be present — unlike the `multi_match` + fuzziness
-    approach reverted in 26af5d6, a single fuzzy word can't match alone and
-    drag in unrelated docs.
-    """
-    return {
-        "bool": {
-            "should": [
-                {"match_phrase": {field: keyword}},
-                {
-                    "match": {
-                        field: {
-                            "query": keyword,
-                            "fuzziness": "AUTO",
-                            "operator": "and",
-                            "prefix_length": 1,
-                        }
-                    }
-                },
-            ],
-            "minimum_should_match": 1,
-        }
-    }
+def _nonempty_keywords(keywords: Sequence[str]) -> list[str]:
+    return [keyword for keyword in keywords if keyword.strip()]
 
 
 def _exact_phrase_field_group(
     keywords: Sequence[str], field: str, mode: str
 ) -> dict[str, Any] | None:
-    """Build a bool should-group of phrase-or-fuzzy matches against one text field."""
-    normalized = _normalized_keywords(keywords)
-    if not normalized:
+    """Build an analyzed, ordered and adjacent phrase group for one field."""
+    original_keywords = _nonempty_keywords(keywords)
+    if not original_keywords:
         return None
-    clauses = [_fuzzy_keyword_clause(kw, field) for kw in normalized]
+    clauses = [{"match_phrase": {field: keyword}} for keyword in original_keywords]
     return {
         "bool": {
             "should": clauses,
@@ -89,16 +59,22 @@ class ESClient:
                     ],
                 }
             })
-        body: dict[str, Any] = {"size": size}
+        body: dict[str, Any] = {"size": size * 4}
         if must:
             body["query"] = {"bool": {"must": must}}
         else:
             body["query"] = {"match_all": {}}
         resp = self.es.search(index=ES_INDEX, body=body)
-        return [
-            {"_source": hit["_source"], "score": hit["_score"]}
-            for hit in resp["hits"]["hits"]
-        ]
+        seen: set[str] = set()
+        results: list[dict[str, Any]] = []
+        for hit in resp["hits"]["hits"]:
+            vid = hit["_source"].get("video_id")
+            if vid and vid not in seen:
+                seen.add(vid)
+                results.append({"_source": hit["_source"], "score": hit["_score"]})
+                if len(results) >= size:
+                    break
+        return results
 
     def get_video(self, video_id: str) -> dict[str, Any] | None:
         resp = self.es.search(
@@ -123,11 +99,9 @@ class ESClient:
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
-        OCR keywords match `ocr_text` only; ASR keywords match `asr_text` only,
-        each as an exact phrase or, failing that, a typo-tolerant all-words
-        match (see `_fuzzy_keyword_clause`). When both groups are non-empty
-        they are AND-ed. Within each group, `ocr_mode`/`asr_mode` controls
-        and/or, falling back to `mode` when unset.
+        OCR keywords phrase-match `ocr_text` only; ASR keywords phrase-match
+        `asr_text` only. When both groups are non-empty they are AND-ed. Within each group,
+        `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
 
         Legacy `keywords` + `source` still work when the dedicated lists are empty:
         ocr/asr map to one field; all duplicates keywords into both groups.
@@ -188,14 +162,90 @@ class ESClient:
         }
         return {key for key in keys if key in matched}
 
+    def iter_keyword_frame_hits(
+        self,
+        keywords: Sequence[str] | None = None,
+        mode: str = "and",
+        source: str = "all",
+        *,
+        ocr_keywords: Sequence[str] | None = None,
+        asr_keywords: Sequence[str] | None = None,
+        ocr_mode: str | None = None,
+        asr_mode: str | None = None,
+        allowed_video_ids: Sequence[str] | None = None,
+        page_size: int = 500,
+    ) -> Iterable[tuple[str, int, float]]:
+        """Yield global keyword matches in stable Elasticsearch relevance order."""
+        ocr = list(ocr_keywords or [])
+        asr = list(asr_keywords or [])
+        if not ocr and not asr and keywords:
+            if source == "ocr":
+                ocr = list(keywords)
+            elif source == "asr":
+                asr = list(keywords)
+            else:
+                ocr = list(keywords)
+                asr = list(keywords)
+
+        must = [
+            group
+            for group in (
+                _exact_phrase_field_group(ocr, "ocr_text", ocr_mode or mode),
+                _exact_phrase_field_group(asr, "asr_text", asr_mode or mode),
+            )
+            if group is not None
+        ]
+        if not must:
+            return
+
+        filters: list[dict[str, Any]] = []
+        if allowed_video_ids is not None:
+            video_ids = sorted(set(allowed_video_ids))
+            if not video_ids:
+                return
+            filters.append({"terms": {"video_id": video_ids}})
+
+        search_after: list[Any] | None = None
+        size = max(1, min(int(page_size), MAX_KEYWORD_HITS))
+        while True:
+            bool_query: dict[str, Any] = {"must": must}
+            if filters:
+                bool_query["filter"] = filters
+            body: dict[str, Any] = {
+                "query": {"bool": bool_query},
+                "_source": ["video_id", "frame_id"],
+                "size": size,
+                "sort": [
+                    {"_score": "desc"},
+                    {"video_id": "asc"},
+                    {"frame_id": "asc"},
+                ],
+            }
+            if search_after is not None:
+                body["search_after"] = search_after
+            hits = self.es.search(index=ES_INDEX, body=body)["hits"]["hits"]
+            if not hits:
+                return
+            for hit in hits:
+                source_doc = hit["_source"]
+                yield (
+                    str(source_doc["video_id"]),
+                    int(source_doc["frame_id"]),
+                    float(hit.get("_score") or 0.0),
+                )
+            if len(hits) < size or "sort" not in hits[-1]:
+                return
+            search_after = list(hits[-1]["sort"])
+
     def fetch_frame_texts(
         self, frame_keys: Iterable[FrameKey]
     ) -> dict[FrameKey, dict[str, str]]:
+        """Fetch original OCR/ASR text for a small navigator frame window."""
         keys = list(frame_keys)
         if not keys:
             return {}
-        video_ids = sorted({vid for vid, _ in keys if vid})
-        frame_ids = sorted({idx for _, idx in keys if idx is not None})
+        video_ids = sorted({video_id for video_id, _ in keys if video_id})
+        frame_ids = sorted({frame_id for _, frame_id in keys if frame_id is not None})
         if not video_ids or not frame_ids:
             return {}
         body = {
@@ -210,15 +260,14 @@ class ESClient:
             "_source": ["video_id", "frame_id", "ocr_text", "asr_text"],
             "size": min(MAX_KEYWORD_HITS, max(len(keys) * 2, 100)),
         }
-        resp = self.es.search(index=ES_INDEX, body=body)
-        result: dict[FrameKey, dict[str, str]] = {}
-        for hit in resp["hits"]["hits"]:
-            src = hit["_source"]
-            result[(src["video_id"], src["frame_id"])] = {
-                "ocr_text": src.get("ocr_text", "") or "",
-                "asr_text": src.get("asr_text", "") or "",
+        hits = self.es.search(index=ES_INDEX, body=body)["hits"]["hits"]
+        return {
+            (hit["_source"]["video_id"], hit["_source"]["frame_id"]): {
+                "ocr_text": hit["_source"].get("ocr_text", "") or "",
+                "asr_text": hit["_source"].get("asr_text", "") or "",
             }
-        return result
+            for hit in hits
+        }
 
     def is_connected(self) -> bool:
         try:

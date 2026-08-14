@@ -8,12 +8,11 @@ export interface FrameResult {
   id: string;
   video_id: string;
   frame_index: number;
-  /** Ground-truth BTC frame number for this exact keyframe (INT64 in Milvus, no float rounding). */
   frame_idx: number;
   shot_idx: number;
   start_time: number;
   end_time: number;
-  pts_time: number;
+  timestamp: number;
   fps: number;
   score: number;
   title: string;
@@ -24,12 +23,42 @@ export interface FrameResult {
   thumbnail_url: string;
   watch_url: string;
   video_url: string;
-  /** Position of this frame inside a temporal sequence (sequential mode only). */
   sequence_idx?: number;
-  /** Groups the frames that belong to the same temporal sequence. */
   sequence_id?: string;
+  matches?: QueryMatch[];
+  query_index?: number;
+  similarity?: number;
   ocr_text?: string;
   asr_text?: string;
+  retrieval_rank?: number;
+  filter_only?: boolean;
+}
+
+export interface QueryMatch {
+  query_index: number;
+  similarity: number;
+}
+
+export interface TemporalSequence {
+  sequence_id: string;
+  sequence_score: number;
+  total_span_seconds: number;
+  frames: FrameResult[];
+}
+
+export interface TemporalVideoResult {
+  video_id: string;
+  video_score: number;
+  has_vector_score?: boolean;
+  valid_frames: FrameResult[];
+  best_sequence: TemporalSequence;
+}
+
+export interface TemporalSearchResponse {
+  mode: "parallel" | "sequential";
+  videos: TemporalVideoResult[];
+  total_videos: number;
+  total_valid_frames: number;
 }
 
 export interface VideoResult {
@@ -88,15 +117,8 @@ export interface MultiBoxQuery {
 
 export interface MultiBoxRequest {
   box_queries: MultiBoxQuery[];
-  /** Max gap between consecutive shots of a sequence, in seconds. */
   temporal_window_seconds?: number;
-  topk?: number;
   enhance?: boolean;
-  /**
-   * "parallel" fuses the boxes with RRF and returns independent frames.
-   * "sequential" reads the boxes as consecutive shots of one scene and returns
-   * temporal chains within a single video.
-   */
   mode?: "parallel" | "sequential";
 }
 
@@ -143,7 +165,7 @@ export async function searchSimilarFrames(
 
 export async function multiBoxSearch(
   req: MultiBoxRequest
-): Promise<{ results: FrameResult[]; total: number }> {
+): Promise<TemporalSearchResponse> {
   const { data } = await api.post("/frames", req);
   return data;
 }

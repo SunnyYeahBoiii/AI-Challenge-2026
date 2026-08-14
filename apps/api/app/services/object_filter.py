@@ -13,6 +13,7 @@ from app.config import Config
 
 
 Frame = dict[str, Any]
+FrameKey = tuple[str, int]
 
 REQUIRED_SCHEMA = pl.Schema(
     {
@@ -114,3 +115,55 @@ def filter_frames(
     candidate_ids = [_frame_id(frame) for frame in frames]
     matched_ids = _matching_frame_ids(_get_lazy_db(), candidate_ids, normalised_tags, mode)
     return [frame for frame in frames if _frame_id(frame) in matched_ids]
+
+
+def _key_id(key: FrameKey) -> str:
+    return f"{key[0]}/{int(key[1])}"
+
+
+def filter_frame_keys(
+    frame_keys: Sequence[FrameKey], tags: Sequence[str] | None, mode: str = "and"
+) -> list[FrameKey]:
+    """Filter keys while preserving their input (for example ES relevance) order."""
+    normalised_tags = _normalise_tags(tags)
+    if not frame_keys or not normalised_tags:
+        return list(frame_keys)
+    if mode not in {"and", "or"}:
+        raise ObjectFilterError(f"Unsupported tag match mode: {mode}")
+    candidate_ids = [_key_id(key) for key in frame_keys]
+    matched = _matching_frame_ids(_get_lazy_db(), candidate_ids, normalised_tags, mode)
+    return [key for key in frame_keys if _key_id(key) in matched]
+
+
+def matching_frame_keys(
+    tags: Sequence[str] | None,
+    mode: str = "and",
+    allowed_video_ids: set[str] | None = None,
+) -> list[FrameKey]:
+    """Return every matching detection key in deterministic video/frame order."""
+    normalised_tags = _normalise_tags(tags)
+    if not normalised_tags:
+        return []
+    if mode not in {"and", "or"}:
+        raise ObjectFilterError(f"Unsupported tag match mode: {mode}")
+    lazy_db = _get_lazy_db()
+    matches = (
+        lazy_db.filter(pl.col("class_name").str.to_lowercase().is_in(normalised_tags))
+        .select("frame_id", "class_name")
+    )
+    if mode == "or":
+        rows = matches.select("frame_id").unique().collect()
+    else:
+        rows = (
+            matches.group_by("frame_id")
+            .agg(pl.col("class_name").str.to_lowercase().n_unique().alias("matched_tags"))
+            .filter(pl.col("matched_tags") == len(normalised_tags))
+            .select("frame_id")
+            .collect()
+        )
+    keys: list[FrameKey] = []
+    for frame_id in rows.get_column("frame_id").to_list():
+        video_id, index = str(frame_id).rsplit("/", 1)
+        if allowed_video_ids is None or video_id in allowed_video_ids:
+            keys.append((video_id, int(index)))
+    return sorted(set(keys), key=lambda key: (key[0], key[1]))

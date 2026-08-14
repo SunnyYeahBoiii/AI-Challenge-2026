@@ -9,16 +9,59 @@ import { ModelSettingsDialog } from "@/components/model-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
-import type { FrameResult } from "@/lib/api";
+import type { FrameResult, TemporalSearchResponse, TemporalVideoResult } from "@/lib/api";
 import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
 
-function sortFrames(frames: FrameResult[]): FrameResult[] {
-  return [...frames].sort((a, b) => b.score - a.score);
+function emptySearchResult(mode: "parallel" | "sequential" = "parallel"): TemporalSearchResponse {
+  return { mode, videos: [], total_videos: 0, total_valid_frames: 0 };
+}
+
+function videoFramesResponse(
+  frames: FrameResult[],
+  mode: "parallel" | "sequential"
+): TemporalSearchResponse {
+  const grouped = new Map<string, FrameResult[]>();
+  frames.forEach((frame) => {
+    const current = grouped.get(frame.video_id) ?? [];
+    const score = Number.isFinite(frame.score) ? frame.score : 0;
+    current.push({
+      ...frame,
+      score,
+      matches: [{ query_index: 0, similarity: score }],
+    });
+    grouped.set(frame.video_id, current);
+  });
+  const videos: TemporalVideoResult[] = Array.from(grouped.entries()).map(([videoId, results]) => {
+    const validFrames = [...results].sort((left, right) => left.frame_idx - right.frame_idx);
+    const best = [...validFrames].sort(
+      (left, right) => right.score - left.score || left.frame_idx - right.frame_idx
+    )[0];
+    return {
+      video_id: videoId,
+      video_score: best?.score ?? 0,
+      has_vector_score: false,
+      valid_frames: validFrames,
+      best_sequence: {
+        sequence_id: `${videoId}:${best?.frame_index ?? 0}`,
+        sequence_score: best?.score ?? 0,
+        total_span_seconds: 0,
+        frames: best ? [{ ...best, query_index: 0, similarity: best.score }] : [],
+      },
+    };
+  });
+  videos.sort((left, right) => right.video_score - left.video_score);
+  return {
+    mode,
+    videos,
+    total_videos: videos.length,
+    total_valid_frames: videos.reduce((total, video) => total + video.valid_frames.length, 0),
+  };
 }
 
 export default function Home() {
-  const [frames, setFrames] = useState<FrameResult[]>([]);
+  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(() => emptySearchResult());
+  const [queryCount, setQueryCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -49,7 +92,7 @@ export default function Home() {
       eventId: string,
       frame: {
         video_id: string;
-        pts_time: number;
+        timestamp: number;
         frame_idx: number;
         fps: number;
         thumbnail_url: string;
@@ -63,7 +106,7 @@ export default function Home() {
       trake.addCandidate({
         eventId,
         videoId: frame.video_id,
-        ptsTime: frame.pts_time,
+        ptsTime: frame.timestamp,
         previewFrameId: String(frame.frame_idx),
         fps: frame.fps,
         frameIdx: frame.frame_idx,
@@ -76,7 +119,7 @@ export default function Home() {
   const addFrameToFocusedEvent = useCallback(
     (frame: {
       video_id: string;
-      pts_time: number;
+      timestamp: number;
       frame_idx: number;
       fps: number;
       thumbnail_url: string;
@@ -136,10 +179,13 @@ export default function Home() {
       if (newFilter.videoId) {
         const data = await searchVideoFrames(newFilter.videoId);
         if (currentSearchId !== searchIdRef.current) return;
-        setFrames(sortFrames(data.results));
+        setSearchResult(videoFramesResponse(data.results, newFilter.mode));
+        setQueryCount(1);
       } else {
         const enabledQueries = newFilter.queries.filter(
-          (q) => q.enabled && (q.content || q.tags?.length)
+          (q) => q.enabled && Boolean(
+            q.content.trim() || q.tags?.length || q.ocrKeywords?.length || q.asrKeywords?.length
+          )
         );
         const boxQueries = enabledQueries.map((q) => ({
           text: q.type === "text" ? q.content : undefined,
@@ -150,23 +196,24 @@ export default function Home() {
           asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
           ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
           asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
-          topk: q.topK ?? 100,
-          enhance: q.enhance ?? false,
+          topk: q.topK ?? 1000,
+          enhance: q.enhance ?? true,
         }));
-        const topk = Math.max(...enabledQueries.map((q) => q.topK ?? 100), 1);
         const data = await multiBoxSearch({
           box_queries: boxQueries,
           mode: newFilter.mode,
-          topk,
+          temporal_window_seconds: newFilter.temporalWindowSeconds,
         });
         if (currentSearchId !== searchIdRef.current) return;
-        setFrames(sortFrames(data.results));
+        setSearchResult(data);
+        setQueryCount(enabledQueries.length);
       }
     } catch (error) {
       if (currentSearchId !== searchIdRef.current) return;
       console.error("Search failed:", error);
       setSearchError(error instanceof Error ? error.message : "Search failed. Check the API connection and try again.");
-      setFrames([]);
+      setSearchResult(emptySearchResult(newFilter.mode));
+      setQueryCount(0);
     } finally {
       if (currentSearchId === searchIdRef.current) {
         setIsLoading(false);
@@ -175,7 +222,9 @@ export default function Home() {
   }, []);
 
   const handleClear = useCallback(() => {
-    setFrames([]);
+    searchIdRef.current += 1;
+    setSearchResult(emptySearchResult());
+    setQueryCount(0);
     setSearchError(null);
     setSelectedFrame(null);
     setFrameId("");
@@ -183,12 +232,13 @@ export default function Home() {
     setTimeSec("");
     setQaAnswer("");
     setHasSearched(false);
+    setIsLoading(false);
   }, []);
 
   const handleFrameSelect = useCallback((frame: FrameResult) => {
     setFrameId(String(frame.frame_idx));
     setVideoId(frame.video_id);
-    setTimeSec(frame.pts_time.toFixed(1));
+    setTimeSec(frame.timestamp.toFixed(1));
   }, []);
 
   const handleFrameDetail = useCallback((frame: FrameResult) => {
@@ -223,7 +273,7 @@ export default function Home() {
             <div className="h-6 w-px bg-outline-variant hidden md:block" />
 
             {/* View Mode Toggle */}
-            {frames.length > 0 && (
+            {searchResult.total_valid_frames > 0 && (
               <div className="flex items-center gap-2 mr-2 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
                 <button
                   onClick={() => setViewMode("grouped")}
@@ -346,7 +396,8 @@ export default function Home() {
 
         {/* Results */}
         <ResultsPanel
-          frames={frames}
+          result={searchResult}
+          queryCount={queryCount}
           viewMode={viewMode}
           onFrameSelect={handleFrameSelect}
           onFrameDetail={handleFrameDetail}
@@ -396,7 +447,7 @@ export default function Home() {
               ? (submission) => {
                   addFrameToEvent(submission.eventId, {
                     video_id: submission.videoId,
-                    pts_time: Number.parseFloat(submission.timeSec) || 0,
+                    timestamp: Number.parseFloat(submission.timeSec) || 0,
                     frame_idx: submission.frameIdx,
                     fps: submission.fps,
                     thumbnail_url: submission.thumbnailUrl,
