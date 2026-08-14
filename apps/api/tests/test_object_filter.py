@@ -81,3 +81,24 @@ def test_missing_detection_dataset_raises_an_actionable_error(
 
     with pytest.raises(object_filter.ObjectFilterError, match="Object detections file not found"):
         object_filter.filter_frames([_frame(1, 0.9)], ["person"])
+
+
+def test_global_tag_search_is_deterministic(detections_path: Path) -> None:
+    assert object_filter.matching_frame_keys(["person"], "or") == [
+        ("K01_V001", 1),
+        ("K01_V001", 2),
+    ]
+
+
+def test_global_tag_search_restricts_allowed_videos(detections_path: Path) -> None:
+    assert object_filter.matching_frame_keys(
+        ["person"], "or", allowed_video_ids={"OTHER"}
+    ) == []
+
+
+def test_filter_frame_keys_preserves_input_relevance_order(detections_path: Path) -> None:
+    keys = [("K01_V001", 2), ("K01_V001", 3), ("K01_V001", 1)]
+    assert object_filter.filter_frame_keys(keys, ["person"], "or") == [
+        ("K01_V001", 2),
+        ("K01_V001", 1),
+    ]
