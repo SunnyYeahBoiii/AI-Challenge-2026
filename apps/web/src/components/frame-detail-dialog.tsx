@@ -115,10 +115,10 @@ export function FrameDetailDialog({
     const key = `${frame.video_id}:${frame.frame_index}`;
     if (framePropKeyRef.current === key) return;
     framePropKeyRef.current = key;
-    beginSeek(frame.pts_time);
+    beginSeek(frame.timestamp);
     setCurrentFrameIndex(frame.frame_index);
     setFetchFrameIndex(frame.frame_index);
-    videoRef.current?.seekTo(frame.pts_time);
+    videoRef.current?.seekTo(frame.timestamp);
   }, [frame]);
 
   // Falls back to the incoming `frame` prop, then the last resolved frame, while the window fetch is in flight.
@@ -139,7 +139,7 @@ export function FrameDetailDialog({
 
   // Submission fields follow the navigated frame, but stay editable.
   const [videoIdInput, setVideoIdInput] = useState(frame.video_id);
-  const [timeInput, setTimeInput] = useState(frame.pts_time.toFixed(1));
+  const [timeInput, setTimeInput] = useState(frame.timestamp.toFixed(1));
 
   // Ground-truth frame_idx at the keyframe's own timestamp; only recomputed if the user typed a custom time (Milvus has no frame_idx for arbitrary timestamps, and fps there loses precision from float32 storage).
   const computedFrameId = useMemo(() => {
@@ -151,7 +151,7 @@ export function FrameDetailDialog({
   useEffect(() => {
     setVideoIdInput(currentFrame.video_id);
     userEditedTimeRef.current = false;
-    setTimeInput(currentFrame.pts_time.toFixed(1));
+    setTimeInput(currentFrame.timestamp.toFixed(1));
     setShowFullscreenImage(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key on value, not the fresh object identity a refetch returns
   }, [currentFrame.video_id, currentFrame.frame_index]);
@@ -230,7 +230,7 @@ export function FrameDetailDialog({
                 ref={videoRef}
                 src={frame.video_url}
                 poster={frame.thumbnail_url}
-                initialTime={frame.pts_time}
+                initialTime={frame.timestamp}
                 onTimeUpdate={(t) => {
                   // Stray timeupdate ticks fire while a seek is still landing (before
                   // `seeked`); acting on them — even just to display `t` — shows a
@@ -250,7 +250,7 @@ export function FrameDetailDialog({
                   const frames = allFramesRef.current;
                   if (frames.length === 0) return;
                   const closest = frames.reduce((prev, curr) =>
-                    Math.abs(curr.pts_time - t) < Math.abs(prev.pts_time - t) ? curr : prev
+                    Math.abs(curr.timestamp - t) < Math.abs(prev.timestamp - t) ? curr : prev
                   );
                   setCurrentFrameIndex(closest.frame_index);
                   const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
@@ -277,9 +277,9 @@ export function FrameDetailDialog({
                   frames={allFrames}
                   currentArrayIndex={currentArrayIndex}
                   onFrameSelect={(f) => {
-                    beginSeek(f.pts_time);
+                    beginSeek(f.timestamp);
                     setCurrentFrameIndex(f.frame_index);
-                    videoRef.current?.seekTo(f.pts_time);
+                    videoRef.current?.seekTo(f.timestamp);
                     const pos = allFrames.findIndex(fr => fr.frame_index === f.frame_index);
                     const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
                     if (isNearEdge) {
