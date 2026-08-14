@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -23,8 +23,13 @@ import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 import {
   buildTrakeSubmitText,
   selectionFrameId,
-} from "@/lib/trake-colab";
-import type { FrameResult } from "@/lib/api";
+} from "@/lib/cloud-api";
+import {
+  getNearestKeyframe,
+  type FrameResult,
+  type KeyframeInfo,
+} from "@/lib/api";
+import { VideoPlayer } from "./video-player";
 
 interface TrakeBoardPanelProps {
   trake: TrakeBoardApi;
@@ -45,6 +50,7 @@ function SortableEventCard({
   onSetSelection,
   onClearSelection,
   onDropFrame,
+  onPlayVideo,
 }: {
   event: TrakeEvent;
   focused: boolean;
@@ -55,6 +61,7 @@ function SortableEventCard({
   onSetSelection: (c: TrakeCandidate) => void;
   onClearSelection: () => void;
   onDropFrame: (frame: FrameResult) => void;
+  onPlayVideo: (c: TrakeCandidate) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: event.id });
@@ -164,16 +171,27 @@ function SortableEventCard({
             key={c.id}
             className="flex items-center gap-2 rounded bg-surface-container-lowest p-1"
           >
-            {c.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={c.thumbnailUrl}
-                alt=""
-                className="w-12 h-8 object-cover rounded"
-              />
-            ) : (
-              <div className="w-12 h-8 bg-surface-container rounded" />
-            )}
+            <button
+              type="button"
+              className="shrink-0"
+              aria-label="Play video"
+              title="Play video"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlayVideo(c);
+              }}
+            >
+              {c.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={c.thumbnailUrl}
+                  alt=""
+                  className="w-12 h-8 object-cover rounded"
+                />
+              ) : (
+                <div className="w-12 h-8 bg-surface-container rounded" />
+              )}
+            </button>
             <div className="flex-1 min-w-0 text-mono-sm truncate">
               {c.videoId} · {c.ptsTime.toFixed(2)}s
             </div>
@@ -207,9 +225,33 @@ function SortableEventCard({
 
 export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) {
   const [joinId, setJoinId] = useState("");
+  const [videoCandidate, setVideoCandidate] = useState<TrakeCandidate | null>(
+    null,
+  );
+  const [candidateVideo, setCandidateVideo] = useState<KeyframeInfo | null>(
+    null,
+  );
+  const [videoError, setVideoError] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setCandidateVideo(null);
+    setVideoError(false);
+    if (!videoCandidate) return;
+    getNearestKeyframe(videoCandidate.videoId, videoCandidate.frameIdx).then(
+      (kf) => {
+        if (cancelled) return;
+        if (kf) setCandidateVideo(kf);
+        else setVideoError(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [videoCandidate]);
 
   const readyPayload = useMemo(() => {
     const { board } = trake;
@@ -239,7 +281,8 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
   };
 
   return (
-    <aside className="w-80 flex-shrink-0 border-l border-outline-variant bg-surface-container-lowest flex flex-col overflow-hidden">
+    <>
+      <aside className="w-80 flex-shrink-0 border-l border-outline-variant bg-surface-container-lowest flex flex-col overflow-hidden">
       <div className="px-3 py-2 border-b border-outline-variant space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-label-md font-semibold">TRAKE Board</h2>
@@ -338,6 +381,7 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
                     })
                   }
                   onClearSelection={() => trake.clearSelection(event.id)}
+                  onPlayVideo={setVideoCandidate}
                   onDropFrame={(frame) => {
                     trake.setFocusedEventId(event.id);
                     trake.addCandidate({
@@ -380,6 +424,45 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
           </p>
         )}
       </div>
-    </aside>
+      </aside>
+
+      {videoCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => setVideoCandidate(null)}
+        >
+          <div
+            className="relative w-full max-w-6xl h-[80vh] bg-black rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setVideoCandidate(null)}
+              className="absolute top-4 right-4 z-10 text-white hover:bg-white/10 rounded-full p-2 transition-colors"
+              aria-label="Close video"
+            >
+              <Icon name="close" size={24} />
+            </button>
+            <div className="absolute top-4 left-4 z-10 bg-black/70 rounded px-3 py-2 text-white">
+              <div className="text-body-xs text-gray-300">
+                {videoCandidate.videoId} · t=
+                {videoCandidate.ptsTime.toFixed(2)}s
+              </div>
+            </div>
+            {candidateVideo ? (
+              <VideoPlayer
+                src={candidateVideo.video_url}
+                poster={videoCandidate.thumbnailUrl || undefined}
+                initialTime={candidateVideo.timestamp}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center overflow-hidden bg-black font-mono text-mono-sm text-gray-400">
+                {videoError ? "Failed to load video" : "Loading video…"}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { submitFrameToDres } from "@/lib/api";
 import type { FrameResult, TemporalSearchResponse } from "@/lib/api";
+import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 const FRAME_PAGE_SIZE = 48;
 const VIDEO_PAGE_SIZE = 12;
@@ -36,6 +37,8 @@ interface ResultsPanelProps {
   hasSearched?: boolean;
   trakeFocusedLabel?: string;
   onAddToTrake?: (frame: FrameResult) => void;
+  submitMode?: "dres" | "cloud";
+  onCloudQuickSubmit?: (frame: FrameResult) => void;
 }
 
 export function ResultsPanel({
@@ -52,6 +55,8 @@ export function ResultsPanel({
   hasSearched = false,
   trakeFocusedLabel,
   onAddToTrake,
+  submitMode = "dres",
+  onCloudQuickSubmit,
 }: ResultsPanelProps) {
   const [visibleUnitCount, setVisibleUnitCount] = useState(VIDEO_PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -250,6 +255,15 @@ export function ResultsPanel({
                 return (
                 <div
                   key={key}
+                  draggable={submissionType === "track"}
+                  onDragStart={(e) => {
+                    if (submissionType !== "track") return;
+                    e.dataTransfer.setData(
+                      TRAKE_FRAME_MIME,
+                      JSON.stringify(frame),
+                    );
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors ${
                     isLastOpened
                       ? "border-4 border-red-500 hover:border-red-500 ring-2 ring-red-500/50"
@@ -319,7 +333,11 @@ export function ResultsPanel({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleQuickSubmit(frame);
+                          if (submitMode === "cloud") {
+                            onCloudQuickSubmit?.(frame);
+                          } else {
+                            handleQuickSubmit(frame);
+                          }
                         }}
                         disabled={status === "loading"}
                         title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}

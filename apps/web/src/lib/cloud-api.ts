@@ -1,16 +1,16 @@
 import type { TrakeBoardSnapshot } from "./trake-types";
 import { computeFrameId } from "./frame-id";
 
-export function trakeColabHttpBase(): string {
+export function cloudApiHttpBase(): string {
   return (
-    process.env.NEXT_PUBLIC_TRAKE_COLAB_URL || "http://localhost:5002"
+    process.env.NEXT_PUBLIC_CLOUD_API_URL || "http://localhost:5002"
   ).replace(/\/$/, "");
 }
 
 export async function createTrakeBoard(
   title = "TRAKE Board",
 ): Promise<TrakeBoardSnapshot> {
-  const res = await fetch(`${trakeColabHttpBase()}/boards`, {
+  const res = await fetch(`${cloudApiHttpBase()}/boards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -22,7 +22,7 @@ export async function createTrakeBoard(
 export async function fetchTrakeBoard(
   boardId: string,
 ): Promise<TrakeBoardSnapshot> {
-  const res = await fetch(`${trakeColabHttpBase()}/boards/${boardId}`);
+  const res = await fetch(`${cloudApiHttpBase()}/boards/${boardId}`);
   if (!res.ok) throw new Error(`Fetch board failed: ${res.status}`);
   return res.json();
 }

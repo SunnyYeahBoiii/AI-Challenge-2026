@@ -184,6 +184,42 @@ export async function getVideo(videoId: string): Promise<VideoResult> {
   return data;
 }
 
+export interface KeyframeInfo {
+  frame_index: number;
+  timestamp: number;
+  thumbnail_url: string;
+  video_url: string;
+  is_exact: boolean;
+}
+
+export async function getNearestKeyframe(
+  videoId: string,
+  frameIndex: number,
+  range: number = 100
+): Promise<KeyframeInfo | null> {
+  try {
+    const { data } = await api.post("/submissions/keyframe", {
+      video_id: videoId,
+      frame_index: frameIndex,
+      range,
+    });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getNearestKeyframes(
+  items: Array<{ video_id: string; frame_index: number; key?: string; range?: number }>
+): Promise<Record<string, KeyframeInfo | null>> {
+  try {
+    const { data } = await api.post("/submissions/keyframes", { items });
+    return data.keyframes;
+  } catch {
+    return {};
+  }
+}
+
 // ====== Embed API ======
 
 export async function embedText(
