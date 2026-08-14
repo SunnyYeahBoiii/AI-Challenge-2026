@@ -63,6 +63,7 @@ function QueryBoxInner({
   const [showTags, setShowTags] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasVectorQuery = Boolean(query.content.trim());
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -183,15 +184,23 @@ function QueryBoxInner({
             className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-mono-sm outline-none focus:border-primary text-right"
             type="number"
             min={1}
-            aria-label="Top K results"
-            value={query.topK ?? 100}
-            onChange={(e) => onUpdate({ topK: Math.max(1, Number(e.target.value) || 1) })}
+            max={5000}
+            aria-label={hasVectorQuery ? "Raw Milvus Top K candidates" : "Maximum filter matches"}
+            title={
+              hasVectorQuery
+                ? "Raw Milvus candidates before object and OCR/ASR post-filters (1–5000)"
+                : "Maximum matching frames returned by this filter-only box (1–5000)"
+            }
+            value={query.topK ?? 1000}
+            onChange={(e) =>
+              onUpdate({ topK: Math.min(5000, Math.max(1, Number(e.target.value) || 1)) })
+            }
           />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-label-sm text-on-surface-variant">AI Enhance</span>
           <Toggle
-            checked={query.enhance ?? false}
+            checked={query.enhance ?? true}
             onChange={(enhance) => onUpdate({ enhance })}
             label="AI Enhance"
           />

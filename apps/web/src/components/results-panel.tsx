@@ -4,11 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { submitFrameToDres } from "@/lib/api";
-import type { FrameResult } from "@/lib/api";
-import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
+import type { FrameResult, TemporalSearchResponse } from "@/lib/api";
 
-/** How many frames to paint initially / on each scroll page. */
-const PAGE_SIZE = 48;
+const FRAME_PAGE_SIZE = 48;
+const VIDEO_PAGE_SIZE = 12;
 
 /** How long a result indicator stays on the card before reverting to idle. */
 const QUICK_SUBMIT_RESULT_MS = 2500;
@@ -24,24 +23,24 @@ const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }
 };
 
 interface ResultsPanelProps {
-  frames: FrameResult[];
+  result: TemporalSearchResponse;
+  queryCount: number;
   viewMode: "grouped" | "continuous";
   onFrameSelect: (frame: FrameResult) => void;
   onFrameDetail: (frame: FrameResult) => void;
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
-  /** Selected DRES evaluation (contest) run to submit against. */
-  dresEvaluationId?: string | null;
+  dresEvaluationId: string | null;
   gridCols?: number;
   hasSearched?: boolean;
-  /** TRACK: add frame to focused Event Candidate list. */
+  trakeFocusedLabel?: string;
   onAddToTrake?: (frame: FrameResult) => void;
-  trakeFocusedLabel?: string | null;
 }
 
 export function ResultsPanel({
-  frames,
+  result,
+  queryCount,
   viewMode,
   onFrameSelect,
   onFrameDetail,
@@ -51,10 +50,10 @@ export function ResultsPanel({
   dresEvaluationId,
   gridCols = 6,
   hasSearched = false,
-  onAddToTrake,
   trakeFocusedLabel,
+  onAddToTrake,
 }: ResultsPanelProps) {
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [visibleUnitCount, setVisibleUnitCount] = useState(VIDEO_PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
   const [lastOpenedKey, setLastOpenedKey] = useState<string | null>(null);
   const [quickSubmit, setQuickSubmit] = useState<
@@ -74,15 +73,11 @@ export function ResultsPanel({
   const handleQuickSubmit = async (frame: FrameResult) => {
     const key = `${frame.video_id}-${frame.frame_index}`;
     if (submissionType === "qa") return;
-    if (submissionType === "track") {
-      if (!onAddToTrake) return;
-      onAddToTrake(frame);
-      setQuickSubmit((s) => ({ ...s, [key]: { status: "correct" } }));
-      setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
-      return;
-    }
-    if (!dresSessionId) {
-      setQuickSubmit((s) => ({ ...s, [key]: { status: "error", message: "Not logged in to DRES" } }));
+    if (!dresSessionId || !dresEvaluationId) {
+      setQuickSubmit((s) => ({
+        ...s,
+        [key]: { status: "error", message: "Log in and select a DRES evaluation" },
+      }));
       setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
       return;
     }
@@ -91,10 +86,10 @@ export function ResultsPanel({
       const data = await submitFrameToDres({
         frameId: String(frame.frame_idx),
         videoId: frame.video_id,
-        timestamp: frame.pts_time,
+        timestamp: frame.timestamp,
         submissionType,
         sessionId: dresSessionId,
-        evaluationId: dresEvaluationId ?? undefined,
+        evaluationId: dresEvaluationId,
       });
       const status: QuickSubmitStatus =
         data.submission === "WRONG"
@@ -115,51 +110,61 @@ export function ResultsPanel({
   };
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [frames, viewMode]);
+    setVisibleUnitCount(viewMode === "continuous" && queryCount <= 1 ? FRAME_PAGE_SIZE : VIDEO_PAGE_SIZE);
+  }, [result, viewMode, queryCount]);
 
-  const allGroups = useMemo(() => {
-    if (viewMode !== "grouped") return null;
-    const groups = new Map<string, FrameResult[]>();
-    frames.forEach((frame) => {
-      if (!groups.has(frame.video_id)) groups.set(frame.video_id, []);
-      groups.get(frame.video_id)!.push(frame);
-    });
-    return Array.from(groups.values())
-      .sort((a, b) => Math.max(...b.map((f) => f.score)) - Math.max(...a.map((f) => f.score)))
-      .map((group) => [...group].sort((a, b) => a.frame_idx - b.frame_idx));
-  }, [frames, viewMode]);
+  const continuousFrames = useMemo(
+    () =>
+      result.videos
+        .flatMap((video) => video.valid_frames)
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            (left.retrieval_rank ?? Number.MAX_SAFE_INTEGER) -
+              (right.retrieval_rank ?? Number.MAX_SAFE_INTEGER)
+        ),
+    [result.videos]
+  );
 
-  const totalItems = viewMode === "continuous" ? frames.length : (allGroups?.length ?? 0);
+  const paginatesFrames = viewMode === "continuous" && queryCount <= 1;
+  const totalUnits = paginatesFrames ? continuousFrames.length : result.videos.length;
+  const pageSize = paginatesFrames ? FRAME_PAGE_SIZE : VIDEO_PAGE_SIZE;
 
-  const groupedFrames = useMemo(() => {
-    if (viewMode === "continuous") return [frames.slice(0, visibleCount)];
-    if (!allGroups) return [];
-    return allGroups.slice(0, visibleCount);
-  }, [viewMode, frames, visibleCount, allGroups]);
+  const displayGroups = useMemo(() => {
+    if (paginatesFrames) {
+      return [{ key: "continuous", video: null, frames: continuousFrames.slice(0, visibleUnitCount) }];
+    }
+    return result.videos.slice(0, visibleUnitCount).map((video) => ({
+      key: video.video_id,
+      video,
+      frames:
+        viewMode === "grouped"
+          ? video.valid_frames
+          : video.best_sequence.frames,
+    }));
+  }, [continuousFrames, paginatesFrames, result.videos, viewMode, visibleUnitCount]);
 
-  const visibleFrameCount = useMemo(() => {
-    if (viewMode === "continuous") return Math.min(visibleCount, frames.length);
-    if (!allGroups) return 0;
-    return allGroups.slice(0, visibleCount).reduce((sum, g) => sum + g.length, 0);
-  }, [viewMode, visibleCount, frames.length, allGroups]);
+  const visibleFrameCount = displayGroups.reduce((total, group) => total + group.frames.length, 0);
+  const visibleVideoCount = new Set(
+    displayGroups.flatMap((group) => group.frames.map((frame) => frame.video_id))
+  ).size;
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const root = scrollRootRef.current;
-    if (!sentinel || !root || visibleCount >= totalItems) return;
+    if (!sentinel || !root || visibleUnitCount >= totalUnits) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((count) => Math.min(count + PAGE_SIZE, totalItems));
+          setVisibleUnitCount((count) => Math.min(count + pageSize, totalUnits));
         }
       },
       { root, rootMargin: "400px", threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [totalItems, visibleCount]);
+  }, [pageSize, totalUnits, visibleUnitCount]);
 
   if (isLoading) {
     return (
@@ -176,7 +181,7 @@ export function ResultsPanel({
     );
   }
 
-  if (frames.length === 0) {
+  if (result.total_valid_frames === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center max-w-md">
@@ -201,45 +206,50 @@ export function ResultsPanel({
     >
       <div className="flex justify-between items-center mb-4">
         <span className="text-label-md text-on-surface-variant">
-          Showing {visibleFrameCount} of {frames.length}{" "}
-          {frames.length === 1 ? "result" : "results"}
-          {viewMode === "grouped" && groupedFrames.length > 1 && (
-            <> · {groupedFrames.length} videos</>
+          {viewMode === "continuous" && queryCount > 1 ? (
+            <>
+              Showing {visibleFrameCount} best-sequence frames · {visibleVideoCount} of{" "}
+              {result.total_videos} videos · {result.total_valid_frames} valid frames available
+            </>
+          ) : (
+            <>
+              Showing {visibleFrameCount} of {result.total_valid_frames}{" "}
+              {result.total_valid_frames === 1 ? "valid frame" : "valid frames"} ·{" "}
+              {visibleVideoCount} of {result.total_videos} videos
+            </>
           )}
         </span>
       </div>
       <div className="flex flex-col gap-6">
-        {groupedFrames.map((group, groupIndex) => (
+        {displayGroups.map((group, groupIndex) => (
           <div
-            key={viewMode === "grouped" ? group[0].video_id : groupIndex}
+            key={group.key || groupIndex}
             className="flex flex-col gap-2"
           >
-            {viewMode === "grouped" && (
+            {group.video && (
               <div className="flex items-center gap-2 py-1">
                 <Icon name="movie" size={16} className="text-on-surface-variant" />
-                <span className="text-label-md text-on-surface">{group[0].video_id}</span>
+                <span className="text-label-md text-on-surface">{group.video.video_id}</span>
                 <span className="text-label-sm text-on-surface-variant">
-                  ({group.length})
+                  {viewMode === "grouped"
+                    ? `${group.frames.length} valid frames`
+                    : `best sequence · ${group.video.best_sequence.total_span_seconds.toFixed(1)}s`}
                 </span>
+                {group.video.has_vector_score !== false && (
+                  <span className="text-label-xs text-on-surface-variant bg-surface-container rounded px-1.5 py-0.5">
+                    {(group.video.video_score * 100).toFixed(0)}%
+                  </span>
+                )}
                 <div className="h-px bg-outline-variant flex-1" />
               </div>
             )}
             <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
-              {group.map((frame) => {
+              {group.frames.map((frame) => {
                 const key = `${frame.video_id}-${frame.frame_index}`;
                 const isLastOpened = lastOpenedKey === key;
                 return (
                 <div
                   key={key}
-                  draggable={submissionType === "track"}
-                  onDragStart={(e) => {
-                    if (submissionType !== "track") return;
-                    e.dataTransfer.setData(
-                      TRAKE_FRAME_MIME,
-                      JSON.stringify(frame),
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
                   className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors ${
                     isLastOpened
                       ? "border-4 border-red-500 hover:border-red-500 ring-2 ring-red-500/50"
@@ -257,6 +267,18 @@ export function ResultsPanel({
                     alt={`Frame ${frame.frame_index}`}
                     loading="lazy"
                   />
+                  <div className="absolute top-1 left-8 flex gap-1">
+                    {(frame.matches?.map((match) => match.query_index) ??
+                      (frame.query_index !== undefined ? [frame.query_index] : [])).map((queryIndex) => (
+                      <span
+                        key={queryIndex}
+                        className="rounded bg-primary/90 px-1.5 py-0.5 text-label-xs font-bold text-on-primary shadow"
+                        title={`Matches query ${queryIndex + 1}`}
+                      >
+                        Q{queryIndex + 1}
+                      </span>
+                    ))}
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -269,14 +291,26 @@ export function ResultsPanel({
                   >
                     <Icon name="zoom_in" size={16} />
                   </button>
+                  {onAddToTrake && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToTrake(frame);
+                      }}
+                      title={trakeFocusedLabel ? `Add to ${trakeFocusedLabel}` : "Add to TRAKE event"}
+                      aria-label="Add to TRAKE event"
+                      className="absolute top-1 right-8 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-primary-container transition-opacity"
+                    >
+                      <Icon name="playlist_add" size={16} />
+                    </button>
+                  )}
                   {submissionType !== "qa" && (() => {
                     const entry = quickSubmit[key];
                     const status = entry?.status;
                     const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
-                    const isTrack = submissionType === "track";
                     const titleByStatus: Record<QuickSubmitStatus, string> = {
                       loading: "Submitting…",
-                      correct: isTrack ? "Added" : "Correct",
+                      correct: "Correct",
                       wrong: "Wrong",
                       duplicate: "Already submitted",
                       error: entry?.message ?? "Submission failed",
@@ -287,15 +321,9 @@ export function ResultsPanel({
                           e.stopPropagation();
                           handleQuickSubmit(frame);
                         }}
-                        disabled={status === "loading" || (isTrack && !onAddToTrake)}
-                        title={
-                          status
-                            ? titleByStatus[status]
-                            : isTrack
-                              ? `Add to ${trakeFocusedLabel ?? "Event"}`
-                              : `Submit frame ${frame.frame_idx}`
-                        }
-                        aria-label={isTrack ? "Add frame to TRAKE event" : "Quick submit frame"}
+                        disabled={status === "loading"}
+                        title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}
+                        aria-label="Quick submit frame"
                         className={`absolute top-1 left-1 p-1 rounded text-white transition-opacity ${
                           status ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                         } ${status ? style.bg : "bg-black/50 hover:bg-primary-container"}`}
@@ -303,7 +331,7 @@ export function ResultsPanel({
                         {status === "loading" ? (
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                         ) : (
-                          <Icon name={status ? style.icon : isTrack ? "playlist_add" : "send"} size={16} />
+                          <Icon name={status ? style.icon : "send"} size={16} />
                         )}
                       </button>
                     );
@@ -312,7 +340,7 @@ export function ResultsPanel({
                     <span className="font-mono text-mono-sm text-white/90">
                       #{frame.frame_index}
                     </span>
-                    {frame.score > 0 && (
+                    {!frame.filter_only && frame.score > 0 && (
                       <span className="text-label-xs text-white/80 bg-black/40 rounded px-1">
                         {(frame.score * 100).toFixed(0)}%
                       </span>
@@ -325,7 +353,7 @@ export function ResultsPanel({
           </div>
         ))}
       </div>
-      {visibleCount < totalItems && (
+      {visibleUnitCount < totalUnits && (
         <div
           ref={sentinelRef}
           className="h-8 flex items-center justify-center text-label-sm text-on-surface-variant"

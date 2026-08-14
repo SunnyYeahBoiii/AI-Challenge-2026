@@ -13,6 +13,7 @@ export interface SearchFilter {
   videoId?: string;
   queries: BoxQuery[];
   mode: "parallel" | "sequential";
+  temporalWindowSeconds: number;
 }
 
 interface FilterPanelProps {
@@ -27,16 +28,16 @@ interface FilterPanelProps {
 export function FilterPanel({
   onSearch,
   onClear,
-  onValidationError,
   isLoading,
   gridCols = 6,
   onGridColsChange,
 }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
-    { id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false },
+    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true },
   ]);
   const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
+  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -91,28 +92,27 @@ export function FilterPanel({
     };
   }, []);
 
-  // Tags refine a vector result and cannot be submitted without text or an image.
-  const isSearchable = (q: BoxQuery) => Boolean(q.enabled && (q.content || q.tags?.length));
+  const isSearchable = (q: BoxQuery) => Boolean(
+    q.enabled && (
+      q.content.trim() ||
+      q.tags?.length ||
+      q.ocrKeywords?.length ||
+      q.asrKeywords?.length
+    )
+  );
 
   const canSearch = videoId.trim().length > 0 || queries.some(isSearchable);
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], mode });
+      onSearch({ videoId: videoId.trim(), queries: [], mode, temporalWindowSeconds });
     } else {
-      const tagOnlyQuery = queries.find(
-        (q) => q.enabled && Boolean(q.tags?.length) && !q.content.trim()
-      );
-      if (tagOnlyQuery) {
-        onValidationError("Add text or an image to every query that uses tags.");
-        return;
-      }
-      const enabledQueries = queries.filter((q) => q.enabled && (q.content || q.tags?.length));
+      const enabledQueries = queries.filter(isSearchable);
       if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, mode });
+        onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
       }
     }
-  }, [videoId, queries, mode, onSearch, onValidationError]);
+  }, [videoId, queries, mode, temporalWindowSeconds, onSearch]);
 
   // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
   useEffect(() => {
@@ -138,8 +138,11 @@ export function FilterPanel({
       setSearchingVideos(true);
       try {
         const data = await listVideos({ q: videoId.trim(), size: 10 });
-        setSuggestions(data.videos);
-        setShowSuggestions(data.videos.length > 0);
+        const unique = data.videos.filter(
+          (v, i, arr) => arr.findIndex((x) => x.video_id === v.video_id) === i
+        );
+        setSuggestions(unique);
+        setShowSuggestions(unique.length > 0);
       } catch {
         setSuggestions([]);
       } finally {
@@ -153,13 +156,13 @@ export function FilterPanel({
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], mode });
+    onSearch({ videoId: video.video_id, queries: [], mode, temporalWindowSeconds });
   };
 
   const addQuery = () => {
     setQueries((prev) => [
       ...prev,
-      { id: Date.now().toString(), type: "text", content: "", enabled: true, topK: 100, enhance: false },
+      { id: Date.now().toString(), type: "text", content: "", enabled: true, topK: 1000, enhance: true },
     ]);
   };
 
@@ -206,17 +209,17 @@ export function FilterPanel({
           )}
         </div>
 
-        {/* Query Search Mode */}
+        {/* Temporal Search */}
         <div className="mb-4">
           <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
-            <Icon name="search" size={16} /> Query Search Mode
+            <Icon name="timeline" size={16} /> Temporal Search
           </label>
           <div className="flex justify-between items-center mb-2">
             <span className="text-label-sm text-on-surface-variant">Query Mode</span>
             <div className="flex bg-surface-container-lowest border border-outline-variant rounded overflow-hidden">
               <button
                 onClick={() => setMode("parallel")}
-                title="Fuse every box with reciprocal rank fusion — frames matching more boxes rank higher"
+                title="Retrieve boxes independently in parallel, then retain frames on complete ordered paths"
                 className={`px-2 py-1 text-label-xs transition-colors ${
                   mode === "parallel"
                     ? "bg-primary text-on-primary"
@@ -227,7 +230,7 @@ export function FilterPanel({
               </button>
               <button
                 onClick={() => setMode("sequential")}
-                title="Read the boxes as consecutive shots of one scene — same video, in order, within the temporal window"
+                title="Retrieve each later box only inside videos with a reachable result from the previous box"
                 className={`px-2 py-1 text-label-xs transition-colors ${
                   mode === "sequential"
                     ? "bg-primary text-on-primary"
@@ -236,6 +239,25 @@ export function FilterPanel({
               >
                 Sequential
               </button>
+            </div>
+          </div>
+          <div className="flex justify-between items-center gap-3">
+            <label htmlFor="temporal-window" className="text-label-sm text-on-surface-variant">
+              Max consecutive gap
+            </label>
+            <div className="flex items-center gap-1">
+              <input
+                id="temporal-window"
+                type="number"
+                min={0.1}
+                step={1}
+                value={temporalWindowSeconds}
+                onChange={(event) =>
+                  setTemporalWindowSeconds(Math.max(0.1, Number(event.target.value) || 0.1))
+                }
+                className="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-mono-sm outline-none focus:border-primary text-right"
+              />
+              <span className="text-label-xs text-on-surface-variant">sec</span>
             </div>
           </div>
         </div>
@@ -267,7 +289,7 @@ export function FilterPanel({
           <h3 className="text-label-md text-on-surface">Queries</h3>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 100, enhance: false }])}
+              onClick={() => setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }])}
               aria-label="Clear queries"
               title="Clear queries"
               className="text-on-surface-variant hover:text-error transition-colors"

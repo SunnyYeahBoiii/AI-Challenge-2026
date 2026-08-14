@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class EmbedTextRequest(BaseModel):
@@ -24,10 +24,16 @@ class SearchRequest(BaseModel):
     enhance: bool = True
 
     @model_validator(mode="after")
-    def validate_tags_need_text(self) -> "SearchRequest":
-        """Require a vector-producing text query when tags are present."""
-        if self.tags and not self.text.strip():
-            raise ValueError("tags require a text query")
+    def validate_search_content(self) -> "SearchRequest":
+        """Accept vector or filter-only searches, but reject an empty request."""
+        if not any((
+            self.text.strip(),
+            self.tags,
+            self.ocr_keywords,
+            self.asr_keywords,
+            self.keywords,
+        )):
+            raise ValueError("at least one search input is required")
         return self
 
     @model_validator(mode="after")
@@ -59,13 +65,20 @@ class BoxQuery(BaseModel):
     key_match_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
     enhance: bool | None = None
-    topk: int = 20
+    topk: int = Field(default=500, ge=1, le=5000)
 
     @model_validator(mode="after")
-    def validate_tags_need_query_content(self) -> "BoxQuery":
-        """Require text or image content because tags only refine vector results."""
-        if self.tags and not (self.text.strip() or self.image.strip()):
-            raise ValueError("tags require text or image content")
+    def validate_search_content(self) -> "BoxQuery":
+        """Accept vector or filter-only boxes, but reject a completely empty box."""
+        if not any((
+            self.text.strip(),
+            self.image.strip(),
+            self.tags,
+            self.ocr_keywords,
+            self.asr_keywords,
+            self.keywords,
+        )):
+            raise ValueError("at least one search input is required")
         return self
 
     @model_validator(mode="after")
@@ -84,9 +97,8 @@ class BoxQuery(BaseModel):
 
 
 class MultiBoxRequest(BaseModel):
-    box_queries: list[BoxQuery]
-    temporal_window_seconds: float = 120.0
-    topk: int = 200
+    box_queries: list[BoxQuery] = Field(min_length=1)
+    temporal_window_seconds: float = Field(default=90.0, gt=0)
     enhance: bool = True
     mode: Literal["parallel", "sequential"] = "parallel"
 
@@ -111,7 +123,7 @@ class FrameResult(BaseModel):
     shot_idx: int = 0
     start_time: float = 0.0
     end_time: float = 0.0
-    pts_time: float = 0.0
+    timestamp: float = 0.0
     fps: float = 0.0
     score: float = 0.0
     title: str = ""
@@ -121,9 +133,12 @@ class FrameResult(BaseModel):
     publish_date: str = ""
     thumbnail_url: str = ""
     watch_url: str = ""
-    video_url: str = ""
     sequence_idx: int | None = None
     sequence_id: str = ""
+    ocr_text: str = ""
+    asr_text: str = ""
+    retrieval_rank: int | None = None
+    filter_only: bool = False
 
 
 class VideoResult(BaseModel):

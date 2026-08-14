@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 from collections.abc import Sequence
@@ -113,6 +114,24 @@ class MilvusClient:
         a similarity search with a zero vector would do far more expensively."""
         rows = self.col.query(expr=expr, output_fields=OUTPUT_FIELDS, limit=limit)
         return [_row_to_frame(row) for row in rows]
+
+    def query_frame_keys(
+        self, frame_keys: Sequence[tuple[str, int]], chunk_size: int = 500
+    ) -> list[Frame]:
+        """Fetch metadata for primary keys without loading embeddings."""
+        ordered_keys = list(dict.fromkeys((str(video), int(index)) for video, index in frame_keys))
+        found: dict[tuple[str, int], Frame] = {}
+        size = max(1, min(int(chunk_size), QUERY_LIMIT))
+        for start in range(0, len(ordered_keys), size):
+            chunk = ordered_keys[start:start + size]
+            ids = [f"{video_id}/{frame_index}" for video_id, frame_index in chunk]
+            expr = f"id in [{', '.join(json.dumps(frame_id) for frame_id in ids)}]"
+            rows = self.col.query(expr=expr, output_fields=OUTPUT_FIELDS, limit=len(chunk))
+            for row in rows:
+                frame = _row_to_frame(row)
+                key = (str(frame.get("video_id") or ""), int(frame.get("frame_index") or 0))
+                found[key] = frame
+        return [found[key] for key in ordered_keys if key in found]
 
     def get_frame_embedding(self, video_id: str, frame_index: int) -> list[float] | None:
         expr = f'video_id == "{video_id}" and frame_index == {frame_index}'

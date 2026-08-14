@@ -343,7 +343,7 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
                     trake.addCandidate({
                       eventId: event.id,
                       videoId: frame.video_id,
-                      ptsTime: frame.pts_time,
+                      ptsTime: frame.timestamp,
                       previewFrameId: String(frame.frame_idx),
                       fps: frame.fps,
                       frameIdx: frame.frame_idx,

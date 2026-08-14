@@ -8,11 +8,12 @@ import pytest
 from app.services import hybrid_search as hs
 
 
-def frame(video_id, frame_index, pts_time=0.0, score=0.0):
+def frame(video_id, frame_index, timestamp=0.0, score=0.0):
     return {
         "video_id": video_id,
         "frame_index": frame_index,
-        "pts_time": pts_time,
+        "frame_idx": frame_index,
+        "timestamp": timestamp,
         "vector_score": score,
         "youtube_url": "",
     }
@@ -42,106 +43,110 @@ def test_apply_box_keywords_forwards_ocr_and_asr_mode(monkeypatch):
     assert captured["asr_mode"] == "and"
 
 
-# ── RRF ─────────────────────────────────────────────────────────────────────
-def test_rrf_rewards_frames_matched_by_several_boxes():
-    box1 = [frame("V1", 1, score=0.9), frame("V1", 2, score=0.8)]
-    box2 = [frame("V2", 9, score=0.99), frame("V1", 1, score=0.30)]
-
-    results = hs.merge_rrf([box1, box2], topk=10)
-    top = results[0]
-
-    # V1/1 is rank 1 + rank 2; V2/9 is rank 1 only, despite a far higher raw score.
-    assert (top["video_id"], top["frame_index"]) == ("V1", 1)
-
-
-def test_rrf_is_insensitive_to_score_scale():
-    """A box whose raw scores are uniformly higher must not dominate."""
-    strong = [frame("A", i, score=0.9 - i * 0.01) for i in range(3)]
-    weak = [frame("B", i, score=0.2 - i * 0.01) for i in range(3)]
-
-    results = hs.merge_rrf([strong, weak], topk=10)
-    order = [(f["video_id"], f["frame_index"]) for f in results[:2]]
-
-    assert set(order) == {("A", 0), ("B", 0)}
-
-
-def test_rrf_scores_are_normalised():
-    box = [frame("A", 0, score=0.5)]
-    results = hs.merge_rrf([box, box.copy()], topk=10)
-    assert 0.0 < results[0]["score"] <= 1.0
-
-
-def test_rrf_single_box_passes_through():
-    box = [frame("A", 1, score=0.4), frame("A", 2, score=0.7)]
-    results = hs.merge_rrf([box, []], topk=10)
-    assert [f["frame_index"] for f in results] == [2, 1]
-
-
-# ── Temporal chains ─────────────────────────────────────────────────────────
+# ── Temporal response ───────────────────────────────────────────────────────
 def test_temporal_requires_every_box():
-    box1 = [frame("V1", 1, pts_time=10.0, score=0.9)]
-    box2 = [frame("V2", 1, pts_time=12.0, score=0.9)]
-    assert hs.merge_temporal([box1, box2], window=60.0, topk=10) == []
+    box1 = [frame("V1", 1, timestamp=10.0, score=0.9)]
+    box2 = [frame("V2", 1, timestamp=12.0, score=0.9)]
+    response = hs.build_temporal_response([box1, box2], window=60.0, mode="parallel")
+    assert response["videos"] == []
 
 
 def test_temporal_enforces_forward_order():
     """Box 2 matching a shot that happens *before* box 1 is not a sequence."""
-    box1 = [frame("V1", 5, pts_time=50.0, score=0.9)]
-    box2 = [frame("V1", 1, pts_time=10.0, score=0.9)]
-    assert hs.merge_temporal([box1, box2], window=120.0, topk=10) == []
+    box1 = [frame("V1", 5, timestamp=50.0, score=0.9)]
+    box2 = [frame("V1", 1, timestamp=10.0, score=0.9)]
+    response = hs.build_temporal_response([box1, box2], window=120.0, mode="parallel")
+    assert response["videos"] == []
 
 
 def test_temporal_enforces_window():
-    box1 = [frame("V1", 1, pts_time=10.0, score=0.9)]
-    box2 = [frame("V1", 9, pts_time=500.0, score=0.9)]
-    assert hs.merge_temporal([box1, box2], window=60.0, topk=10) == []
-    assert hs.merge_temporal([box1, box2], window=600.0, topk=10) != []
+    box1 = [frame("V1", 1, timestamp=10.0, score=0.9)]
+    box2 = [frame("V1", 9, timestamp=500.0, score=0.9)]
+    assert hs.build_temporal_response([box1, box2], 60.0, "parallel")["videos"] == []
+    assert hs.build_temporal_response([box1, box2], 600.0, "parallel")["videos"]
 
 
-def test_temporal_returns_ordered_chain():
-    box1 = [frame("V1", 1, pts_time=12.4, score=0.8)]
-    box2 = [frame("V1", 2, pts_time=15.1, score=0.6), frame("V1", 7, pts_time=99.0, score=0.9)]
-    box3 = [frame("V1", 3, pts_time=41.0, score=0.7)]
+def test_temporal_keeps_all_and_only_nodes_on_complete_paths():
+    boxes = [
+        [frame("V1", i, timestamp=float(i), score=0.5) for i in (1, 3, 7, 9)],
+        [frame("V1", i, timestamp=float(i), score=0.5) for i in (2, 4, 5, 15)],
+        [frame("V1", i, timestamp=float(i), score=0.5) for i in (6, 8, 11, 12)],
+    ]
 
-    results = hs.merge_temporal([box1, box2, box3], window=120.0, topk=10)
+    video = hs.build_temporal_response(boxes, window=6.0, mode="parallel")["videos"][0]
+
+    matches = {
+        match["query_index"]: []
+        for result in video["valid_frames"]
+        for match in result["matches"]
+    }
+    for result in video["valid_frames"]:
+        for match in result["matches"]:
+            matches[match["query_index"]].append(result["frame_index"])
+    assert matches == {0: [1, 3], 1: [2, 4, 5], 2: [6, 8, 11]}
+
+
+def test_temporal_returns_best_sequence_in_query_order():
+    box1 = [frame("V1", 1, timestamp=12.4, score=0.8)]
+    box2 = [frame("V1", 2, timestamp=15.1, score=0.6), frame("V1", 7, timestamp=99.0, score=0.9)]
+    box3 = [frame("V1", 3, timestamp=41.0, score=0.7)]
+
+    response = hs.build_temporal_response([box1, box2, box3], window=120.0, mode="parallel")
+    results = response["videos"][0]["best_sequence"]["frames"]
 
     assert [f["frame_index"] for f in results] == [1, 2, 3]
-    assert [f["sequence_idx"] for f in results] == [0, 1, 2]
-    assert len({f["sequence_id"] for f in results}) == 1
+    assert [f["query_index"] for f in results] == [0, 1, 2]
     # frame 7 at t=99 would break the chain to box 3 at t=41
     assert 7 not in [f["frame_index"] for f in results]
 
 
 def test_temporal_score_is_mean_of_chain():
-    box1 = [frame("V1", 1, pts_time=1.0, score=0.6)]
-    box2 = [frame("V1", 2, pts_time=2.0, score=0.4)]
-    results = hs.merge_temporal([box1, box2], window=10.0, topk=10)
-    assert results[0]["score"] == pytest.approx(0.5)
+    box1 = [frame("V1", 1, timestamp=1.0, score=0.6)]
+    box2 = [frame("V1", 2, timestamp=2.0, score=0.4)]
+    response = hs.build_temporal_response([box1, box2], window=10.0, mode="parallel")
+    assert response["videos"][0]["video_score"] == pytest.approx(0.5)
 
 
 def test_temporal_prefers_higher_scoring_chain():
-    box1 = [frame("V1", 1, pts_time=1.0, score=0.1), frame("V1", 2, pts_time=2.0, score=0.9)]
-    box2 = [frame("V1", 3, pts_time=3.0, score=0.5)]
-    results = hs.merge_temporal([box1, box2], window=10.0, topk=10)
+    box1 = [frame("V1", 1, timestamp=1.0, score=0.1), frame("V1", 2, timestamp=2.0, score=0.9)]
+    box2 = [frame("V1", 3, timestamp=3.0, score=0.5)]
+    response = hs.build_temporal_response([box1, box2], window=10.0, mode="parallel")
+    results = response["videos"][0]["best_sequence"]["frames"]
     assert [f["frame_index"] for f in results] == [2, 3]
 
 
-def test_best_chain_handles_long_pools():
-    """The deque keeps this linear; a quadratic scan would crawl here."""
-    box1 = [frame("V1", i, pts_time=float(i), score=i / 1000) for i in range(1000)]
-    box2 = [frame("V1", 1000 + i, pts_time=1000.0 + i, score=0.5) for i in range(1000)]
-    chain = hs._best_chain([box1, box2], window=2000.0)
-    assert chain is not None
-    assert len(chain[2]) == 2
+def test_temporal_uses_dense_positions_for_large_raw_frame_indexes():
+    boxes = [
+        [frame("V1", 1_000_000_000, timestamp=1.0, score=0.8)],
+        [frame("V1", 2_000_000_000, timestamp=2.0, score=0.9)],
+    ]
+    response = hs.build_temporal_response(boxes, window=90.0, mode="parallel")
+    frames = response["videos"][0]["best_sequence"]["frames"]
+    assert [f["frame_index"] for f in frames] == [1_000_000_000, 2_000_000_000]
 
 
 def test_temporal_sorts_sequences_by_score():
     boxes = [
-        [frame("A", 1, pts_time=1.0, score=0.2), frame("B", 1, pts_time=1.0, score=0.9)],
-        [frame("A", 2, pts_time=2.0, score=0.2), frame("B", 2, pts_time=2.0, score=0.9)],
+        [frame("A", 1, timestamp=1.0, score=0.2), frame("B", 1, timestamp=1.0, score=0.9)],
+        [frame("A", 2, timestamp=2.0, score=0.2), frame("B", 2, timestamp=2.0, score=0.9)],
     ]
-    results = hs.merge_temporal(boxes, window=10.0, topk=10)
-    assert results[0]["video_id"] == "B"
+    response = hs.build_temporal_response(boxes, window=10.0, mode="parallel")
+    assert response["videos"][0]["video_id"] == "B"
+
+
+def test_temporal_dedupes_same_frame_and_keeps_query_matches():
+    shared = frame("V1", 2, timestamp=2.0, score=0.8)
+    boxes = [
+        [frame("V1", 1, timestamp=1.0, score=0.7), shared.copy()],
+        [shared.copy(), frame("V1", 3, timestamp=3.0, score=0.6)],
+    ]
+
+    video = hs.build_temporal_response(boxes, window=90.0, mode="parallel")["videos"][0]
+    result = next(item for item in video["valid_frames"] if item["frame_index"] == 2)
+    assert result["matches"] == [
+        {"query_index": 0, "similarity": pytest.approx(0.8)},
+        {"query_index": 1, "similarity": pytest.approx(0.8)},
+    ]
 
 
 # ── Enrichment ──────────────────────────────────────────────────────────────
@@ -153,7 +158,7 @@ def test_enrich_dedupes_by_frame_key():
 
 def test_enrich_sets_thumbnail_url():
     enriched = hs._enrich_frames([frame("V1", 7)])
-    assert enriched[0]["thumbnail_url"] == "/api/keyframes/V1/7"
+    assert enriched[0]["thumbnail_url"].endswith("/keyframes/V1/V1/7.webp")
 
 
 def test_enrich_omits_bulky_video_fields(monkeypatch):
@@ -175,3 +180,45 @@ def test_enrich_omits_bulky_video_fields(monkeypatch):
     assert enriched[0]["keywords"] == []
     assert enriched[0]["author"] == "me"
 
+
+def test_video_frame_window_gets_original_ocr_asr_text(monkeypatch):
+    class FakeMilvus:
+        def query_frames(self, _expr):
+            return [frame("V1", 7)]
+
+    monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
+    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+    monkeypatch.setattr(
+        hs.es_client,
+        "fetch_frame_texts",
+        lambda _keys: {("V1", 7): {"ocr_text": "LONG AN", "asr_text": "hồ Long Ẩn"}},
+    )
+    result = hs.search_video_frames("V1", 7)
+    assert result[0]["ocr_text"] == "LONG AN"
+    assert result[0]["asr_text"] == "hồ Long Ẩn"
+
+
+def test_video_frame_window_survives_elasticsearch_failure(monkeypatch):
+    class FakeMilvus:
+        def query_frames(self, _expr):
+            return [frame("V1", 7)]
+
+    monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
+    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+
+    def fail(_keys):
+        raise RuntimeError("ES unavailable")
+
+    monkeypatch.setattr(hs.es_client, "fetch_frame_texts", fail)
+    result = hs.search_video_frames("V1", 7)
+    assert result[0]["ocr_text"] == ""
+    assert result[0]["asr_text"] == ""
+
+
+def test_filter_only_scores_are_neutral_in_temporal_dp():
+    first = frame("V1", 1, timestamp=1.0, score=0.8)
+    second = frame("V1", 2, timestamp=2.0, score=0.0)
+    second["filter_only"] = True
+    response = hs.build_temporal_response([[first], [second]], 90.0, "parallel")
+    assert response["videos"][0]["video_score"] == pytest.approx(0.4)
+    assert response["videos"][0]["has_vector_score"] is True
