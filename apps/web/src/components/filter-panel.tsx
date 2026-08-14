@@ -32,12 +32,33 @@ export function FilterPanel({
   gridCols = 6,
   onGridColsChange,
 }: FilterPanelProps) {
-  const [videoId, setVideoId] = useState("");
-  const [queries, setQueries] = useState<BoxQuery[]>([
-    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true },
-  ]);
-  const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
-  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
+  const [videoId, setVideoId] = useState(() =>
+    typeof window !== "undefined" ? sessionStorage.getItem("filterVideoId") || "" : ""
+  );
+  const [queries, setQueries] = useState<BoxQuery[]>(() => {
+    if (typeof window === "undefined") {
+      return [{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }];
+    }
+    const saved = sessionStorage.getItem("filterQueries");
+    if (saved) {
+      try {
+        return JSON.parse(saved) as BoxQuery[];
+      } catch {
+        // ignore
+      }
+    }
+    return [{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }];
+  });
+  const [mode, setMode] = useState<"parallel" | "sequential">(() =>
+    typeof window !== "undefined"
+      ? ((sessionStorage.getItem("filterMode") as "parallel" | "sequential") || "parallel")
+      : "parallel"
+  );
+  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(() => {
+    if (typeof window === "undefined") return 90;
+    const saved = sessionStorage.getItem("filterTemporalWindow");
+    return saved ? Number(saved) : 90;
+  });
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +70,23 @@ export function FilterPanel({
   useEffect(() => {
     setDndReady(true);
   }, []);
+
+  // Persist filter state
+  useEffect(() => {
+    sessionStorage.setItem("filterVideoId", videoId);
+  }, [videoId]);
+
+  useEffect(() => {
+    sessionStorage.setItem("filterQueries", JSON.stringify(queries));
+  }, [queries]);
+
+  useEffect(() => {
+    sessionStorage.setItem("filterMode", mode);
+  }, [mode]);
+
+  useEffect(() => {
+    sessionStorage.setItem("filterTemporalWindow", String(temporalWindowSeconds));
+  }, [temporalWindowSeconds]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -174,6 +212,17 @@ export function FilterPanel({
     setQueries((prev) => prev.filter((q) => q.id !== id));
   };
 
+  const handleClear = useCallback(() => {
+    setVideoId("");
+    setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }]);
+    setMode("parallel");
+    setTemporalWindowSeconds(90);
+    sessionStorage.removeItem("filterVideoId");
+    sessionStorage.removeItem("filterQueries");
+    sessionStorage.removeItem("filterMode");
+    sessionStorage.removeItem("filterTemporalWindow");
+  }, []);
+
   return (
     <aside className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-sidebar-width flex-shrink-0 z-10 overflow-hidden">
       {/* Top Section */}
@@ -289,7 +338,7 @@ export function FilterPanel({
           <h3 className="text-label-md text-on-surface">Queries</h3>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }])}
+              onClick={handleClear}
               aria-label="Clear queries"
               title="Clear queries"
               className="text-on-surface-variant hover:text-error transition-colors"

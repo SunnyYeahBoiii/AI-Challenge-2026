@@ -15,6 +15,7 @@ def create_app() -> Flask:
     from app.routes.health import health_bp
     from app.routes.dres import dres_bp
     from app.routes.admin import admin_bp
+    from app.routes.submissions import submissions_bp
 
     app.register_blueprint(search_bp)
     app.register_blueprint(videos_bp)
@@ -22,6 +23,7 @@ def create_app() -> Flask:
     app.register_blueprint(health_bp)
     app.register_blueprint(dres_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(submissions_bp)
 
     return app
 

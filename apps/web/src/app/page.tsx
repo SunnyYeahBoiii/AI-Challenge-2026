@@ -9,9 +9,11 @@ import { ModelSettingsDialog } from "@/components/model-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
+import { SubmissionsDashboard } from "@/components/submissions-dashboard";
 import type { FrameResult, TemporalSearchResponse, TemporalVideoResult } from "@/lib/api";
 import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
+import { listQueries, type Query } from "@/lib/submissions";
 
 function emptySearchResult(mode: "parallel" | "sequential" = "parallel"): TemporalSearchResponse {
   return { mode, videos: [], total_videos: 0, total_valid_frames: 0 };
@@ -60,11 +62,29 @@ function videoFramesResponse(
 }
 
 export default function Home() {
-  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(() => emptySearchResult());
-  const [queryCount, setQueryCount] = useState(0);
+  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(() => {
+    if (typeof window === "undefined") return emptySearchResult();
+    const saved = sessionStorage.getItem("searchResult");
+    if (saved) {
+      try {
+        return JSON.parse(saved) as TemporalSearchResponse;
+      } catch {
+        // ignore
+      }
+    }
+    return emptySearchResult();
+  });
+  const [queryCount, setQueryCount] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const saved = sessionStorage.getItem("queryCount");
+    return saved ? Number(saved) : 0;
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("hasSearched") === "true";
+  });
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -75,10 +95,28 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
+  const [submitMode, setSubmitMode] = useState<"dres" | "cloud">(() =>
+    typeof window !== "undefined"
+      ? ((sessionStorage.getItem("submitMode") as "dres" | "cloud") || "dres")
+      : "dres"
+  );
+  const [queries, setQueries] = useState<Query[]>([]);
+  const [selectedQueryId, setSelectedQueryId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? sessionStorage.getItem("selectedQueryId") : null
+  );
+  const [view, setView] = useState<"search" | "submissions">(() =>
+    typeof window !== "undefined"
+      ? ((sessionStorage.getItem("view") as "search" | "submissions") || "search")
+      : "search"
+  );
   const searchIdRef = useRef(0);
 
   // Submission state
-  const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">("kis");
+  const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">(() =>
+    typeof window !== "undefined"
+      ? ((sessionStorage.getItem("submissionType") as "track" | "qa" | "kis") || "kis")
+      : "kis"
+  );
   const [frameId, setFrameId] = useState("");
   const [videoId, setVideoId] = useState("");
   const [timeSec, setTimeSec] = useState("");
@@ -139,7 +177,40 @@ export default function Home() {
     setDresSessionId(sessionStorage.getItem("dresSessionId"));
     setDresUsername(sessionStorage.getItem("dresUsername"));
     setDresEvaluationId(sessionStorage.getItem("dresEvaluationId"));
+    listQueries().then(setQueries).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("submitMode", submitMode);
+  }, [submitMode]);
+
+  useEffect(() => {
+    if (selectedQueryId) {
+      sessionStorage.setItem("selectedQueryId", selectedQueryId);
+    } else {
+      sessionStorage.removeItem("selectedQueryId");
+    }
+  }, [selectedQueryId]);
+
+  useEffect(() => {
+    sessionStorage.setItem("submissionType", submissionType);
+  }, [submissionType]);
+
+  useEffect(() => {
+    sessionStorage.setItem("view", view);
+  }, [view]);
+
+  useEffect(() => {
+    sessionStorage.setItem("searchResult", JSON.stringify(searchResult));
+  }, [searchResult]);
+
+  useEffect(() => {
+    sessionStorage.setItem("queryCount", String(queryCount));
+  }, [queryCount]);
+
+  useEffect(() => {
+    sessionStorage.setItem("hasSearched", String(hasSearched));
+  }, [hasSearched]);
 
   const handleDresLogin = useCallback((sessionId: string, username: string) => {
     sessionStorage.setItem("dresSessionId", sessionId);
@@ -233,6 +304,9 @@ export default function Home() {
     setQaAnswer("");
     setHasSearched(false);
     setIsLoading(false);
+    sessionStorage.removeItem("searchResult");
+    sessionStorage.removeItem("queryCount");
+    sessionStorage.removeItem("hasSearched");
   }, []);
 
   const handleFrameSelect = useCallback((frame: FrameResult) => {
@@ -249,6 +323,10 @@ export default function Home() {
     submissionType === "track"
       ? Boolean(trakeFrameIds?.length && videoId.trim())
       : frameId.trim().length > 0 && videoId.trim().length > 0;
+
+  if (view === "submissions") {
+    return <SubmissionsDashboard onBack={() => setView("search")} />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -316,45 +394,90 @@ export default function Home() {
               ))}
             </div>
 
+            {/* Submit Mode Toggle */}
+            <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+              <span className="text-label-sm text-on-surface-variant px-2">Submit:</span>
+              <label className="flex items-center gap-1 px-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="submit_mode"
+                  checked={submitMode === "dres"}
+                  onChange={() => setSubmitMode("dres")}
+                  className="text-primary focus:ring-primary h-3 w-3"
+                />
+                <span className="text-label-sm text-on-surface-variant">DRES</span>
+              </label>
+              <label className="flex items-center gap-1 px-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="submit_mode"
+                  checked={submitMode === "cloud"}
+                  onChange={() => setSubmitMode("cloud")}
+                  className="text-primary focus:ring-primary h-3 w-3"
+                />
+                <span className="text-label-sm text-on-surface-variant">Cloud</span>
+              </label>
+            </div>
+
+            {/* Task Dropdown */}
+            {submitMode === "cloud" && (
+              <select
+                className="rounded border border-outline-variant bg-surface-container-low px-3 py-1.5 text-label-sm text-on-surface"
+                value={selectedQueryId ?? ""}
+                onChange={(e) => setSelectedQueryId(e.target.value || null)}
+              >
+                <option value="">Select task...</option>
+                {queries.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.name} ({q.queryType.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            )}
+
           </div>
 
           <div className="flex items-center gap-3">
-            {dresSessionId && dresUsername ? (
-              <div className="flex items-center gap-1.5">
-                <span
-                  title="Logged in to DRES"
-                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
-                >
-                  <Icon name="groups" size={18} />
-                  {dresUsername}
-                  {dresEvaluationId && (
-                    <span className="text-on-surface-variant/70">· {dresEvaluationId}</span>
-                  )}
-                </span>
-                <button
-                  onClick={() => setShowDresSettings(true)}
-                  title="Change DRES evaluation"
-                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-                >
-                  <Icon name="tune" size={18} />
-                </button>
-                <button
-                  onClick={handleDresLogout}
-                  title="Log out of DRES"
-                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-                >
-                  <Icon name="logout" size={18} />
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowDresSettings(true)}
-                className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-              >
-                <Icon name="settings" size={18} />
-                DRES Settings
-              </button>
+            {submitMode === "dres" && (
+              <>
+                {dresSessionId && dresUsername ? (
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      title="Logged in to DRES"
+                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
+                    >
+                      <Icon name="groups" size={18} />
+                      {dresUsername}
+                      {dresEvaluationId && (
+                        <span className="text-on-surface-variant/70">· {dresEvaluationId}</span>
+                      )}
+                    </span>
+                    <button
+                      onClick={() => setShowDresSettings(true)}
+                      title="Change DRES evaluation"
+                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                    >
+                      <Icon name="tune" size={18} />
+                    </button>
+                    <button
+                      onClick={handleDresLogout}
+                      title="Log out of DRES"
+                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                    >
+                      <Icon name="logout" size={18} />
+                      Logout
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowDresSettings(true)}
+                    className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                  >
+                    <Icon name="settings" size={18} />
+                    DRES Settings
+                  </button>
+                )}
+              </>
             )}
             <button
               onClick={() => setShowModelSettings(true)}
@@ -362,6 +485,13 @@ export default function Home() {
             >
               <Icon name="model_training" size={18} />
               Model Settings
+            </button>
+            <button
+              onClick={() => setView("submissions")}
+              className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+            >
+              <Icon name="list_alt" size={18} />
+              Submissions
             </button>
             <div className="flex items-center gap-1.5 ml-2">
               <span
@@ -413,6 +543,15 @@ export default function Home() {
               ? (frame) => addFrameToFocusedEvent(frame)
               : undefined
           }
+          submitMode={submitMode}
+          onCloudQuickSubmit={(frame) => {
+            setFrameId(String(frame.frame_idx));
+            setVideoId(frame.video_id);
+            setTimeSec(frame.timestamp.toFixed(1));
+            setQaAnswer("");
+            setTrakeFrameIds(null);
+            setShowSubmitConfirm(true);
+          }}
         />
       </div>
 
@@ -493,6 +632,9 @@ export default function Home() {
           evaluationId={dresEvaluationId}
           answer={qaAnswer}
           trakeFrameIds={trakeFrameIds ?? undefined}
+          submitMode={submitMode}
+          queries={queries}
+          selectedQueryId={selectedQueryId}
           onClose={() => {
             setShowSubmitConfirm(false);
             setTrakeFrameIds(null);

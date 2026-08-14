@@ -16,7 +16,7 @@ docker compose up --build
 - Backend API: http://localhost:5001
 - TRAKE collab (host machine): http://localhost:5002
 
-Teammates point `NEXT_PUBLIC_TRAKE_COLAB_URL` at the host running `apps/trake-colab`.
+Teammates point `NEXT_PUBLIC_CLOUD_API_URL` at the host running `apps/cloud-api`.
 
 ## Rules
 
