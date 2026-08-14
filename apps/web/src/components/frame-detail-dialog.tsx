@@ -225,7 +225,7 @@ export function FrameDetailDialog({
           {/* Left: Video + Navigator + Submission */}
           <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
             {/* Video — larger but capped so OCR/ASR column always stays visible */}
-            <div className="relative w-full aspect-video max-h-[min(420px,48vh)] overflow-hidden bg-black flex-shrink-0">
+            <div className="relative w-full h-[420px] overflow-hidden bg-black flex-shrink-0">
               <VideoPlayer
                 ref={videoRef}
                 src={frame.video_url}
