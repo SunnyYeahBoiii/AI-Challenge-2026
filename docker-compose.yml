@@ -5,12 +5,14 @@ services:
       dockerfile: ./apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:5000
+        NEXT_PUBLIC_TRAKE_COLAB_URL: http://trake-colab:5002
     ports:
       - "3000:3000"
     depends_on:
       - api
     environment:
       - API_BASE_URL=http://api:5000
+      - NEXT_PUBLIC_TRAKE_COLAB_URL=http://trake-colab:5002
 
   api:
     build:
