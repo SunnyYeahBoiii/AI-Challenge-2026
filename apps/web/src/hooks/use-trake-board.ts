@@ -5,8 +5,8 @@ import { io, type Socket } from "socket.io-client";
 import {
   createTrakeBoard,
   fetchTrakeBoard,
-  trakeColabHttpBase,
-} from "@/lib/trake-colab";
+  cloudApiHttpBase,
+} from "@/lib/cloud-api";
 import type {
   TrakeBoardSnapshot,
   TrakeCandidatePayload,
@@ -55,7 +55,7 @@ export function useTrakeBoard(enabled: boolean) {
       setStatus("connecting");
       setError(null);
       socketRef.current?.disconnect();
-      const socket = io(trakeColabHttpBase(), {
+      const socket = io(cloudApiHttpBase(), {
         transports: ["websocket", "polling"],
         autoConnect: true,
       });
@@ -69,7 +69,7 @@ export function useTrakeBoard(enabled: boolean) {
       });
       socket.on("connect_error", (err) => {
         setStatus("error");
-        setError(err.message || "Failed to connect to trake-colab");
+        setError(err.message || "Failed to connect to cloud-api");
       });
       socket.on("disconnect", () => {
         setStatus((s) => (s === "error" ? s : "idle"));

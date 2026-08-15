@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Icon } from "./icon";
-import { buildTrakeSubmitText } from "@/lib/trake-colab";
+import { buildTrakeSubmitText } from "@/lib/cloud-api";
+import { createSubmission, type Query } from "@/lib/submissions";
 
 interface SubmissionConfirmationDialogProps {
   frameId: string;
@@ -16,6 +17,12 @@ interface SubmissionConfirmationDialogProps {
   answer?: string;
   /** TRAKE ordered frame ids for TR-VIDEO-id1,id2,... */
   trakeFrameIds?: number[];
+  /** Submit mode: DRES or Cloud API */
+  submitMode?: "dres" | "cloud";
+  /** Available queries for Cloud mode task selection */
+  queries?: Query[];
+  /** Currently selected query in topbar */
+  selectedQueryId?: string | null;
   onClose: () => void;
 }
 
@@ -28,13 +35,17 @@ export function SubmissionConfirmationDialog({
   evaluationId,
   answer = "",
   trakeFrameIds,
+  submitMode = "dres",
+  queries = [],
+  selectedQueryId,
   onClose,
 }: SubmissionConfirmationDialogProps) {
   const [status, setStatus] = useState<
-    "idle" | "loading" | "correct" | "wrong" | "duplicate" | "error"
+    "idle" | "loading" | "correct" | "wrong" | "duplicate" | "error" | "saved"
   >("idle");
   const [response, setResponse] = useState<string | null>(null);
   const [qaAnswer, setQaAnswer] = useState(answer);
+  const [localQueryId, setLocalQueryId] = useState<string>(selectedQueryId ?? "");
 
   const isQa = submissionType === "qa";
   const isTrake =
@@ -51,6 +62,43 @@ export function SubmissionConfirmationDialog({
     : "";
 
   const handleSubmit = async () => {
+    if (submitMode === "cloud") {
+      const selectedQuery = queries.find((q) => q.id === localQueryId);
+      if (!selectedQuery) {
+        setResponse("Please select a task to submit to.");
+        setStatus("error");
+        return;
+      }
+      if (isQa && !qaAnswerTrimmed) {
+        setResponse("Enter a QA answer.");
+        setStatus("error");
+        return;
+      }
+      if (isTrake && (!videoId || !trakeFrameIds?.length)) {
+        setResponse("TRAKE requires a video id and ordered frame ids.");
+        setStatus("error");
+        return;
+      }
+      setStatus("loading");
+      try {
+        const queryType = submissionType === "track" ? "trake" : submissionType;
+        const frameIds = isTrake ? trakeFrameIds! : [parseInt(frameId) || 0];
+        await createSubmission({
+          queryName: selectedQuery.name,
+          queryType,
+          videoId,
+          frameIds,
+          answer: isQa ? qaAnswerTrimmed : undefined,
+        });
+        setResponse(`Saved to "${selectedQuery.name}".`);
+        setStatus("saved");
+      } catch {
+        setResponse("Failed to save submission");
+        setStatus("error");
+      }
+      return;
+    }
+
     if (!sessionId) {
       setResponse("Not logged in to DRES — open DRES Settings and log in first.");
       setStatus("error");
@@ -129,6 +177,23 @@ export function SubmissionConfirmationDialog({
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          {submitMode === "cloud" && (
+            <div>
+              <label className="text-label-sm text-on-surface-variant mb-1 block">Task</label>
+              <select
+                className="w-full rounded border border-outline-variant bg-surface px-3 py-2 text-body-md"
+                value={localQueryId}
+                onChange={(e) => setLocalQueryId(e.target.value)}
+              >
+                <option value="">Select a task...</option>
+                {queries.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.name} ({q.queryType.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="text-body-md text-on-surface-variant">
             Type: <span className="font-bold text-on-surface">{submissionType.toUpperCase()}</span>
           </div>
@@ -185,7 +250,7 @@ export function SubmissionConfirmationDialog({
             disabled={status === "loading"}
             className="px-6 py-2 rounded bg-primary-container text-on-primary-container text-label-md font-bold disabled:opacity-50"
           >
-            {status === "loading" ? "Submitting…" : "Submit to DRES"}
+            {status === "loading" ? "Submitting…" : submitMode === "cloud" ? "Save to Cloud" : "Submit to DRES"}
           </button>
         </div>
       </div>
