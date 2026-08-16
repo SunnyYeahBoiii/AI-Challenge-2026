@@ -62,29 +62,11 @@ function videoFramesResponse(
 }
 
 export default function Home() {
-  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(() => {
-    if (typeof window === "undefined") return emptySearchResult();
-    const saved = sessionStorage.getItem("searchResult");
-    if (saved) {
-      try {
-        return JSON.parse(saved) as TemporalSearchResponse;
-      } catch {
-        // ignore
-      }
-    }
-    return emptySearchResult();
-  });
-  const [queryCount, setQueryCount] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    const saved = sessionStorage.getItem("queryCount");
-    return saved ? Number(saved) : 0;
-  });
+  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(emptySearchResult());
+  const [queryCount, setQueryCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return sessionStorage.getItem("hasSearched") === "true";
-  });
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -95,28 +77,14 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
-  const [submitMode, setSubmitMode] = useState<"dres" | "cloud">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("submitMode") as "dres" | "cloud") || "dres")
-      : "dres"
-  );
+  const [submitMode, setSubmitMode] = useState<"dres" | "cloud">("dres");
   const [queries, setQueries] = useState<Query[]>([]);
-  const [selectedQueryId, setSelectedQueryId] = useState<string | null>(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem("selectedQueryId") : null
-  );
-  const [view, setView] = useState<"search" | "submissions">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("view") as "search" | "submissions") || "search")
-      : "search"
-  );
+  const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null);
+  const [view, setView] = useState<"search" | "submissions">("search");
   const searchIdRef = useRef(0);
 
   // Submission state
-  const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("submissionType") as "track" | "qa" | "kis") || "kis")
-      : "kis"
-  );
+  const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">("kis");
   const [frameId, setFrameId] = useState("");
   const [videoId, setVideoId] = useState("");
   const [timeSec, setTimeSec] = useState("");
@@ -178,6 +146,22 @@ export default function Home() {
     setDresUsername(sessionStorage.getItem("dresUsername"));
     setDresEvaluationId(sessionStorage.getItem("dresEvaluationId"));
     listQueries().then(setQueries).catch(() => {});
+    const sr = sessionStorage.getItem("searchResult");
+    if (sr) {
+      try { setSearchResult(JSON.parse(sr) as TemporalSearchResponse); } catch { /* ignore */ }
+    }
+    const qc = sessionStorage.getItem("queryCount");
+    if (qc) setQueryCount(Number(qc));
+    const hs = sessionStorage.getItem("hasSearched");
+    if (hs) setHasSearched(hs === "true");
+    const sm = sessionStorage.getItem("submitMode");
+    if (sm) setSubmitMode(sm as "dres" | "cloud");
+    const sq = sessionStorage.getItem("selectedQueryId");
+    if (sq) setSelectedQueryId(sq);
+    const v = sessionStorage.getItem("view");
+    if (v) setView(v as "search" | "submissions");
+    const st = sessionStorage.getItem("submissionType");
+    if (st) setSubmissionType(st as "track" | "qa" | "kis");
   }, []);
 
   useEffect(() => {

@@ -32,33 +32,12 @@ export function FilterPanel({
   gridCols = 6,
   onGridColsChange,
 }: FilterPanelProps) {
-  const [videoId, setVideoId] = useState(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem("filterVideoId") || "" : ""
-  );
-  const [queries, setQueries] = useState<BoxQuery[]>(() => {
-    if (typeof window === "undefined") {
-      return [{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }];
-    }
-    const saved = sessionStorage.getItem("filterQueries");
-    if (saved) {
-      try {
-        return JSON.parse(saved) as BoxQuery[];
-      } catch {
-        // ignore
-      }
-    }
-    return [{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }];
-  });
-  const [mode, setMode] = useState<"parallel" | "sequential">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("filterMode") as "parallel" | "sequential") || "parallel")
-      : "parallel"
-  );
-  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(() => {
-    if (typeof window === "undefined") return 90;
-    const saved = sessionStorage.getItem("filterTemporalWindow");
-    return saved ? Number(saved) : 90;
-  });
+  const [videoId, setVideoId] = useState("");
+  const [queries, setQueries] = useState<BoxQuery[]>([
+    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true },
+  ]);
+  const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
+  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -66,8 +45,18 @@ export function FilterPanel({
   const [dndReady, setDndReady] = useState(false);
   const isDraggingRef = useRef(false);
 
-  // Defer DndContext until after hydrate — dnd-kit a11y IDs differ SSR vs client.
   useEffect(() => {
+    setVideoId(sessionStorage.getItem("filterVideoId") || "");
+    setMode((sessionStorage.getItem("filterMode") as "parallel" | "sequential") || "parallel");
+    const tw = sessionStorage.getItem("filterTemporalWindow");
+    if (tw) setTemporalWindowSeconds(Number(tw));
+    const saved = sessionStorage.getItem("filterQueries");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as BoxQuery[];
+        if (parsed.length > 0) setQueries(parsed);
+      } catch { /* ignore */ }
+    }
     setDndReady(true);
   }, []);
 
