@@ -9,6 +9,19 @@ import type {
   UpdateSubmissionInput,
 } from "./submission.types";
 
+/** Makes a query name safe to embed in filenames: strips header control
+ * characters (CRLF), path separators, and traversal sequences. */
+export function sanitizeFileToken(value: string): string {
+  return (
+    value
+      .replace(/[\r\n\t"]+/g, " ")
+      .replace(/[/\\]+/g, "-")
+      .replace(/\.{2,}/g, ".")
+      .replace(/[^\w\-.() ]+/g, "_")
+      .trim() || "unnamed"
+  );
+}
+
 @Injectable()
 export class SubmissionService {
   constructor(private readonly prisma: PrismaService) {}
@@ -53,7 +66,8 @@ export class SubmissionService {
     id: string,
     input: UpdateSubmissionInput,
   ): Promise<SubmissionSnapshot> {
-    await this.prisma.submission.findUniqueOrThrow({ where: { id } });
+    const existing = await this.prisma.submission.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Submission not found");
     const row = await this.prisma.submission.update({
       where: { id },
       data: {
@@ -71,7 +85,8 @@ export class SubmissionService {
   }
 
   async deleteSubmission(id: string): Promise<void> {
-    await this.prisma.submission.findUniqueOrThrow({ where: { id } });
+    const existing = await this.prisma.submission.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Submission not found");
     await this.prisma.submission.delete({ where: { id } });
   }
 
@@ -95,10 +110,11 @@ export class SubmissionService {
       byQuery.set(row.queryName, list);
     }
     const archive = archiver("zip");
+    archive.on("error", () => res.destroy());
     archive.pipe(res);
     for (const [queryName, queryRows] of byQuery) {
       archive.append(this.formatCsv(queryRows), {
-        name: `submission/${queryName}.csv`,
+        name: `submission/${sanitizeFileToken(queryName)}.csv`,
       });
     }
     await archive.finalize();

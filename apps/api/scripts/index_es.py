@@ -33,6 +33,7 @@ from es_common import (  # noqa: E402
     bulk_insert_es,
     connect_elasticsearch,
     ensure_es_index,
+    finalize_es_index,
     frame_doc_from_record,
 )
 
@@ -48,6 +49,7 @@ def index_batch(
     batch_dir: Path,
     es: Elasticsearch | None,
     *,
+    index: str = "",
     limit: int | None = None,
     dry_run: bool = False,
 ) -> int:
@@ -85,12 +87,12 @@ def index_batch(
         buffer.append(doc)
         count += 1
         if len(buffer) >= ES_BATCH:
-            bulk_insert_es(es, buffer)
+            bulk_insert_es(es, buffer, index=index)
             buffer = []
             print(f"  [{count}] indexed...")
 
     if buffer:
-        bulk_insert_es(es, buffer)
+        bulk_insert_es(es, buffer, index=index)
 
     elapsed = time.time() - t0
     print(f"  Done: {count} docs in {elapsed:.1f}s")
@@ -118,14 +120,20 @@ def main() -> None:
     dirs = list(BATCH_DIRS.values()) if args.all else [BATCH_DIRS[args.batch]]
 
     es: Elasticsearch | None = None
+    target_index = ""
     if not args.dry_run:
         es = connect_elasticsearch()
-        ensure_es_index(es, recreate=args.recreate)
+        target_index = ensure_es_index(es, recreate=args.recreate)
 
     total = 0
     for batch_dir in dirs:
-        total += index_batch(batch_dir, es, limit=args.limit, dry_run=args.dry_run)
+        total += index_batch(
+            batch_dir, es, index=target_index, limit=args.limit, dry_run=args.dry_run
+        )
     print(f"\nTotal indexed: {total}")
+
+    if es is not None and target_index:
+        finalize_es_index(es, target_index)
 
 
 if __name__ == "__main__":

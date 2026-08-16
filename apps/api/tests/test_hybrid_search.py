@@ -6,6 +6,7 @@ Nothing here touches Milvus, Elasticsearch or CLIP.
 import pytest
 
 from app.services import hybrid_search as hs
+from app.services.hybrid_search import retrieval
 
 
 def frame(video_id, frame_index, timestamp=0.0, score=0.0):
@@ -24,11 +25,11 @@ def test_apply_box_keywords_forwards_ocr_and_asr_mode(monkeypatch):
     """box dict's ocr_match_mode/asr_match_mode must reach es_client as-is."""
     captured = {}
 
-    def fake_match(frame_keys, keywords=None, mode="and", source="all", **kwargs):
+    def fake_score(frame_keys, keywords=None, mode="and", source="all", **kwargs):
         captured.update(kwargs)
-        return set(frame_keys)
+        return dict.fromkeys(frame_keys, 0.0)
 
-    monkeypatch.setattr(hs.es_client, "match_frames_by_keywords", fake_match)
+    monkeypatch.setattr(hs.es_client, "score_frames_by_keywords", fake_score)
 
     box = {
         "ocr_keywords": ["a"],
@@ -187,7 +188,7 @@ def test_video_frame_window_gets_original_ocr_asr_text(monkeypatch):
             return [frame("V1", 7)]
 
     monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
-    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda _name: FakeMilvus())
     monkeypatch.setattr(
         hs.es_client,
         "fetch_frame_texts",
@@ -204,7 +205,7 @@ def test_video_frame_window_survives_elasticsearch_failure(monkeypatch):
             return [frame("V1", 7)]
 
     monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
-    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda _name: FakeMilvus())
 
     def fail(_keys):
         raise RuntimeError("ES unavailable")

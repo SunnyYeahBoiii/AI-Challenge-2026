@@ -4,6 +4,8 @@ import json
 
 from app.services import video_meta
 from app.services.es_client import ESClient
+from app.services.es_schema import frame_key
+from app.services.hybrid_search.common import _collapse_shots, _fuse_scores
 
 
 # ── video_meta ──────────────────────────────────────────────────────────────
@@ -53,7 +55,14 @@ class FakeES:
 
     def search(self, index=None, body=None):
         self.body = body
-        return {"hits": {"hits": [{"_source": h} for h in self.hits]}}
+        return {
+            "hits": {
+                "hits": [
+                    {"_source": h, "_score": h.pop("_score", 1.0) if isinstance(h, dict) else 1.0}
+                    for h in self.hits
+                ]
+            }
+        }
 
 
 def _client(hits):
@@ -101,12 +110,17 @@ def test_filter_is_frame_level_not_video_level():
     assert matched == {("V1", 1)}
 
 
-def test_query_filters_on_both_video_and_frame():
+def test_query_filters_on_frame_key():
+    """One keyed `terms` clause, not independent video_id/frame_id lists.
+
+    Independent lists would match their cross product — every video_id paired
+    with every frame_id — instead of only the (video_id, frame_id) pairs asked
+    about.
+    """
     client = _client([])
     client.match_frames_by_keywords([("V1", 1), ("V2", 4)], ocr_keywords=["hello"])
     filters = client.es.body["query"]["bool"]["filter"]
-    assert {"terms": {"video_id": ["V1", "V2"]}} in filters
-    assert {"terms": {"frame_id": [1, 4]}} in filters
+    assert filters == [{"terms": {"frame_key": [frame_key("V1", 1), frame_key("V2", 4)]}}]
 
 
 def test_and_mode_requires_every_keyword():
@@ -124,23 +138,76 @@ def test_or_mode_requires_one_keyword():
 
 
 def test_ocr_keywords_search_ocr_field_only():
+    """OCR text is a scrambled, undiacritized bag of words: match, not match_phrase."""
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
     must = _must(client)
     assert len(must) == 1
     group = must[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"ocr_text": "hd"}}
+    assert clause == {
+        "match": {
+            "ocr_text": {
+                "query": "hd",
+                "minimum_should_match": "2<75%",
+                "fuzziness": "AUTO",
+                "prefix_length": 2,
+                "max_expansions": 20,
+            }
+        }
+    }
+
+
+def test_ocr_digit_keyword_skips_fuzziness():
+    """Fuzzy-matching a keyword with any digit (plates, timecodes, video ids)
+
+    pulls in unrelated matches — "51F" measured 223 fuzzy hits against 3 strict.
+    """
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["063127"])
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert clause == {
+        "match": {"ocr_text": {"query": "063127", "minimum_should_match": "2<75%"}}
+    }
+
+
+def test_ocr_alphanumeric_keyword_skips_fuzziness():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["51F"])
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert "fuzziness" not in clause["match"]["ocr_text"]
 
 
 def test_asr_keywords_search_asr_field_only():
+    """Each ASR keyword tries the diacritic-preserving field (boosted) first,
+
+    then falls back to the folded subfield — both stay `match_phrase`, so this
+    only loosens spelling, never word order.
+    """
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], asr_keywords=["chao"])
     must = _must(client)
     assert len(must) == 1
     group = must[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"asr_text": "chao"}}
+    assert clause == {
+        "bool": {
+            "should": [
+                {"match_phrase": {"asr_text": {"query": "chao", "boost": 3}}},
+                {"match_phrase": {"asr_text.folded": {"query": "chao"}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _clause_field(clause: dict) -> str:
+    if "match" in clause:
+        return next(iter(clause["match"]))
+    if "match_phrase" in clause:
+        return next(iter(clause["match_phrase"]))
+    # ASR keyword clause: bool.should = [exact match_phrase, folded match_phrase].
+    return _clause_field(clause["bool"]["should"][0])
 
 
 def test_ocr_and_asr_groups_are_anded():
@@ -152,10 +219,7 @@ def test_ocr_and_asr_groups_are_anded():
     )
     must = _must(client)
     assert len(must) == 2
-    fields = {
-        next(iter(group["bool"]["should"][0]["match_phrase"]))
-        for group in must
-    }
+    fields = {_clause_field(group["bool"]["should"][0]) for group in must}
     assert fields == {"ocr_text", "asr_text"}
 
 
@@ -171,8 +235,7 @@ def test_ocr_mode_and_asr_mode_are_independent():
     )
     must = _must(client)
     groups = {
-        next(iter(group["bool"]["should"][0]["match_phrase"])): group["bool"]
-        for group in must
+        _clause_field(group["bool"]["should"][0]): group["bool"] for group in must
     }
     assert groups["ocr_text"]["minimum_should_match"] == 1
     assert groups["asr_text"]["minimum_should_match"] == 2
@@ -192,7 +255,17 @@ def test_legacy_source_ocr_maps_to_ocr_field():
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
     group = _must(client)[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"ocr_text": "a"}}
+    assert clause == {
+        "match": {
+            "ocr_text": {
+                "query": "a",
+                "minimum_should_match": "2<75%",
+                "fuzziness": "AUTO",
+                "prefix_length": 2,
+                "max_expansions": 20,
+            }
+        }
+    }
 
 
 def test_legacy_source_asr_maps_to_asr_field():
@@ -200,10 +273,71 @@ def test_legacy_source_asr_maps_to_asr_field():
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="asr")
     group = _must(client)[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"asr_text": "a"}}
+    assert _clause_field(clause) == "asr_text"
 
 
 def test_legacy_source_all_ands_both_fields():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="all")
     assert len(_must(client)) == 2
+
+
+# ── BM25 scoring ─────────────────────────────────────────────────────────────
+def test_score_frames_by_keywords_returns_bm25_score():
+    client = _client([{"video_id": "V1", "frame_id": 1, "_score": 4.2}])
+    scores = client.score_frames_by_keywords([("V1", 1)], ocr_keywords=["hello"])
+    assert scores == {("V1", 1): 4.2}
+
+
+def test_score_frames_by_keywords_omits_unmatched_frames():
+    client = _client([])
+    scores = client.score_frames_by_keywords([("V1", 1)], ocr_keywords=["hello"])
+    assert scores == {}
+
+
+def test_match_frames_by_keywords_still_returns_a_set():
+    client = _client([{"video_id": "V1", "frame_id": 1, "_score": 4.2}])
+    matched = client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hello"])
+    assert matched == {("V1", 1)}
+
+
+# ── RRF fusion and shot collapsing (app/services/hybrid_search/common.py) ────
+def test_fuse_scores_weights_the_configured_source_higher(monkeypatch):
+    from app.services.hybrid_search import common
+
+    monkeypatch.setattr(common.Config, "RRF_TEXT_WEIGHT", 10.0)
+    monkeypatch.setattr(common.Config, "RRF_VECTOR_WEIGHT", 1.0)
+    frames = [
+        {"video_id": "V1", "frame_index": 1, "vector_score": 0.9, "text_score": 1.0},
+        {"video_id": "V1", "frame_index": 2, "vector_score": 0.1, "text_score": 5.0},
+    ]
+    fused = _fuse_scores(frames)
+    # Frame 2 is #1 on text; a heavier text weight should let it win overall
+    # despite ranking last on vector.
+    assert fused[0]["frame_index"] == 2
+    assert fused[0]["score"] > fused[1]["score"]
+
+
+def test_fuse_scores_degenerates_to_single_source():
+    frames = [
+        {"video_id": "V1", "frame_index": 1, "vector_score": 0.1},
+        {"video_id": "V1", "frame_index": 2, "vector_score": 0.9},
+    ]
+    fused = _fuse_scores(frames)
+    assert [f["frame_index"] for f in fused] == [2, 1]
+
+
+def test_collapse_shots_keeps_highest_scoring_frame_per_shot():
+    frames = [
+        {"video_id": "V1", "frame_index": 1, "shot_idx": 0, "score": 0.9},
+        {"video_id": "V1", "frame_index": 2, "shot_idx": 0, "score": 0.5},
+        {"video_id": "V1", "frame_index": 3, "shot_idx": 1, "score": 0.7},
+    ]
+    collapsed = _collapse_shots(frames)
+    assert [f["frame_index"] for f in collapsed] == [1, 3]
+    assert [s["frame_index"] for s in collapsed[0]["shot_siblings"]] == [2]
+
+
+def test_collapse_shots_keeps_frames_without_shot_idx():
+    frames = [{"video_id": "V1", "frame_index": 1, "score": 0.9}]
+    assert _collapse_shots(frames) == frames

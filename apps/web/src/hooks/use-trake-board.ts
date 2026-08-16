@@ -21,6 +21,7 @@ export function useTrakeBoard(enabled: boolean) {
   const [board, setBoard] = useState<TrakeBoardSnapshot | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("teammate");
+  const displayNameRef = useRef(displayName);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [status, setStatus] = useState<
     "idle" | "connecting" | "connected" | "error"
@@ -78,14 +79,20 @@ export function useTrakeBoard(enabled: boolean) {
     [applyBoard],
   );
 
+  // Keep the connect effect off displayName's deps: renaming must not tear
+  // down the socket. board:rename carries the new name instead.
+  useEffect(() => {
+    displayNameRef.current = displayName;
+  }, [displayName]);
+
   useEffect(() => {
     if (!enabled || !boardId) return;
-    connect(boardId, displayName);
+    connect(boardId, displayNameRef.current);
     return () => {
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, boardId, displayName, connect]);
+  }, [enabled, boardId, connect]);
 
   const createAndJoin = useCallback(async () => {
     try {
@@ -126,6 +133,7 @@ export function useTrakeBoard(enabled: boolean) {
     const n = name.trim() || "teammate";
     setDisplayName(n);
     localStorage.setItem(TRAKE_DISPLAY_NAME_KEY, n);
+    socketRef.current?.emit("board:rename", { displayName: n });
   }, []);
 
   const emit = useCallback((event: string, payload: unknown) => {

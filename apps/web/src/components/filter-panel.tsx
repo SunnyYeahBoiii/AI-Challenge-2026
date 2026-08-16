@@ -28,6 +28,7 @@ interface FilterPanelProps {
 export function FilterPanel({
   onSearch,
   onClear,
+  onValidationError,
   isLoading,
   gridCols = 6,
   onGridColsChange,
@@ -46,36 +47,8 @@ export function FilterPanel({
   const isDraggingRef = useRef(false);
 
   useEffect(() => {
-    setVideoId(sessionStorage.getItem("filterVideoId") || "");
-    setMode((sessionStorage.getItem("filterMode") as "parallel" | "sequential") || "parallel");
-    const tw = sessionStorage.getItem("filterTemporalWindow");
-    if (tw) setTemporalWindowSeconds(Number(tw));
-    const saved = sessionStorage.getItem("filterQueries");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as BoxQuery[];
-        if (parsed.length > 0) setQueries(parsed);
-      } catch { /* ignore */ }
-    }
     setDndReady(true);
   }, []);
-
-  // Persist filter state
-  useEffect(() => {
-    sessionStorage.setItem("filterVideoId", videoId);
-  }, [videoId]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterQueries", JSON.stringify(queries));
-  }, [queries]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterMode", mode);
-  }, [mode]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterTemporalWindow", String(temporalWindowSeconds));
-  }, [temporalWindowSeconds]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -133,27 +106,29 @@ export function FilterPanel({
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
       onSearch({ videoId: videoId.trim(), queries: [], mode, temporalWindowSeconds });
-    } else {
-      const enabledQueries = queries.filter(isSearchable);
-      if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
-      }
+      return;
     }
-  }, [videoId, queries, mode, temporalWindowSeconds, onSearch]);
+    const enabledQueries = queries.filter(isSearchable);
+    if (enabledQueries.length > 0) {
+      onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
+    } else {
+      onValidationError("Enter a Video ID or at least one enabled query with content");
+    }
+  }, [videoId, queries, mode, temporalWindowSeconds, onSearch, onValidationError]);
 
   // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (canSearch && !isLoading) {
+        if (!isLoading) {
           handleSearch();
         }
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [canSearch, isLoading, handleSearch]);
+  }, [isLoading, handleSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {
@@ -206,10 +181,6 @@ export function FilterPanel({
     setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }]);
     setMode("parallel");
     setTemporalWindowSeconds(90);
-    sessionStorage.removeItem("filterVideoId");
-    sessionStorage.removeItem("filterQueries");
-    sessionStorage.removeItem("filterMode");
-    sessionStorage.removeItem("filterTemporalWindow");
   }, []);
 
   return (

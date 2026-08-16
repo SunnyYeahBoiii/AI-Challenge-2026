@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { buildTrakeSubmitText } from "@/lib/cloud-api";
+import { classifyDresSubmit, submitFrameToDres, submitTrakeToDres } from "@/lib/api";
 import { createSubmission, type Query } from "@/lib/submissions";
 
 interface SubmissionConfirmationDialogProps {
@@ -62,6 +64,11 @@ export function SubmissionConfirmationDialog({
     : "";
 
   const handleSubmit = async () => {
+    if (!isTrake && !Number.isInteger(Number(frameId))) {
+      setResponse(`Invalid frame id: "${frameId}"`);
+      setStatus("error");
+      return;
+    }
     if (submitMode === "cloud") {
       const selectedQuery = queries.find((q) => q.id === localQueryId);
       if (!selectedQuery) {
@@ -82,7 +89,7 @@ export function SubmissionConfirmationDialog({
       setStatus("loading");
       try {
         const queryType = submissionType === "track" ? "trake" : submissionType;
-        const frameIds = isTrake ? trakeFrameIds! : [parseInt(frameId) || 0];
+        const frameIds = isTrake ? trakeFrameIds! : [Number(frameId)];
         await createSubmission({
           queryName: selectedQuery.name,
           queryType,
@@ -116,41 +123,30 @@ export function SubmissionConfirmationDialog({
     }
     setStatus("loading");
     try {
-      const body = isTrake
-        ? {
-            video_path: videoId,
-            frame_ids: trakeFrameIds,
+      const data = isTrake
+        ? await submitTrakeToDres({
+            videoId,
+            frameIds: trakeFrameIds!,
             sessionId,
             ...(evaluationId ? { evaluationId } : {}),
-          }
-        : {
-            frame_id: frameId,
-            video_path: videoId,
+          })
+        : await submitFrameToDres({
+            frameId,
+            videoId,
             timestamp,
+            submissionType,
             sessionId,
             ...(evaluationId ? { evaluationId } : {}),
             ...(isQa ? { answer: qaAnswer } : {}),
-          };
-      const res = await fetch(`/api/dres/submit/${submissionType}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
+          });
       setResponse(JSON.stringify(data, null, 2));
-      if (!res.ok) {
-        setStatus("error");
-      } else if (data.submission === "WRONG") {
-        setStatus("wrong");
-      } else if (data.status === false) {
-        setStatus("duplicate");
-      } else if (data.submission === "CORRECT") {
-        setStatus("correct");
-      } else {
-        setStatus("error");
-      }
-    } catch {
-      setResponse("Submission failed");
+      setStatus(classifyDresSubmit(data));
+    } catch (err) {
+      const message = isAxiosError(err)
+        ? (err.response?.data as { error?: { message?: string } } | undefined)
+            ?.error?.message ?? err.message
+        : "Submission failed";
+      setResponse(message);
       setStatus("error");
     }
   };

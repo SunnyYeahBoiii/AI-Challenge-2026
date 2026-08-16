@@ -54,7 +54,8 @@ export class QueryService {
     id: string,
     input: UpdateQueryInput,
   ): Promise<QuerySnapshot> {
-    await this.prisma.query.findUniqueOrThrow({ where: { id } });
+    const existing = await this.prisma.query.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Query not found");
     const row = await this.prisma.query.update({
       where: { id },
       data: {
@@ -67,7 +68,8 @@ export class QueryService {
   }
 
   async deleteQuery(id: string): Promise<void> {
-    await this.prisma.query.findUniqueOrThrow({ where: { id } });
+    const existing = await this.prisma.query.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Query not found");
     await this.prisma.query.delete({ where: { id } });
   }
 

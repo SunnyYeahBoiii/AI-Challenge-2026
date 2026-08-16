@@ -225,6 +225,8 @@ function SortableEventCard({
 
 export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) {
   const [joinId, setJoinId] = useState("");
+  const [nameDraft, setNameDraft] = useState(trake.displayName);
+  useEffect(() => setNameDraft(trake.displayName), [trake.displayName]);
   const [videoCandidate, setVideoCandidate] = useState<TrakeCandidate | null>(
     null,
   );
@@ -292,8 +294,12 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
         </div>
         <input
           className="w-full rounded border border-outline-variant bg-surface px-2 py-1 text-label-sm"
-          value={trake.displayName}
-          onChange={(e) => trake.saveDisplayName(e.target.value)}
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={() => trake.saveDisplayName(nameDraft)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
           placeholder="Display name"
           aria-label="Display name"
         />
