@@ -5,14 +5,25 @@ from typing import Any
 from elasticsearch import Elasticsearch
 
 from app.config import Config
+from app.services.es_schema import ES_ALIAS, frame_key
 
 logger = logging.getLogger(__name__)
 
 ES_URL = Config.ES_URL
 ES_USER = Config.ES_USER
 ES_PASS = Config.ES_PASS
-ES_INDEX = "video_texts"
+ES_INDEX = ES_ALIAS
 MAX_KEYWORD_HITS = Config.ES_MAX_KEYWORD_HITS
+
+# ES rounds a bare percentage down, so "75%" of two clauses is one — every
+# two-word keyword would silently degrade from AND to OR. The "2<" prefix keeps
+# short keywords strict and only relaxes from the third word on.
+OCR_MINIMUM_SHOULD_MATCH = "2<75%"
+# AUTO fuzziness with a one-character prefix expands into thousands of terms on
+# this vocabulary: "ajinomoto" measured 264ms against 4ms strict, for 1% more
+# recall. Two characters plus a capped expansion puts it back under 30ms.
+OCR_FUZZY_PREFIX_LENGTH = 2
+OCR_FUZZY_MAX_EXPANSIONS = 20
 
 FrameKey = tuple[Any, Any]
 
@@ -32,17 +43,37 @@ def _field_group(clauses: list[dict[str, Any]], mode: str) -> dict[str, Any] | N
     }
 
 
+def _asr_phrase_clause(keyword: str, field: str) -> dict[str, Any]:
+    """Phrase-match one keyword against `field`, honouring the configured slop."""
+    params: dict[str, Any] = {"query": keyword}
+    if Config.ES_ASR_PHRASE_SLOP:
+        params["slop"] = Config.ES_ASR_PHRASE_SLOP
+    return {"match_phrase": {field: params}}
+
+
 def _asr_phrase_field_group(
     keywords: Sequence[str], field: str, mode: str
 ) -> dict[str, Any] | None:
-    """Build an analyzed, ordered and adjacent phrase group for one field.
+    """Build an ordered, adjacent phrase group over `field` and its folded twin.
 
-    ASR text is clean and sequential, so exact phrase matching is the right
-    fit — order and adjacency in the query reflect order and adjacency in
-    the transcript.
+    ASR text is sequential, so phrase matching is the right fit — order and
+    adjacency in the query reflect order and adjacency in the transcript. Each
+    keyword tries the diacritic-preserving field first (boosted, so an exactly
+    typed query wins) and falls back to the folded subfield, which is the only
+    way a query typed without diacritics matches at all. Both clauses stay
+    phrases: this loosens *spelling*, never word order.
     """
     original_keywords = _nonempty_keywords(keywords)
-    clauses = [{"match_phrase": {field: keyword}} for keyword in original_keywords]
+    clauses: list[dict[str, Any]] = []
+    for keyword in original_keywords:
+        exact = _asr_phrase_clause(keyword, field)
+        exact["match_phrase"][field]["boost"] = 3
+        clauses.append({
+            "bool": {
+                "should": [exact, _asr_phrase_clause(keyword, f"{field}.folded")],
+                "minimum_should_match": 1,
+            }
+        })
     return _field_group(clauses, mode)
 
 
@@ -53,19 +84,24 @@ def _ocr_fuzzy_field_group(
 
     OCR text on this dataset is a scrambled bag of words (no diacritics, no
     stable order), so `match_phrase` structurally cannot match a multi-word
-    keyword. Each keyword becomes a `match` with `operator: and` (every word
-    in the keyword must appear, any order) plus AUTO fuzziness for typo
-    tolerance. Fuzziness is skipped for all-digit keywords (timestamps,
-    codes like "063127") — edit-distance matching would just pull in
-    unrelated numbers.
+    keyword. Each keyword becomes a `match` requiring every word up to two and
+    75% beyond that, plus AUTO fuzziness for typo tolerance.
+
+    Fuzziness is skipped for any keyword *containing* a digit. Plate numbers,
+    timecodes and video ids ("51F", "L21_V001", "063127") have no meaningful
+    edit-distance neighbours — "51F" measured 3 hits strict against 223 fuzzy.
     """
     original_keywords = _nonempty_keywords(keywords)
     clauses: list[dict[str, Any]] = []
     for keyword in original_keywords:
-        match_params: dict[str, Any] = {"query": keyword, "operator": "and"}
-        if not keyword.replace(" ", "").isdigit():
+        match_params: dict[str, Any] = {
+            "query": keyword,
+            "minimum_should_match": OCR_MINIMUM_SHOULD_MATCH,
+        }
+        if not any(char.isdigit() for char in keyword):
             match_params["fuzziness"] = "AUTO"
-            match_params["prefix_length"] = 1
+            match_params["prefix_length"] = OCR_FUZZY_PREFIX_LENGTH
+            match_params["max_expansions"] = OCR_FUZZY_MAX_EXPANSIONS
         clauses.append({"match": {field: match_params}})
     return _field_group(clauses, mode)
 
@@ -118,7 +154,7 @@ class ESClient:
         source: dict[str, Any] | None = hits[0]["_source"] if hits else None
         return source
 
-    def match_frames_by_keywords(
+    def score_frames_by_keywords(
         self,
         frame_keys: Iterable[FrameKey],
         keywords: Sequence[str] | None = None,
@@ -129,14 +165,18 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
-    ) -> set[FrameKey]:
-        """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
+    ) -> dict[FrameKey, float]:
+        """Map each matching (video_id, frame_index) to its BM25 relevance score.
 
         OCR keywords fuzzy/unordered-match `ocr_text` only (OCR text here is a
-        scrambled, undiacritized bag of words); ASR keywords exact phrase-match
-        `asr_text` only (ASR text is clean and sequential). When both groups are
-        non-empty they are AND-ed. Within each group, `ocr_mode`/`asr_mode`
-        controls and/or, falling back to `mode` when unset.
+        scrambled, undiacritized bag of words); ASR keywords phrase-match
+        `asr_text` only. When both groups are non-empty they are AND-ed. Within
+        each group, `ocr_mode`/`asr_mode` controls and/or, falling back to
+        `mode` when unset.
+
+        The score matters because a boolean verdict cannot separate a keyword
+        that identifies a frame from one that matches half the corpus — the
+        station watermark "htv online" is on 49% of frames. Only IDF demotes it.
 
         Legacy `keywords` + `source` still work when the dedicated lists are empty:
         ocr/asr map to one field; all duplicates keywords into both groups.
@@ -154,10 +194,8 @@ class ESClient:
                 asr = list(keywords)
 
         if (not ocr and not asr) or not keys:
-            return set(keys)
+            return dict.fromkeys(keys, 0.0)
 
-        video_ids = sorted({vid for vid, _ in keys})
-        frame_ids = sorted({idx for _, idx in keys})
         must: list[dict[str, Any]] = []
         ocr_group = _ocr_fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode)
         asr_group = _asr_phrase_field_group(asr, "asr_text", asr_mode or mode)
@@ -166,20 +204,21 @@ class ESClient:
         if asr_group:
             must.append(asr_group)
         if not must:
-            return set(keys)
+            return dict.fromkeys(keys, 0.0)
 
         bool_query: dict[str, Any] = {
             "must": must,
-            "filter": [
-                {"terms": {"video_id": video_ids}},
-                {"terms": {"frame_id": frame_ids}},
-            ],
+            # One keyed term list, not separate video_id/frame_id lists — those
+            # would match the cross product of the two, far more docs than the
+            # pairs actually asked about.
+            "filter": [{"terms": {"frame_key": [frame_key(vid, idx) for vid, idx in keys]}}],
         }
         size = min(MAX_KEYWORD_HITS, max(len(keys), 100))
         body = {
             "query": {"bool": bool_query},
             "_source": ["video_id", "frame_id"],
             "size": size,
+            "track_total_hits": False,
         }
         resp = self.es.search(index=ES_INDEX, body=body)
         hits = resp["hits"]["hits"]
@@ -191,11 +230,39 @@ class ESClient:
                 "(raise ES_MAX_KEYWORD_HITS)",
                 size,
             )
-        matched = {
-            (hit["_source"]["video_id"], hit["_source"]["frame_id"])
+        scored = {
+            (hit["_source"]["video_id"], hit["_source"]["frame_id"]): float(
+                hit.get("_score") or 0.0
+            )
             for hit in hits
         }
-        return {key for key in keys if key in matched}
+        return {key: scored[key] for key in keys if key in scored}
+
+    def match_frames_by_keywords(
+        self,
+        frame_keys: Iterable[FrameKey],
+        keywords: Sequence[str] | None = None,
+        mode: str = "and",
+        source: str = "all",
+        *,
+        ocr_keywords: Sequence[str] | None = None,
+        asr_keywords: Sequence[str] | None = None,
+        ocr_mode: str | None = None,
+        asr_mode: str | None = None,
+    ) -> set[FrameKey]:
+        """Return the subset of (video_id, frame_index) whose OCR/ASR text matches."""
+        return set(
+            self.score_frames_by_keywords(
+                frame_keys,
+                keywords=keywords,
+                mode=mode,
+                source=source,
+                ocr_keywords=ocr_keywords,
+                asr_keywords=asr_keywords,
+                ocr_mode=ocr_mode,
+                asr_mode=asr_mode,
+            )
+        )
 
     def iter_keyword_frame_hits(
         self,
@@ -250,6 +317,7 @@ class ESClient:
                 "query": {"bool": bool_query},
                 "_source": ["video_id", "frame_id"],
                 "size": size,
+                "track_total_hits": False,
                 "sort": [
                     {"_score": "desc"},
                     {"video_id": "asc"},
