@@ -119,19 +119,31 @@ class MilvusClient:
     def query_frame_keys(
         self, frame_keys: Sequence[tuple[str, int]], chunk_size: int = 500
     ) -> list[Frame]:
-        """Fetch metadata for primary keys without loading embeddings."""
+        """Fetch metadata for (video_id, frame_index) pairs without loading embeddings.
+
+        `id` is an auto-assigned Int64 primary key, not `"video_id/frame_index"` —
+        matching against it directly never returns rows. Query `video_id`/
+        `frame_index` instead, scoped one video at a time so `frame_index in [...]`
+        can't cross-match indices from a different video.
+        """
         ordered_keys = list(dict.fromkeys((str(video), int(index)) for video, index in frame_keys))
+        by_video: dict[str, list[int]] = {}
+        for video_id, frame_index in ordered_keys:
+            by_video.setdefault(video_id, []).append(frame_index)
         found: dict[tuple[str, int], Frame] = {}
         size = max(1, min(int(chunk_size), QUERY_LIMIT))
-        for start in range(0, len(ordered_keys), size):
-            chunk = ordered_keys[start:start + size]
-            ids = [f"{video_id}/{frame_index}" for video_id, frame_index in chunk]
-            expr = f"id in [{', '.join(json.dumps(frame_id) for frame_id in ids)}]"
-            rows = self.col.query(expr=expr, output_fields=OUTPUT_FIELDS, limit=len(chunk))
-            for row in rows:
-                frame = _row_to_frame(row)
-                key = (str(frame.get("video_id") or ""), int(frame.get("frame_index") or 0))
-                found[key] = frame
+        for video_id, indices in by_video.items():
+            for start in range(0, len(indices), size):
+                chunk = indices[start : start + size]
+                expr = (
+                    f"video_id == {json.dumps(video_id)} and "
+                    f"frame_index in [{', '.join(str(i) for i in chunk)}]"
+                )
+                rows = self.col.query(expr=expr, output_fields=OUTPUT_FIELDS, limit=len(chunk))
+                for row in rows:
+                    frame = _row_to_frame(row)
+                    key = (str(frame.get("video_id") or ""), int(frame.get("frame_index") or 0))
+                    found[key] = frame
         return [found[key] for key in ordered_keys if key in found]
 
     def get_frame_embedding(self, video_id: str, frame_index: int) -> list[float] | None:
