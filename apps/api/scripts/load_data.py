@@ -45,6 +45,7 @@ from es_common import (  # noqa: E402
     bulk_insert_es,
     connect_elasticsearch,
     ensure_es_index,
+    finalize_es_index,
     frame_doc_from_record,
 )
 from app.services.encoders.bge_vl import BgeVlEncoder  # noqa: E402
@@ -135,6 +136,7 @@ def load_batch(
     es: Elasticsearch,
     col: Collection,
     processed: set[str],
+    es_index: str,
     limit: int | None = None,
     dry_run: bool = False,
 ) -> int:
@@ -224,7 +226,7 @@ def load_batch(
                 total_frames += len(milvus_buffer[0])
                 milvus_buffer = [[] for _ in range(14)]
             if len(es_buffer) >= ES_BATCH:
-                bulk_insert_es(es, es_buffer)
+                bulk_insert_es(es, es_buffer, index=es_index)
                 es_buffer = []
 
         processed.add(file_path)
@@ -239,7 +241,7 @@ def load_batch(
             col.insert(milvus_buffer)
             total_frames += len(milvus_buffer[0])
         if es_buffer:
-            bulk_insert_es(es, es_buffer)
+            bulk_insert_es(es, es_buffer, index=es_index)
 
     elapsed = time.time() - t0
     print(f"  Done: {count} records ({total_frames} inserted) in {elapsed:.1f}s")
@@ -251,14 +253,15 @@ def load(limit: int | None = None, dry_run: bool = False) -> None:
     connect_milvus()
     col = ensure_milvus_collection()
     es = connect_elasticsearch()
-    ensure_es_index(es)
+    es_index = ensure_es_index(es)
 
     processed = load_checkpoint() if not dry_run else set()
     t0 = time.time()
-    load_batch(es, col, processed, limit, dry_run)
+    load_batch(es, col, processed, es_index, limit, dry_run)
 
     if not dry_run:
         col.flush()
+        finalize_es_index(es, es_index)
         save_checkpoint(processed)
         elapsed = time.time() - t0
         print(f"\nDone in {elapsed:.1f}s")

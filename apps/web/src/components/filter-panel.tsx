@@ -47,36 +47,8 @@ export function FilterPanel({
   const isDraggingRef = useRef(false);
 
   useEffect(() => {
-    setVideoId(sessionStorage.getItem("filterVideoId") || "");
-    setMode((sessionStorage.getItem("filterMode") as "parallel" | "sequential") || "parallel");
-    const tw = sessionStorage.getItem("filterTemporalWindow");
-    if (tw) setTemporalWindowSeconds(Number(tw));
-    const saved = sessionStorage.getItem("filterQueries");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as BoxQuery[];
-        if (parsed.length > 0) setQueries(parsed);
-      } catch { /* ignore */ }
-    }
     setDndReady(true);
   }, []);
-
-  // Persist filter state
-  useEffect(() => {
-    sessionStorage.setItem("filterVideoId", videoId);
-  }, [videoId]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterQueries", JSON.stringify(queries));
-  }, [queries]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterMode", mode);
-  }, [mode]);
-
-  useEffect(() => {
-    sessionStorage.setItem("filterTemporalWindow", String(temporalWindowSeconds));
-  }, [temporalWindowSeconds]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -209,10 +181,6 @@ export function FilterPanel({
     setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }]);
     setMode("parallel");
     setTemporalWindowSeconds(90);
-    sessionStorage.removeItem("filterVideoId");
-    sessionStorage.removeItem("filterQueries");
-    sessionStorage.removeItem("filterMode");
-    sessionStorage.removeItem("filterTemporalWindow");
   }, []);
 
   return (

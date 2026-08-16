@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { SearchFilter } from "@/components/filter-panel";
-import { useSessionStorageState } from "@/hooks/use-session-storage";
 import {
   emptySearchResult,
   videoFramesResponse,
@@ -16,12 +15,11 @@ import {
 
 /** Temporal search state and the (race-guarded) search/clear actions. */
 export function useTemporalSearch() {
-  const [searchResult, setSearchResult] = useSessionStorageState<TemporalSearchResponse>(
-    "searchResult",
+  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(
     emptySearchResult(),
   );
-  const [queryCount, setQueryCount] = useSessionStorageState("queryCount", 0);
-  const [hasSearched, setHasSearched] = useSessionStorageState("hasSearched", false);
+  const [queryCount, setQueryCount] = useState(0);
+  const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchIdRef = useRef(0);
