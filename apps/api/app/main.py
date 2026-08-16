@@ -2,12 +2,14 @@ from flask import Flask
 from flask_cors import CORS
 
 from app.config import Config
+from app.errors import register_error_handlers
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
     CORS(app)
+    register_error_handlers(app)
 
     from app.routes.search import search_bp
     from app.routes.videos import videos_bp

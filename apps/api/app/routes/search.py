@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from pymilvus.exceptions import MilvusException
 
+from app.errors import error_response
 from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
 from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import (
@@ -17,7 +18,7 @@ search_bp = Blueprint("search", __name__)
 
 def _milvus_error_response(error: MilvusException):
     """Surface Milvus client failures as JSON instead of Werkzeug HTML."""
-    return jsonify({"error": str(error)}), 400
+    return error_response("MILVUS_ERROR", str(error), 502)
 
 
 @search_bp.route("/api/search", methods=["POST"])
@@ -25,7 +26,7 @@ def api_search():
     try:
         data = SearchRequest(**request.get_json())
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return error_response("VALIDATION_ERROR", str(e), 400)
     try:
         results = search_text(
             query=data.text,
@@ -42,9 +43,9 @@ def api_search():
             asr_mode=data.asr_match_mode,
         )
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
-        return jsonify({"error": str(error)}), 500
+        return error_response("OBJECT_FILTER_FAILED", str(error), 500)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -58,12 +59,12 @@ def api_search():
 @search_bp.route("/api/search/image", methods=["POST"])
 def api_search_image():
     if "image" not in request.files:
-        return jsonify({"error": "image file required"}), 400
+        return error_response("VALIDATION_ERROR", "image file required", 400)
     file = request.files["image"]
     try:
         topk = int(request.form.get("topk", 20))
     except ValueError:
-        return jsonify({"error": "topk must be an integer"}), 400
+        return error_response("VALIDATION_ERROR", "topk must be an integer", 400)
     topk = max(1, min(topk, 5000))
     tags = request.form.getlist("tags") if request.form.get("tags") else []
     keywords = request.form.getlist("keywords") if request.form.get("keywords") else []
@@ -89,9 +90,9 @@ def api_search_image():
             asr_mode=request.form.get("asr_match_mode") or None,
         )
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
-        return jsonify({"error": str(error)}), 500
+        return error_response("OBJECT_FILTER_FAILED", str(error), 500)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -106,11 +107,11 @@ def api_search_video():
     try:
         data = VideoIdRequest(**request.get_json())
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return error_response("VALIDATION_ERROR", str(e), 400)
     try:
         results = search_video_frames(data.video_id, data.frame_index, data.range)
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -125,11 +126,11 @@ def api_search_similar():
     try:
         data = SimilarFramesRequest(**request.get_json())
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return error_response("VALIDATION_ERROR", str(e), 400)
     try:
         results = search_similar_frames(data.video_id, data.frame_index, data.topk)
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -143,7 +144,7 @@ def api_frames():
     try:
         data = MultiBoxRequest(**request.get_json())
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return error_response("VALIDATION_ERROR", str(e), 400)
     box_list = [b.model_dump() for b in data.box_queries]
     try:
         results = multi_box_search(
@@ -153,9 +154,9 @@ def api_frames():
             mode=data.mode,
         )
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
-        return jsonify({"error": str(error)}), 500
+        return error_response("OBJECT_FILTER_FAILED", str(error), 500)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify(results)

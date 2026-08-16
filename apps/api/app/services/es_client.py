@@ -1,17 +1,18 @@
 import logging
-import os
 from collections.abc import Iterable, Sequence
 from typing import Any
 
 from elasticsearch import Elasticsearch
 
+from app.config import Config
+
 logger = logging.getLogger(__name__)
 
-ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-ES_USER = os.getenv("ES_USER", "")
-ES_PASS = os.getenv("ES_PASS", "")
+ES_URL = Config.ES_URL
+ES_USER = Config.ES_USER
+ES_PASS = Config.ES_PASS
 ES_INDEX = "video_texts"
-MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
+MAX_KEYWORD_HITS = Config.ES_MAX_KEYWORD_HITS
 
 FrameKey = tuple[Any, Any]
 

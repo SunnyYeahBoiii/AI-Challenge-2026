@@ -1,5 +1,14 @@
 import { IsArray, IsOptional, IsString, MaxLength } from "class-validator";
 
+/** Identifies one moment in a video — the fields every TrakeBoard candidate
+ * and selection carries (and the Prisma models store). */
+export interface MomentRef {
+  videoId: string;
+  ptsTime: number;
+  previewFrameId: string;
+  fps: number;
+}
+
 export interface BoardEventSnapshot {
   id: string;
   position: number;
@@ -9,25 +18,17 @@ export interface BoardEventSnapshot {
   selection: SelectionSnapshot | null;
 }
 
-export interface CandidateSnapshot {
+export interface CandidateSnapshot extends MomentRef {
   id: string;
-  videoId: string;
-  ptsTime: number;
-  previewFrameId: string;
-  fps: number;
   frameIdx: number;
   thumbnailUrl: string;
   addedBy: string;
   createdAt: string;
 }
 
-export interface SelectionSnapshot {
+export interface SelectionSnapshot extends MomentRef {
   eventId: string;
   candidateId: string | null;
-  videoId: string;
-  ptsTime: number;
-  previewFrameId: string;
-  fps: number;
   updatedBy: string;
   updatedAt: string;
 }
@@ -42,23 +43,15 @@ export interface BoardSnapshot {
   members: string[];
 }
 
-export interface AddCandidateInput {
+export interface AddCandidateInput extends MomentRef {
   eventId: string;
-  videoId: string;
-  ptsTime: number;
-  previewFrameId: string;
-  fps: number;
   frameIdx: number;
   thumbnailUrl?: string;
   addedBy?: string;
 }
 
-export interface SetSelectionInput {
+export interface SetSelectionInput extends MomentRef {
   eventId: string;
-  videoId: string;
-  ptsTime: number;
-  previewFrameId: string;
-  fps: number;
   candidateId?: string | null;
   updatedBy?: string;
 }

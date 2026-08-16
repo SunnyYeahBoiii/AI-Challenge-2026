@@ -1,14 +1,15 @@
 import json
-import os
 import threading
 from collections.abc import Sequence
 from typing import Any
 
 from pymilvus import Collection, connections, utility
 
-MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
-MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
-SEARCH_EF = int(os.getenv("MILVUS_SEARCH_EF", "128"))
+from app.config import Config
+
+MILVUS_URI = Config.MILVUS_URI
+MILVUS_TOKEN = Config.MILVUS_TOKEN
+SEARCH_EF = Config.MILVUS_SEARCH_EF
 # Hard ceiling enforced by Milvus ANN search (limit / HNSW ef).
 MILVUS_MAX_TOPK = 16384
 QUERY_LIMIT = MILVUS_MAX_TOPK
@@ -140,12 +141,6 @@ class MilvusClient:
             return None
         embedding: list[float] = results[0]["embedding"]
         return embedding
-
-    def is_connected(self) -> bool:
-        try:
-            return bool(utility.has_collection(self.collection_name))
-        except Exception:
-            return False
 
 
 _clients: dict[str, MilvusClient] = {}

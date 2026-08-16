@@ -40,6 +40,15 @@ export interface TrakeBoardSnapshot {
   members: string[];
 }
 
+/** Flat frame fields needed to turn a search result into a Trake candidate. */
+export interface FrameToTrake {
+  video_id: string;
+  timestamp: number;
+  frame_idx: number;
+  fps: number;
+  thumbnail_url: string;
+}
+
 export interface TrakeCandidatePayload {
   eventId: string;
   videoId: string;

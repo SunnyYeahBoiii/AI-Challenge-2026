@@ -3,11 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-class EmbedTextRequest(BaseModel):
-    text: str
-    enhance: bool = True
-
-
 class SearchRequest(BaseModel):
     text: str = ""
     tags: list[str] = []
@@ -113,64 +108,3 @@ class VideoIdRequest(BaseModel):
     video_id: str
     frame_index: int | None = None
     range: int = 5
-
-
-class FrameResult(BaseModel):
-    id: str
-    video_id: str
-    frame_index: int
-    frame_idx: int = 0
-    shot_idx: int = 0
-    start_time: float = 0.0
-    end_time: float = 0.0
-    timestamp: float = 0.0
-    fps: float = 0.0
-    score: float = 0.0
-    title: str = ""
-    description: str = ""
-    keywords: list[str] = []
-    author: str = ""
-    publish_date: str = ""
-    thumbnail_url: str = ""
-    watch_url: str = ""
-    sequence_idx: int | None = None
-    sequence_id: str = ""
-    ocr_text: str = ""
-    asr_text: str = ""
-    retrieval_rank: int | None = None
-    filter_only: bool = False
-
-
-class VideoResult(BaseModel):
-    video_id: str
-    title: str = ""
-    description: str = ""
-    keywords: list[str] = []
-    author: str = ""
-    channel_id: str = ""
-    length: int = 0
-    publish_date: str = ""
-    thumbnail_url: str = ""
-    watch_url: str = ""
-    level: str = ""
-    frame_count: int = 0
-
-
-class SearchResponse(BaseModel):
-    query: str = ""
-    enhanced: bool = False
-    results: list[FrameResult] = []
-    total: int = 0
-
-
-class VideoSearchResponse(BaseModel):
-    videos: list[VideoResult] = []
-    total: int = 0
-
-
-class EmbedResponse(BaseModel):
-    vector: list[float]
-    dim: int
-    text: str = ""
-    enhanced: bool = False
-    filename: str = ""

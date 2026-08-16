@@ -4,6 +4,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 from pymilvus.exceptions import MilvusException
 
+from app.errors import error_response
 from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import search_video_frames
 from app.services.storage import keyframe_url, video_url
@@ -16,26 +17,26 @@ submissions_bp = Blueprint("submissions", __name__)
 @submissions_bp.route("/api/submissions/keyframe", methods=["POST"])
 def get_submission_keyframe() -> tuple[Any, int]:
     """Get nearest keyframe for a submission."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data:
-        return jsonify({"error": "Request body required"}), 400
+        return error_response("VALIDATION_ERROR", "Request body required", 400)
 
     video_id = data.get("video_id")
     frame_index = data.get("frame_index")
     search_range = data.get("range", 100)
 
     if not video_id or frame_index is None:
-        return jsonify({"error": "video_id and frame_index required"}), 400
+        return error_response("VALIDATION_ERROR", "video_id and frame_index required", 400)
 
     try:
         results = search_video_frames(video_id, frame_index, search_range)
     except NoActiveModelError as error:
-        return jsonify({"error": str(error)}), 409
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except MilvusException as error:
-        return jsonify({"error": str(error)}), 400
+        return error_response("MILVUS_ERROR", str(error), 502)
 
     if not results:
-        return jsonify({"error": "No keyframe found"}), 404
+        return error_response("NOT_FOUND", "No keyframe found", 404)
 
     nearest = min(results, key=lambda f: abs(f["frame_index"] - frame_index))
 
@@ -51,13 +52,13 @@ def get_submission_keyframe() -> tuple[Any, int]:
 @submissions_bp.route("/api/submissions/keyframes", methods=["POST"])
 def get_submission_keyframes() -> tuple[Any, int]:
     """Batch get nearest keyframes for multiple submissions."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or "items" not in data:
-        return jsonify({"error": "items array required"}), 400
+        return error_response("VALIDATION_ERROR", "items array required", 400)
 
     items = data["items"]
     if not isinstance(items, list):
-        return jsonify({"error": "items must be an array"}), 400
+        return error_response("VALIDATION_ERROR", "items must be an array", 400)
     results: dict[str, dict[str, Any] | None] = {}
 
     for item in items:

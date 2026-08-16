@@ -117,22 +117,6 @@ export async function createQuery(input: {
   return res.json();
 }
 
-export async function updateQuery(
-  id: string,
-  input: {
-    content?: string;
-    queryType?: QueryType;
-  },
-): Promise<Query> {
-  const res = await fetch(`${cloudApiHttpBase()}/queries/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) throw new Error(`Update query failed: ${res.status}`);
-  return res.json();
-}
-
 export async function deleteQuery(id: string): Promise<void> {
   const res = await fetch(`${cloudApiHttpBase()}/queries/${id}`, {
     method: "DELETE",

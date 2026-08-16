@@ -84,21 +84,6 @@ export interface HealthStatus {
 
 // ====== Request types ======
 
-export interface SearchTextRequest {
-  text: string;
-  tags?: string[];
-  tag_mode?: "and" | "or";
-  ocr_keywords?: string[];
-  asr_keywords?: string[];
-  ocr_match_mode?: "and" | "or";
-  asr_match_mode?: "and" | "or";
-  keywords?: string[];
-  keyword_mode?: "and" | "or";
-  keyword_source?: "all" | "ocr" | "asr";
-  topk?: number;
-  enhance?: boolean;
-}
-
 export interface MultiBoxQuery {
   text?: string;
   image?: string;
@@ -124,24 +109,6 @@ export interface MultiBoxRequest {
 
 // ====== Search API ======
 
-export async function searchText(req: SearchTextRequest): Promise<{ results: FrameResult[]; total: number }> {
-  const { data } = await api.post("/search", req);
-  return data;
-}
-
-export async function searchImage(
-  file: File,
-  params?: { tags?: string[]; keywords?: string[]; topk?: number }
-): Promise<{ results: FrameResult[]; total: number }> {
-  const form = new FormData();
-  form.append("image", file);
-  if (params?.tags?.length) params.tags.forEach((t) => form.append("tags", t));
-  if (params?.keywords?.length) params.keywords.forEach((k) => form.append("keywords", k));
-  if (params?.topk) form.append("topk", String(params.topk));
-  const { data } = await api.post("/search/image", form);
-  return data;
-}
-
 export async function searchVideoFrames(
   videoId: string,
   frameIndex?: number,
@@ -151,15 +118,6 @@ export async function searchVideoFrames(
   if (frameIndex !== undefined) body.frame_index = frameIndex;
   if (range !== undefined) body.range = range;
   const { data } = await api.post("/search/video", body);
-  return data;
-}
-
-export async function searchSimilarFrames(
-  videoId: string,
-  frameIndex: number,
-  topk?: number
-): Promise<{ results: FrameResult[]; total: number }> {
-  const { data } = await api.post("/search/similar", { video_id: videoId, frame_index: frameIndex, topk });
   return data;
 }
 
@@ -176,11 +134,6 @@ export async function listVideos(
   params?: { q?: string; size?: number }
 ): Promise<{ videos: VideoResult[]; total: number }> {
   const { data } = await api.get("/videos", { params });
-  return data;
-}
-
-export async function getVideo(videoId: string): Promise<VideoResult> {
-  const { data } = await api.get(`/videos/${encodeURIComponent(videoId)}`);
   return data;
 }
 
@@ -220,31 +173,21 @@ export async function getNearestKeyframes(
   }
 }
 
-// ====== Embed API ======
-
-export async function embedText(
-  text: string,
-  enhance?: boolean
-): Promise<{ vector: number[]; dim: number; text: string; enhanced: boolean }> {
-  const { data } = await api.post("/embed/text", { text, enhance });
-  return data;
-}
-
-export async function embedImage(
-  file: File
-): Promise<{ vector: number[]; dim: number; filename: string }> {
-  const form = new FormData();
-  form.append("image", file);
-  const { data } = await api.post("/embed/image", form);
-  return data;
-}
-
 // ====== DRES API ======
 
 export interface DresSubmitResult {
   submission?: string;
   status?: boolean;
   [key: string]: unknown;
+}
+
+/** Shared DRES verdict classification (order matters: a WRONG verdict wins,
+ * then the duplicate flag, then CORRECT). */
+export function classifyDresSubmit(data: DresSubmitResult): "correct" | "wrong" | "duplicate" | "error" {
+  if (data.submission === "WRONG") return "wrong";
+  if (data.status === false) return "duplicate";
+  if (data.submission === "CORRECT") return "correct";
+  return "error";
 }
 
 export async function submitFrameToDres(params: {

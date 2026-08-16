@@ -1,13 +1,14 @@
 from flask import Blueprint, jsonify, request
 
+from app.errors import error_response
 from app.services.dres_client import DresError, dres_client
 
 dres_bp = Blueprint("dres", __name__)
 
 
 def _err(e: DresError):
-    payload = e.body if isinstance(e.body, dict) else {"description": str(e.body)}
-    return jsonify({"error": payload, "statusCode": e.status_code}), e.status_code or 502
+    details = e.body if isinstance(e.body, dict) else {"description": str(e.body)}
+    return error_response("DRES_ERROR", "DRES request failed", e.status_code or 502, details)
 
 
 @dres_bp.route("/api/dres/session", methods=["POST"])
@@ -16,7 +17,7 @@ def login():
     username = payload.get("username")
     password = payload.get("password")
     if not username or not password:
-        return jsonify({"error": {"description": "username and password required"}}), 400
+        return error_response("VALIDATION_ERROR", "username and password required", 400)
     try:
         result = dres_client.login(username, password)
     except DresError as e:
@@ -31,7 +32,7 @@ def logout():
     payload = request.get_json(silent=True) or {}
     session_id = payload.get("sessionId")
     if not session_id:
-        return jsonify({"error": {"description": "sessionId required"}}), 400
+        return error_response("VALIDATION_ERROR", "sessionId required", 400)
     try:
         dres_client.logout(session_id)
     except DresError:
@@ -43,7 +44,7 @@ def logout():
 def evaluations():
     session_id = request.args.get("session")
     if not session_id:
-        return jsonify({"error": {"description": "session query param required"}}), 400
+        return error_response("VALIDATION_ERROR", "session query param required", 400)
     try:
         evals = dres_client.list_evaluations(session_id)
     except DresError as e:
@@ -59,7 +60,7 @@ def evaluations():
 def media_items():
     session_id = request.args.get("session")
     if not session_id:
-        return jsonify({"error": {"description": "session query param required"}}), 400
+        return error_response("VALIDATION_ERROR", "session query param required", 400)
     try:
         items = dres_client.list_media_items(session_id)
     except DresError as e:
@@ -76,22 +77,22 @@ def submit(task_type):
     frame_id = payload.get("frame_id")
     session_id = payload.get("sessionId")
     if not session_id:
-        return jsonify({"error": {"description": "sessionId required — log in first"}}), 400
+        return error_response("VALIDATION_ERROR", "sessionId required — log in first", 400)
 
     is_trake = task_type in ("track", "trake")
     frame_ids = payload.get("frame_ids") or payload.get("frameIds")
 
     if is_trake:
         if not video_path:
-            return jsonify({"error": {"description": "video_path required for TRAKE"}}), 400
+            return error_response("VALIDATION_ERROR", "video_path required for TRAKE", 400)
         if not isinstance(frame_ids, list) or len(frame_ids) == 0:
-            return jsonify({"error": {"description": "frame_ids required for TRAKE"}}), 400
+            return error_response("VALIDATION_ERROR", "frame_ids required for TRAKE", 400)
         try:
             frame_ids = [int(fid) for fid in frame_ids]
         except (TypeError, ValueError):
-            return jsonify({"error": {"description": "frame_ids must be integers"}}), 400
+            return error_response("VALIDATION_ERROR", "frame_ids must be integers", 400)
     elif not video_path or timestamp is None:
-        return jsonify({"error": {"description": "video_path and timestamp required"}}), 400
+        return error_response("VALIDATION_ERROR", "video_path and timestamp required", 400)
 
     qa_answer = ""
     if task_type == "qa":
@@ -101,7 +102,7 @@ def submit(task_type):
         else:
             qa_answer = str(raw_answer).strip()
         if not qa_answer:
-            return jsonify({"error": {"description": "answer required for QA"}}), 400
+            return error_response("VALIDATION_ERROR", "answer required for QA", 400)
 
     evaluation_id = payload.get("evaluationId")
     if not evaluation_id:
@@ -111,7 +112,7 @@ def submit(task_type):
             return _err(e)
         active = [e for e in evals if e.get("status") == "ACTIVE"]
         if not active:
-            return jsonify({"error": {"description": "no active evaluation"}}), 404
+            return error_response("NOT_FOUND", "no active evaluation", 404)
         evaluation_id = active[0]["id"]
 
     try:
