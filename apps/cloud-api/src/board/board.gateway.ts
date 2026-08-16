@@ -18,7 +18,7 @@ import type {
 type JoinPayload = { boardId: string; displayName: string };
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: { origin: true },
 })
 export class BoardGateway implements OnGatewayDisconnect {
   @WebSocketServer()

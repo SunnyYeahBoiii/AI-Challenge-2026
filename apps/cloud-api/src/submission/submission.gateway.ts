@@ -15,7 +15,7 @@ import type {
 } from "./submission.types";
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: { origin: true },
 })
 export class SubmissionGateway {
   @WebSocketServer()

@@ -92,6 +92,9 @@ Route (HTTP) → Service (Business Logic) → Database (Data Access)
 - No hardcoded secrets — use `.env` files and environment variables
 - Input validation on all external API inputs (DRES, search queries)
 - Rate limiting on search endpoints (when implemented)
+- cloud-api has no auth **by decision** (ADR 0005): it is reachable only over
+  the team tailnet. Nothing uses cookies — keep CORS credentials off. If the
+  service must ever be exposed beyond the tailnet, add auth first.
 
 ## Testing
 
