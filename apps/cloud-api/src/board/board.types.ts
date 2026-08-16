@@ -1,3 +1,5 @@
+import { IsArray, IsOptional, IsString, MaxLength } from "class-validator";
+
 export interface BoardEventSnapshot {
   id: string;
   position: number;
@@ -59,4 +61,24 @@ export interface SetSelectionInput {
   fps: number;
   candidateId?: string | null;
   updatedBy?: string;
+}
+
+export class CreateBoardInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+}
+
+export class AddBoardEventInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  labelText?: string;
+}
+
+export class ReorderBoardEventsInput {
+  @IsArray()
+  @IsString({ each: true })
+  orderedEventIds!: string[];
 }

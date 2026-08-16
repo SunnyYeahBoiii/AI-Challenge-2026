@@ -134,7 +134,7 @@ class MilvusClient:
         return [found[key] for key in ordered_keys if key in found]
 
     def get_frame_embedding(self, video_id: str, frame_index: int) -> list[float] | None:
-        expr = f'video_id == "{video_id}" and frame_index == {frame_index}'
+        expr = f"video_id == {json.dumps(str(video_id))} and frame_index == {int(frame_index)}"
         results = self.col.query(expr=expr, output_fields=["embedding"], limit=1)
         if not results:
             return None

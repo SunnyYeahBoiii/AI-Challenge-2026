@@ -1,3 +1,5 @@
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+
 export type QueryType = "kis" | "qa" | "trake";
 
 export interface QuerySnapshot {
@@ -9,13 +11,29 @@ export interface QuerySnapshot {
   updatedAt: string;
 }
 
-export interface CreateQueryInput {
-  name: string;
+export class CreateQueryInput {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8000)
   content?: string;
+
+  @IsOptional()
+  @IsIn(["kis", "qa", "trake"])
   queryType?: QueryType;
 }
 
-export interface UpdateQueryInput {
+export class UpdateQueryInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(8000)
   content?: string;
+
+  @IsOptional()
+  @IsIn(["kis", "qa", "trake"])
   queryType?: QueryType;
 }

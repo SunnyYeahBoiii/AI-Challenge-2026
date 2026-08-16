@@ -5,14 +5,16 @@ services:
       dockerfile: ./apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:5000
-        NEXT_PUBLIC_CLOUD_API_URL: http://cloud-api:5002
+        # Baked into the browser bundle — must be reachable from each user's
+        # browser (host LAN/Tailscale IP), not a docker-internal hostname.
+        NEXT_PUBLIC_CLOUD_API_URL: ${NEXT_PUBLIC_CLOUD_API_URL:-http://localhost:5002}
     ports:
       - "3000:3000"
     depends_on:
       - api
     environment:
       - API_BASE_URL=http://api:5000
-      - NEXT_PUBLIC_CLOUD_API_URL=http://cloud-api:5002
+      - NEXT_PUBLIC_CLOUD_API_URL=${NEXT_PUBLIC_CLOUD_API_URL:-http://localhost:5002}
 
   api:
     build:
@@ -36,6 +38,7 @@ services:
       - ./apps/api/weights:/app/weights:ro
       - ./data/objects:/app/data/objects:ro
       - ./data/media-info:/app/data/media-info:ro
+      - ./data/keyframes:/app/data/keyframes:ro
       - hf_cache:/root/.cache/huggingface
     develop:
       watch:
