@@ -25,11 +25,11 @@ def test_apply_box_keywords_forwards_ocr_and_asr_mode(monkeypatch):
     """box dict's ocr_match_mode/asr_match_mode must reach es_client as-is."""
     captured = {}
 
-    def fake_match(frame_keys, keywords=None, mode="and", source="all", **kwargs):
+    def fake_score(frame_keys, keywords=None, mode="and", source="all", **kwargs):
         captured.update(kwargs)
-        return set(frame_keys)
+        return dict.fromkeys(frame_keys, 0.0)
 
-    monkeypatch.setattr(hs.es_client, "match_frames_by_keywords", fake_match)
+    monkeypatch.setattr(hs.es_client, "score_frames_by_keywords", fake_score)
 
     box = {
         "ocr_keywords": ["a"],
