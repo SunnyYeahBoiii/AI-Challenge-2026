@@ -16,6 +16,7 @@ def create_app() -> Flask:
     from app.routes.dres import dres_bp
     from app.routes.admin import admin_bp
     from app.routes.submissions import submissions_bp
+    from app.routes.keyframes import keyframes_bp
 
     app.register_blueprint(search_bp)
     app.register_blueprint(videos_bp)
@@ -24,6 +25,7 @@ def create_app() -> Flask:
     app.register_blueprint(dres_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(submissions_bp)
+    app.register_blueprint(keyframes_bp)
 
     return app
 

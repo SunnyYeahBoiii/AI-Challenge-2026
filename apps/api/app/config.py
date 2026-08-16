@@ -8,6 +8,7 @@ API_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = API_DIR if (API_DIR / "data").exists() else API_DIR.parents[1]
 DEFAULT_OBJECT_DETECTIONS_PATH = (PROJECT_DIR / "data" / "objects" / "object_detections.parquet")
 WEIGHTS_DIR = API_DIR / "weights"
+DEFAULT_KEYFRAMES_DIR = PROJECT_DIR / "data" / "keyframes" / "keyframes"
 
 
 class Config:
@@ -33,3 +34,6 @@ class Config:
     MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
     MINIO_BUCKET_KEYFRAMES = os.getenv("MINIO_BUCKET_KEYFRAMES", "keyframes")
     MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos")
+
+    # Keyframes are served from local disk instead of MinIO (videos stay on MinIO).
+    KEYFRAMES_DIR = os.getenv("KEYFRAMES_DIR", str(DEFAULT_KEYFRAMES_DIR))
