@@ -14,9 +14,11 @@ from app.services.hybrid_search.common import (
     Frame,
     FrameKey,
     Vector,
+    _collapse_shots,
     _enrich_frames,
     _filter_by_keywords,
     _frame_key,
+    _fuse_scores,
     _quote,
     _sorted_unique,
     _video_expr,
@@ -77,9 +79,7 @@ def search_text(
             "topk": topk,
         })
     frames = _enrich_frames(frames)
-    for f in frames:
-        f["score"] = f.get("vector_score", 0.0)
-    frames.sort(key=lambda f: float(f["score"]), reverse=True)
+    frames = _collapse_shots(_fuse_scores(frames))
     return frames[:topk]
 
 
@@ -113,9 +113,7 @@ def search_image(
         asr_mode=asr_mode,
     )
     frames = _enrich_frames(frames)
-    for f in frames:
-        f["score"] = f.get("vector_score", 0.0)
-    frames.sort(key=lambda f: float(f["score"]), reverse=True)
+    frames = _collapse_shots(_fuse_scores(frames))
     return frames[:topk]
 
 
@@ -270,10 +268,10 @@ def _filter_only_candidates(
     if not tags and not has_keywords:
         return []
 
+    text_scores: dict[FrameKey, float] = {}
     if has_keywords:
-        raw_keys: Iterable[FrameKey] = (
-            (video_id, frame_index)
-            for video_id, frame_index, _score in es_client.iter_keyword_frame_hits(
+        def keyword_keys() -> Iterable[FrameKey]:
+            for video_id, frame_index, score in es_client.iter_keyword_frame_hits(
                 keywords=box.get("keywords"),
                 mode=box.get("key_match_mode", "and"),
                 source=box.get("keyword_source", "all"),
@@ -283,8 +281,12 @@ def _filter_only_candidates(
                 asr_mode=box.get("asr_match_mode"),
                 allowed_video_ids=sorted(allowed_video_ids) if allowed_video_ids is not None else None,
                 page_size=FILTER_FETCH_CHUNK,
-            )
-        )
+            ):
+                key = (video_id, frame_index)
+                text_scores[key] = score
+                yield key
+
+        raw_keys: Iterable[FrameKey] = keyword_keys()
     else:
         raw_keys = matching_frame_keys(
             tags,
@@ -308,7 +310,9 @@ def _filter_only_candidates(
             keys = filter_frame_keys(keys, tags, box.get("tag_match_mode", "and"))
         for frame in milvus.query_frame_keys(keys):
             frame["vector_score"] = 0.0
-            frame["score"] = 0.0
+            text_score = text_scores.get(_frame_key(frame), 0.0)
+            frame["text_score"] = text_score
+            frame["score"] = text_score
             frame["filter_only"] = True
             frame["retrieval_rank"] = len(results)
             results.append(frame)

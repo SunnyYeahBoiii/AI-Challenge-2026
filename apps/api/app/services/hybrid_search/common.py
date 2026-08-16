@@ -1,9 +1,10 @@
-"""Shared frame helpers: aliases, enrichment, and keyword filtering."""
+"""Shared frame helpers: aliases, enrichment, keyword filtering, and fusion."""
 
 import math
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from app.config import Config
 from app.services import video_meta
 from app.services.es_client import es_client
 from app.services.storage import keyframe_url, video_url
@@ -72,11 +73,16 @@ def _filter_by_keywords(
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
 ) -> list[Frame]:
-    """Drop frames whose OCR/ASR text does not match, in one ES round-trip."""
+    """Drop frames whose OCR/ASR text does not match, in one ES round-trip.
+
+    Survivors carry their BM25 relevance as `text_score`, so ranking can tell a
+    frame the keyword genuinely identifies from one where it only appears in a
+    station watermark.
+    """
     has_any = bool(ocr_keywords) or bool(asr_keywords) or bool(keywords)
     if not has_any or not frames:
         return frames
-    matched = es_client.match_frames_by_keywords(
+    scored = es_client.score_frames_by_keywords(
         [_frame_key(f) for f in frames],
         keywords=keywords,
         mode=mode,
@@ -86,7 +92,103 @@ def _filter_by_keywords(
         ocr_mode=ocr_mode,
         asr_mode=asr_mode,
     )
-    return [f for f in frames if _frame_key(f) in matched]
+    survivors: list[Frame] = []
+    for frame in frames:
+        key = _frame_key(frame)
+        if key not in scored:
+            continue
+        frame["text_score"] = scored[key]
+        survivors.append(frame)
+    return survivors
+
+
+# ── Fusion and shot collapsing ──────────────────────────────────────────────
+def _ranks(frames: Sequence[Frame], field: str) -> dict[int, int] | None:
+    """Rank frames by `field` descending, or None when no frame carries it.
+
+    Returning None matters: a source nobody scored must drop out of the fusion
+    entirely rather than contribute an identical term to every frame.
+    """
+    present = [
+        index
+        for index, frame in enumerate(frames)
+        if frame.get(field) is not None
+        # filter_only frames carry a placeholder vector_score of 0.0 for display;
+        # they were never vector-ranked and must not enter the vector fusion term.
+        and not (field == "vector_score" and frame.get("filter_only"))
+    ]
+    if not present:
+        return None
+    present.sort(key=lambda index: float(frames[index].get(field) or 0.0), reverse=True)
+    return {index: rank for rank, index in enumerate(present, start=1)}
+
+
+def _fuse_scores(frames: list[Frame]) -> list[Frame]:
+    """Score frames by Reciprocal Rank Fusion of their vector and text ranks.
+
+    RRF works on ranks, so cosine similarity and BM25 need no shared scale —
+    normalising two unbounded, differently-shaped distributions against each
+    other is what usually goes wrong here. With a single source present it
+    degenerates to that source's own ordering.
+
+    Note this fuses *within* the candidate set the vector search returned; it
+    re-ranks, it does not recall frames Milvus never surfaced.
+    """
+    vector_ranks = _ranks(frames, "vector_score")
+    text_ranks = _ranks(frames, "text_score")
+    k = Config.RRF_K
+    for index, frame in enumerate(frames):
+        score = 0.0
+        if vector_ranks is not None and index in vector_ranks:
+            score += Config.RRF_VECTOR_WEIGHT / (k + vector_ranks[index])
+        if text_ranks is not None and index in text_ranks:
+            score += Config.RRF_TEXT_WEIGHT / (k + text_ranks[index])
+        frame["score"] = score
+    frames.sort(key=lambda frame: float(frame.get("score") or 0.0), reverse=True)
+    return frames
+
+
+def _collapse_shots(frames: list[Frame]) -> list[Frame]:
+    """Keep the best frame per shot, parking the rest under `shot_siblings`.
+
+    ASR is transcribed on a rolling window, so consecutive keyframes of one shot
+    carry near-identical text — 89k adjacent pairs are byte-identical. Without
+    this, one transcript hit floods the page with the same moment over and over.
+
+    Frames are expected pre-sorted by score; siblings are kept as thumbnail-sized
+    references, not discarded, so the UI can expand a shot without a refetch and
+    without carrying a second full frame payload per sibling. Callers on the
+    TRAKE path must not use this — temporal paths need every frame of a shot to
+    build event sequences.
+    """
+    if not Config.ES_DEDUPE_BY_SHOT:
+        return frames
+    best: dict[tuple[str, int], Frame] = {}
+    collapsed: list[Frame] = []
+    for frame in frames:
+        shot_idx = frame.get("shot_idx")
+        if shot_idx is None:
+            collapsed.append(frame)
+            continue
+        key = (str(frame.get("video_id") or ""), int(shot_idx))
+        leader = best.get(key)
+        if leader is None:
+            best[key] = frame
+            frame.setdefault("shot_siblings", [])
+            collapsed.append(frame)
+            continue
+        leader["shot_siblings"].append(_sibling_ref(frame))
+    return collapsed
+
+
+def _sibling_ref(frame: Frame) -> Frame:
+    return {
+        "video_id": frame.get("video_id"),
+        "frame_index": frame.get("frame_index"),
+        "timestamp": frame.get("timestamp"),
+        "thumbnail_url": frame.get("thumbnail_url"),
+        "score": frame.get("score"),
+    }
 
 
 # ── Frame accessors ─────────────────────────────────────────────────────────
