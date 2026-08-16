@@ -19,6 +19,15 @@ class Config:
     ES_USER = os.getenv("ES_USER", "")
     ES_PASS = os.getenv("ES_PASS", "")
     ES_MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
+    # ASR keywords phrase-match: 0 keeps order and adjacency exact. Raise it only
+    # if transcript filler words start swallowing otherwise-correct phrases.
+    ES_ASR_PHRASE_SLOP = int(os.getenv("ES_ASR_PHRASE_SLOP", "0"))
+    # Reciprocal Rank Fusion: score = w / (RRF_K + rank), summed per source.
+    RRF_K = int(os.getenv("RRF_K", "60"))
+    RRF_VECTOR_WEIGHT = float(os.getenv("RRF_VECTOR_WEIGHT", "1.0"))
+    RRF_TEXT_WEIGHT = float(os.getenv("RRF_TEXT_WEIGHT", "1.0"))
+    # Collapse consecutive near-duplicate keyframes of one shot into a single hit.
+    ES_DEDUPE_BY_SHOT = os.getenv("ES_DEDUPE_BY_SHOT", "true").lower() == "true"
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     ENHANCE_TIMEOUT = float(os.getenv("ENHANCE_TIMEOUT", "5"))
     ENHANCE_MAX_WORKERS = int(os.getenv("ENHANCE_MAX_WORKERS", "8"))
