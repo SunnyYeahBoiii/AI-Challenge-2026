@@ -62,6 +62,11 @@ export function SubmissionConfirmationDialog({
     : "";
 
   const handleSubmit = async () => {
+    if (!isTrake && !Number.isInteger(Number(frameId))) {
+      setResponse(`Invalid frame id: "${frameId}"`);
+      setStatus("error");
+      return;
+    }
     if (submitMode === "cloud") {
       const selectedQuery = queries.find((q) => q.id === localQueryId);
       if (!selectedQuery) {
@@ -82,7 +87,7 @@ export function SubmissionConfirmationDialog({
       setStatus("loading");
       try {
         const queryType = submissionType === "track" ? "trake" : submissionType;
-        const frameIds = isTrake ? trakeFrameIds! : [parseInt(frameId) || 0];
+        const frameIds = isTrake ? trakeFrameIds! : [Number(frameId)];
         await createSubmission({
           queryName: selectedQuery.name,
           queryType,

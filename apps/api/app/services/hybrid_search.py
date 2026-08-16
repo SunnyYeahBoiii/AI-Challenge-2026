@@ -211,7 +211,8 @@ def search_video_frames(
             f"video_id == {_quote(video_id)}"
         )
     except Exception:
-        return []
+        logger.exception("Could not list frames for video %s", video_id)
+        raise
     frames = _enrich_frames(milvus_frames)
     try:
         texts = es_client.fetch_frame_texts(_frame_key(frame) for frame in frames)

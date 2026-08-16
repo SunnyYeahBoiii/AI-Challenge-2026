@@ -20,7 +20,7 @@ class SearchRequest(BaseModel):
     keywords: list[str] = []
     keyword_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
-    topk: int = 20
+    topk: int = Field(default=20, ge=1, le=5000)
     enhance: bool = True
 
     @model_validator(mode="after")
@@ -106,7 +106,7 @@ class MultiBoxRequest(BaseModel):
 class SimilarFramesRequest(BaseModel):
     video_id: str
     frame_index: int
-    topk: int = 12
+    topk: int = Field(default=12, ge=1, le=5000)
 
 
 class VideoIdRequest(BaseModel):

@@ -10,14 +10,11 @@ videos_bp = Blueprint("videos", __name__)
 @videos_bp.route("/api/videos")
 def list_videos() -> Any:
     q = request.args.get("q", "")
-    tags = (
-        request.args.getlist("tags")
-        or request.args.get("tags", "").split(",")
-        if request.args.get("tags")
-        else []
-    )
-    size = int(request.args.get("size", 50))
-    results = es_client.search_videos(query=q, tags=tags, size=size)
+    try:
+        size = int(request.args.get("size", 50))
+    except ValueError:
+        return jsonify({"error": "size must be an integer"}), 400
+    results = es_client.search_videos(query=q, size=size)
     return jsonify({
         "videos": [r["_source"] for r in results],
         "total": len(results),

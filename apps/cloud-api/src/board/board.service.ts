@@ -123,6 +123,20 @@ export class BoardService {
     }
   }
 
+  async renameMember(
+    boardId: string,
+    oldName: string,
+    newName: string,
+  ): Promise<BoardSnapshot> {
+    const id = this.normalizeBoardId(boardId);
+    const members = this.presence.get(id);
+    if (members) {
+      members.delete(oldName);
+      members.add(newName);
+    }
+    return this.getBoard(id);
+  }
+
   async addEvent(boardId: string, labelText = ""): Promise<BoardSnapshot> {
     const id = this.normalizeBoardId(boardId);
     await this.requireBoard(id);

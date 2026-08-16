@@ -8,7 +8,7 @@ embed_bp = Blueprint("embed", __name__)
 
 @embed_bp.route("/api/embed/text", methods=["POST"])
 def api_embed_text():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "")
     enhance = data.get("enhance", True)
     if not text:

@@ -173,7 +173,7 @@ export async function multiBoxSearch(
 // ====== Videos API ======
 
 export async function listVideos(
-  params?: { q?: string; tags?: string[]; size?: number }
+  params?: { q?: string; size?: number }
 ): Promise<{ videos: VideoResult[]; total: number }> {
   const { data } = await api.get("/videos", { params });
   return data;

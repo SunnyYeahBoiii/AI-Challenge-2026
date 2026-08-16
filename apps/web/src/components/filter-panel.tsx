@@ -28,6 +28,7 @@ interface FilterPanelProps {
 export function FilterPanel({
   onSearch,
   onClear,
+  onValidationError,
   isLoading,
   gridCols = 6,
   onGridColsChange,
@@ -133,27 +134,29 @@ export function FilterPanel({
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
       onSearch({ videoId: videoId.trim(), queries: [], mode, temporalWindowSeconds });
-    } else {
-      const enabledQueries = queries.filter(isSearchable);
-      if (enabledQueries.length > 0) {
-        onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
-      }
+      return;
     }
-  }, [videoId, queries, mode, temporalWindowSeconds, onSearch]);
+    const enabledQueries = queries.filter(isSearchable);
+    if (enabledQueries.length > 0) {
+      onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
+    } else {
+      onValidationError("Enter a Video ID or at least one enabled query with content");
+    }
+  }, [videoId, queries, mode, temporalWindowSeconds, onSearch, onValidationError]);
 
   // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (canSearch && !isLoading) {
+        if (!isLoading) {
           handleSearch();
         }
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [canSearch, isLoading, handleSearch]);
+  }, [isLoading, handleSearch]);
 
   useEffect(() => {
     if (videoId.trim().length < 2) {

@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -6,6 +7,8 @@ from pymilvus.exceptions import MilvusException
 from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import search_video_frames
 from app.services.storage import keyframe_url, video_url
+
+logger = logging.getLogger(__name__)
 
 submissions_bp = Blueprint("submissions", __name__)
 
@@ -53,6 +56,8 @@ def get_submission_keyframes() -> tuple[Any, int]:
         return jsonify({"error": "items array required"}), 400
 
     items = data["items"]
+    if not isinstance(items, list):
+        return jsonify({"error": "items must be an array"}), 400
     results: dict[str, dict[str, Any] | None] = {}
 
     for item in items:
@@ -80,6 +85,7 @@ def get_submission_keyframes() -> tuple[Any, int]:
                 "is_exact": nearest["frame_index"] == frame_index,
             }
         except Exception:
+            logger.exception("Keyframe lookup failed for %s", key)
             results[key] = None
 
     return jsonify({"keyframes": results}), 200

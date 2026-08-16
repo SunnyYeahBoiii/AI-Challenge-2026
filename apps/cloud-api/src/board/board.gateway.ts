@@ -69,6 +69,21 @@ export class BoardGateway implements OnGatewayDisconnect {
     return this.run(boardId, () => this.boards.addMember(boardId, name));
   }
 
+  @SubscribeMessage("board:rename")
+  handleRename(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { displayName: string },
+  ) {
+    const boardId = client.data.boardId as string | undefined;
+    const oldName = client.data.displayName as string | undefined;
+    if (!boardId || !oldName) return;
+    const name = (body.displayName || "anon").slice(0, 64);
+    client.data.displayName = name;
+    return this.run(boardId, () =>
+      this.boards.renameMember(boardId, oldName, name),
+    );
+  }
+
   @SubscribeMessage("event:add")
   handleEventAdd(
     @MessageBody() body: { boardId: string; labelText?: string },

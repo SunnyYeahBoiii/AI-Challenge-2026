@@ -60,7 +60,11 @@ def api_search_image():
     if "image" not in request.files:
         return jsonify({"error": "image file required"}), 400
     file = request.files["image"]
-    topk = int(request.form.get("topk", 20))
+    try:
+        topk = int(request.form.get("topk", 20))
+    except ValueError:
+        return jsonify({"error": "topk must be an integer"}), 400
+    topk = max(1, min(topk, 5000))
     tags = request.form.getlist("tags") if request.form.get("tags") else []
     keywords = request.form.getlist("keywords") if request.form.get("keywords") else []
     ocr_keywords = (

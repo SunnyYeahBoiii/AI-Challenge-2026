@@ -122,20 +122,12 @@ def submit(task_type):
             result["frameIds"] = frame_ids
             result["trakeText"] = f"TR-{video_path}-{','.join(str(f) for f in frame_ids)}"
         elif task_type == "qa":
-            time_ms = (
-                int(float(timestamp) * 1000)
-                if isinstance(timestamp, (int, float))
-                else int(timestamp)
-            )
+            time_ms = int(float(timestamp) * 1000)
             result = dres_client.submit_qa(
                 evaluation_id, qa_answer, video_path, time_ms, session_id
             )
         else:
-            time_ms = (
-                int(float(timestamp) * 1000)
-                if isinstance(timestamp, (int, float))
-                else int(timestamp)
-            )
+            time_ms = int(float(timestamp) * 1000)
             result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
     except DresError as e:
         return _err(e)

@@ -46,7 +46,6 @@ class ESClient:
     def search_videos(
         self,
         query: str | None = None,
-        tags: Sequence[str] | None = None,
         size: int = 50,
     ) -> list[dict[str, Any]]:
         must: list[dict[str, Any]] = []
