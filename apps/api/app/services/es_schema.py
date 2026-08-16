@@ -34,31 +34,10 @@ ES_MAPPING: dict[str, Any] = {
                 "analyzer": FOLDED_TEXT_ANALYZER,
                 "search_analyzer": FOLDED_TEXT_ANALYZER,
             },
-            "asr_text": {
-                "type": "text",
-                "analyzer": FOLDED_TEXT_ANALYZER,
-                "search_analyzer": FOLDED_TEXT_ANALYZER,
-            },
+            # ASR text keeps full diacritics — folding would collapse Vietnamese
+            # minimal pairs (co/cỏ/cọ) and the source text is clean, not noisy.
+            "asr_text": {"type": "text"},
             "timestamp": {"type": "float"},
         }
     },
 }
-
-
-def mismatched_mapping_fields(properties: dict[str, Any]) -> list[str]:
-    """Compare mappings while accepting ES's implicit search-analyzer default."""
-    expected = ES_MAPPING["mappings"]["properties"]
-    mismatched: list[str] = []
-    for field, definition in expected.items():
-        actual = properties.get(field, {})
-        for key in ("type", "analyzer", "search_analyzer"):
-            expected_value = definition.get(key)
-            if expected_value is None:
-                continue
-            actual_value = actual.get(key)
-            if key == "search_analyzer" and actual_value is None:
-                actual_value = actual.get("analyzer")
-            if actual_value != expected_value:
-                mismatched.append(field)
-                break
-    return mismatched

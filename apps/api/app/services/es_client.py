@@ -21,20 +21,53 @@ def _nonempty_keywords(keywords: Sequence[str]) -> list[str]:
     return [keyword for keyword in keywords if keyword.strip()]
 
 
-def _exact_phrase_field_group(
-    keywords: Sequence[str], field: str, mode: str
-) -> dict[str, Any] | None:
-    """Build an analyzed, ordered and adjacent phrase group for one field."""
-    original_keywords = _nonempty_keywords(keywords)
-    if not original_keywords:
+def _field_group(clauses: list[dict[str, Any]], mode: str) -> dict[str, Any] | None:
+    if not clauses:
         return None
-    clauses = [{"match_phrase": {field: keyword}} for keyword in original_keywords]
     return {
         "bool": {
             "should": clauses,
             "minimum_should_match": 1 if mode == "or" else len(clauses),
         }
     }
+
+
+def _asr_phrase_field_group(
+    keywords: Sequence[str], field: str, mode: str
+) -> dict[str, Any] | None:
+    """Build an analyzed, ordered and adjacent phrase group for one field.
+
+    ASR text is clean and sequential, so exact phrase matching is the right
+    fit — order and adjacency in the query reflect order and adjacency in
+    the transcript.
+    """
+    original_keywords = _nonempty_keywords(keywords)
+    clauses = [{"match_phrase": {field: keyword}} for keyword in original_keywords]
+    return _field_group(clauses, mode)
+
+
+def _ocr_fuzzy_field_group(
+    keywords: Sequence[str], field: str, mode: str
+) -> dict[str, Any] | None:
+    """Build an unordered, typo-tolerant match group for one field.
+
+    OCR text on this dataset is a scrambled bag of words (no diacritics, no
+    stable order), so `match_phrase` structurally cannot match a multi-word
+    keyword. Each keyword becomes a `match` with `operator: and` (every word
+    in the keyword must appear, any order) plus AUTO fuzziness for typo
+    tolerance. Fuzziness is skipped for all-digit keywords (timestamps,
+    codes like "063127") — edit-distance matching would just pull in
+    unrelated numbers.
+    """
+    original_keywords = _nonempty_keywords(keywords)
+    clauses: list[dict[str, Any]] = []
+    for keyword in original_keywords:
+        match_params: dict[str, Any] = {"query": keyword, "operator": "and"}
+        if not keyword.replace(" ", "").isdigit():
+            match_params["fuzziness"] = "AUTO"
+            match_params["prefix_length"] = 1
+        clauses.append({"match": {field: match_params}})
+    return _field_group(clauses, mode)
 
 
 class ESClient:
@@ -99,9 +132,11 @@ class ESClient:
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
-        OCR keywords phrase-match `ocr_text` only; ASR keywords phrase-match
-        `asr_text` only. When both groups are non-empty they are AND-ed. Within each group,
-        `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
+        OCR keywords fuzzy/unordered-match `ocr_text` only (OCR text here is a
+        scrambled, undiacritized bag of words); ASR keywords exact phrase-match
+        `asr_text` only (ASR text is clean and sequential). When both groups are
+        non-empty they are AND-ed. Within each group, `ocr_mode`/`asr_mode`
+        controls and/or, falling back to `mode` when unset.
 
         Legacy `keywords` + `source` still work when the dedicated lists are empty:
         ocr/asr map to one field; all duplicates keywords into both groups.
@@ -124,8 +159,8 @@ class ESClient:
         video_ids = sorted({vid for vid, _ in keys})
         frame_ids = sorted({idx for _, idx in keys})
         must: list[dict[str, Any]] = []
-        ocr_group = _exact_phrase_field_group(ocr, "ocr_text", ocr_mode or mode)
-        asr_group = _exact_phrase_field_group(asr, "asr_text", asr_mode or mode)
+        ocr_group = _ocr_fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode)
+        asr_group = _asr_phrase_field_group(asr, "asr_text", asr_mode or mode)
         if ocr_group:
             must.append(ocr_group)
         if asr_group:
@@ -190,8 +225,8 @@ class ESClient:
         must = [
             group
             for group in (
-                _exact_phrase_field_group(ocr, "ocr_text", ocr_mode or mode),
-                _exact_phrase_field_group(asr, "asr_text", asr_mode or mode),
+                _ocr_fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode),
+                _asr_phrase_field_group(asr, "asr_text", asr_mode or mode),
             )
             if group is not None
         ]

@@ -124,13 +124,24 @@ def test_or_mode_requires_one_keyword():
 
 
 def test_ocr_keywords_search_ocr_field_only():
+    """OCR text is a scrambled, undiacritized bag of words: match, not match_phrase."""
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
     must = _must(client)
     assert len(must) == 1
     group = must[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"ocr_text": "hd"}}
+    assert clause == {
+        "match": {"ocr_text": {"query": "hd", "operator": "and", "fuzziness": "AUTO", "prefix_length": 1}}
+    }
+
+
+def test_ocr_digit_only_keyword_skips_fuzziness():
+    """Fuzzy-matching all-digit tokens (timestamps, codes) pulls in unrelated numbers."""
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["063127"])
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert clause == {"match": {"ocr_text": {"query": "063127", "operator": "and"}}}
 
 
 def test_asr_keywords_search_asr_field_only():
@@ -143,6 +154,11 @@ def test_asr_keywords_search_asr_field_only():
     assert clause == {"match_phrase": {"asr_text": "chao"}}
 
 
+def _clause_field(clause: dict) -> str:
+    key = "match_phrase" if "match_phrase" in clause else "match"
+    return next(iter(clause[key]))
+
+
 def test_ocr_and_asr_groups_are_anded():
     client = _client([])
     client.match_frames_by_keywords(
@@ -152,10 +168,7 @@ def test_ocr_and_asr_groups_are_anded():
     )
     must = _must(client)
     assert len(must) == 2
-    fields = {
-        next(iter(group["bool"]["should"][0]["match_phrase"]))
-        for group in must
-    }
+    fields = {_clause_field(group["bool"]["should"][0]) for group in must}
     assert fields == {"ocr_text", "asr_text"}
 
 
@@ -171,8 +184,7 @@ def test_ocr_mode_and_asr_mode_are_independent():
     )
     must = _must(client)
     groups = {
-        next(iter(group["bool"]["should"][0]["match_phrase"])): group["bool"]
-        for group in must
+        _clause_field(group["bool"]["should"][0]): group["bool"] for group in must
     }
     assert groups["ocr_text"]["minimum_should_match"] == 1
     assert groups["asr_text"]["minimum_should_match"] == 2
@@ -192,7 +204,9 @@ def test_legacy_source_ocr_maps_to_ocr_field():
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
     group = _must(client)[0]
     clause = group["bool"]["should"][0]
-    assert clause == {"match_phrase": {"ocr_text": "a"}}
+    assert clause == {
+        "match": {"ocr_text": {"query": "a", "operator": "and", "fuzziness": "AUTO", "prefix_length": 1}}
+    }
 
 
 def test_legacy_source_asr_maps_to_asr_field():

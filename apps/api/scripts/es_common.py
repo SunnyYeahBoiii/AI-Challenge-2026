@@ -4,30 +4,22 @@ from __future__ import annotations
 
 import os
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
 from elasticsearch import Elasticsearch
+
+# Both callers (load_data.py, index_es.py) run as standalone scripts, so
+# apps/api must be on sys.path before app.services is importable here too.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.services.es_schema import ES_MAPPING  # noqa: E402
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "")
 ES_PASS = os.getenv("ES_PASS", "")
 ES_INDEX = "video_texts"
 ES_BATCH = 1000
-
-ES_MAPPING: dict[str, Any] = {
-    "mappings": {
-        "properties": {
-            "video_id": {"type": "keyword"},
-            "video_path": {"type": "keyword"},
-            "frame_id": {"type": "integer"},
-            "frame_idx": {"type": "integer"},
-            "frame_path": {"type": "keyword"},
-            "ocr_text": {"type": "text"},
-            "asr_text": {"type": "text"},
-            "timestamp": {"type": "float"},
-        }
-    }
-}
 
 
 def normalize_text(text: str) -> str:
