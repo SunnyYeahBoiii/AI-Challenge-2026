@@ -5,6 +5,8 @@ from typing import Any
 
 from elasticsearch import Elasticsearch
 
+from app.services.text_normalize import normalize_text
+
 logger = logging.getLogger(__name__)
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
@@ -16,18 +18,21 @@ MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
 FrameKey = tuple[Any, Any]
 
 
-def _nonempty_keywords(keywords: Sequence[str]) -> list[str]:
-    return [keyword for keyword in keywords if keyword.strip()]
+def _normalized_keywords(keywords: Sequence[str]) -> list[str]:
+    return [keyword for keyword in (normalize_text(keyword) for keyword in keywords) if keyword]
 
 
-def _exact_phrase_field_group(
+def _fuzzy_field_group(
     keywords: Sequence[str], field: str, mode: str
 ) -> dict[str, Any] | None:
-    """Build an analyzed, ordered and adjacent phrase group for one field."""
-    original_keywords = _nonempty_keywords(keywords)
-    if not original_keywords:
+    """Build a bool should-group of fuzzy matches against one text field."""
+    normalized_keywords = _normalized_keywords(keywords)
+    if not normalized_keywords:
         return None
-    clauses = [{"match_phrase": {field: keyword}} for keyword in original_keywords]
+    clauses = [
+        {"multi_match": {"query": keyword, "fields": [field], "fuzziness": "AUTO"}}
+        for keyword in normalized_keywords
+    ]
     return {
         "bool": {
             "should": clauses,
@@ -99,7 +104,7 @@ class ESClient:
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
-        OCR keywords phrase-match `ocr_text` only; ASR keywords phrase-match
+        OCR keywords fuzzy-match `ocr_text` only; ASR keywords fuzzy-match
         `asr_text` only. When both groups are non-empty they are AND-ed. Within each group,
         `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
 
@@ -124,8 +129,8 @@ class ESClient:
         video_ids = sorted({vid for vid, _ in keys})
         frame_ids = sorted({idx for _, idx in keys})
         must: list[dict[str, Any]] = []
-        ocr_group = _exact_phrase_field_group(ocr, "ocr_text", ocr_mode or mode)
-        asr_group = _exact_phrase_field_group(asr, "asr_text", asr_mode or mode)
+        ocr_group = _fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode)
+        asr_group = _fuzzy_field_group(asr, "asr_text", asr_mode or mode)
         if ocr_group:
             must.append(ocr_group)
         if asr_group:
@@ -190,8 +195,8 @@ class ESClient:
         must = [
             group
             for group in (
-                _exact_phrase_field_group(ocr, "ocr_text", ocr_mode or mode),
-                _exact_phrase_field_group(asr, "asr_text", asr_mode or mode),
+                _fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode),
+                _fuzzy_field_group(asr, "asr_text", asr_mode or mode),
             )
             if group is not None
         ]

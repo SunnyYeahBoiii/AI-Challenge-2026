@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,14 @@ def extract_ocr_text(response: dict[str, Any]) -> str:
     return "\n".join(text_parts)
 
 
+def natural_path_key(record: dict[str, str]) -> list[int | str]:
+    """Sort dataset, video, and numeric keyframe components in natural order."""
+    return [
+        int(part) if part.isdecimal() else part.casefold()
+        for part in re.split(r"(\d+)", record["image"])
+    ]
+
+
 def parse_results(input_path: Path) -> tuple[list[dict[str, str]], int]:
     """Parse Batch JSONL and return records plus the number of non-success rows."""
     records: list[dict[str, str]] = []
@@ -64,7 +73,7 @@ def parse_results(input_path: Path) -> tuple[list[dict[str, str]], int]:
                 non_success_count += 1
             records.append({"image": image_path_from_uri(image_uri), "ocr_text": ocr_text})
 
-    records.sort(key=lambda record: record["image"])
+    records.sort(key=natural_path_key)
     return records, non_success_count
 
 
