@@ -67,7 +67,7 @@ model Selection {
 
 model Query {
   id        String @id @default(uuid())
-  name      String @unique
+  name      String
   content   String @default("")
   queryType String @map("query_type") @default("kis")
   createdAt String @map("created_at")

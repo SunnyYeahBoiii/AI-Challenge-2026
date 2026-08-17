@@ -47,6 +47,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [showQueryForm, setShowQueryForm] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkQueryType, setBulkQueryType] = useState<QueryType>("kis");
   const [exporting, setExporting] = useState<string | null>(null);
   const [keyframes, setKeyframes] = useState<Record<string, KeyframeInfo | null>>({});
   const [videoDialog, setVideoDialog] = useState<{
@@ -137,6 +138,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
     if (!files || files.length === 0) return;
 
     setBulkLoading(true);
+    const failed: string[] = [];
     try {
       for (const file of Array.from(files)) {
         if (!file.name.endsWith(".txt")) continue;
@@ -144,20 +146,26 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
         const content = await file.text();
         const name = file.name.replace(".txt", "");
 
-        let queryType: QueryType = "kis";
+        let queryType: QueryType = bulkQueryType;
         if (name.includes("-qa")) queryType = "qa";
         else if (name.includes("-trake")) queryType = "trake";
         else if (name.includes("-kis")) queryType = "kis";
 
-        await createQuery({
-          name,
-          content: content.trim(),
-          queryType,
-        });
+        try {
+          await createQuery({
+            name,
+            content: content.trim(),
+            queryType,
+          });
+        } catch (err) {
+          console.error(`Failed to create query "${name}":`, err);
+          failed.push(name);
+        }
       }
       await fetchQueries();
-    } catch (err) {
-      console.error("Failed to bulk load queries:", err);
+      if (failed.length) {
+        alert(`Failed: ${failed.join(", ")}`);
+      }
     } finally {
       setBulkLoading(false);
     }
@@ -247,6 +255,17 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
           <h1 className="text-headline-sm font-bold">Submissions</h1>
         </div>
         <div className="flex gap-2">
+          <select
+            className="rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-label-md"
+            value={bulkQueryType}
+            onChange={(e) => setBulkQueryType(e.target.value as QueryType)}
+            disabled={bulkLoading}
+            title="Default type for bulk-loaded files without a -kis/-qa/-trake suffix"
+          >
+            <option value="kis">KIS</option>
+            <option value="qa">Q&A</option>
+            <option value="trake">TRAKE</option>
+          </select>
           <label className="flex items-center gap-2 px-4 py-2 rounded border border-outline-variant text-label-md cursor-pointer hover:bg-surface-container-low transition-colors">
             <Icon name="upload_file" size={18} />
             {bulkLoading ? "Loading..." : "Bulk Load"}

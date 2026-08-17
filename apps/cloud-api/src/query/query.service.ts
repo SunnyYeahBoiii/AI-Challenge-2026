@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { v4 as uuid } from "uuid";
 import { PrismaService } from "../database/prisma.service";
 import type {
@@ -25,17 +25,12 @@ export class QueryService {
   }
 
   async getQueryByName(name: string): Promise<QuerySnapshot> {
-    const row = await this.prisma.query.findUnique({ where: { name } });
+    const row = await this.prisma.query.findFirst({ where: { name } });
     if (!row) throw new NotFoundException("Query not found");
     return this.toSnapshot(row);
   }
 
   async createQuery(input: CreateQueryInput): Promise<QuerySnapshot> {
-    const existing = await this.prisma.query.findUnique({
-      where: { name: input.name },
-    });
-    if (existing) throw new ConflictException("Query name already exists");
-
     const now = new Date().toISOString();
     const row = await this.prisma.query.create({
       data: {
