@@ -11,7 +11,6 @@ import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
 import { SubmissionsDashboard } from "@/components/submissions-dashboard";
 import type { FrameResult } from "@/lib/api";
-import { healthCheck } from "@/lib/api";
 import { useDresSession } from "@/hooks/use-dres-session";
 import { useSessionStorageState } from "@/hooks/use-session-storage";
 import { useTemporalSearch } from "@/hooks/use-temporal-search";
@@ -34,7 +33,6 @@ export default function Home() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
-  const [healthStatus, setHealthStatus] = useState<string>("loading");
   const [queries, setQueries] = useState<Query[]>([]);
   const [submissionType, setSubmissionType] = useSessionStorageState<SubmissionType>(
     "submissionType",
@@ -56,11 +54,6 @@ export default function Home() {
 
   const trake = useTrakeBoard(submissionType === "track");
 
-  useEffect(() => {
-    healthCheck()
-      .then((h) => setHealthStatus(h.status))
-      .catch(() => setHealthStatus("error"));
-  }, []);
 
   // Tasks can be added from the dashboard; refresh the topbar dropdown each
   // time the search view becomes active again.
@@ -140,12 +133,12 @@ export default function Home() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top Bar */}
-        <header className="bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center px-container-padding w-full h-topbar-height shrink-0 z-20">
-          <div className="flex items-center gap-6">
-            <span className="text-headline-sm font-bold text-on-surface tracking-tight">
+        <header className="bg-surface-container-lowest border-b border-outline-variant flex items-center gap-4 px-container-padding w-full h-topbar-height shrink-0 z-20 overflow-x-auto">
+          <div className="flex items-center gap-6 shrink-0 whitespace-nowrap">
+            <span className="text-headline-sm font-bold text-on-surface tracking-tight shrink-0">
               Frame Seeker
             </span>
-            <div className="h-6 w-px bg-outline-variant hidden md:block" />
+            <div className="h-6 w-px bg-outline-variant hidden md:block shrink-0" />
 
             {/* View Mode Toggle */}
             {searchResult.total_valid_frames > 0 && (
@@ -234,7 +227,7 @@ export default function Home() {
 
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 whitespace-nowrap ml-auto">
             {submitMode === "dres" && (
               <>
                 {dres.sessionId && dres.username ? (
@@ -245,9 +238,6 @@ export default function Home() {
                     >
                       <Icon name="groups" size={18} />
                       {dres.username}
-                      {dres.evaluationId && (
-                        <span className="text-on-surface-variant/70">· {dres.evaluationId}</span>
-                      )}
                     </span>
                     <button
                       onClick={() => setShowDresSettings(true)}
@@ -283,23 +273,15 @@ export default function Home() {
               <Icon name="model_training" size={18} />
               Model Settings
             </button>
-            <button
-              onClick={() => setView("submissions")}
-              className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-            >
-              <Icon name="list_alt" size={18} />
-              Submissions
-            </button>
-            <div className="flex items-center gap-1.5 ml-2">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  healthStatus === "healthy" ? "bg-green-500" : healthStatus === "degraded" ? "bg-yellow-500" : "bg-gray-400"
-                }`}
-              />
-              <span className="text-label-sm text-on-surface-variant">
-                {healthStatus === "healthy" ? "API OK" : healthStatus === "degraded" ? "Degraded" : "..."}
-              </span>
-            </div>
+            {submitMode === "cloud" && (
+              <button
+                onClick={() => setView("submissions")}
+                className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+              >
+                <Icon name="list_alt" size={18} />
+                Submissions
+              </button>
+            )}
           </div>
         </header>
 
