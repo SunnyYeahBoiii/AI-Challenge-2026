@@ -1,13 +1,14 @@
 import logging
-import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from app.config import Config
+
 logger = logging.getLogger(__name__)
 
-ENHANCE_TIMEOUT = float(os.getenv("ENHANCE_TIMEOUT", "5"))
-ENHANCE_MAX_WORKERS = int(os.getenv("ENHANCE_MAX_WORKERS", "8"))
+ENHANCE_TIMEOUT = Config.ENHANCE_TIMEOUT
+ENHANCE_MAX_WORKERS = Config.ENHANCE_MAX_WORKERS
 ENHANCE_CACHE_SIZE = 512
 
 _client = None
@@ -18,7 +19,7 @@ _enhance_cache_lock = threading.Lock()
 
 def _get_openai_client() -> Any | None:
     global _client
-    api_key = os.getenv("OPENAI_API_KEY", "")
+    api_key = Config.OPENAI_API_KEY
     if not api_key:
         return None
     if _client is None:

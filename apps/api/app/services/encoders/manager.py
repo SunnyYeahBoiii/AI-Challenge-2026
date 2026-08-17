@@ -164,7 +164,3 @@ def active_collection_name() -> str:
     _require_active()
     assert _collection_name is not None
     return _collection_name
-
-
-def active_embedding_dim() -> int:
-    return _require_active().embedding_dim

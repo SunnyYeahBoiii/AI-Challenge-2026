@@ -7,7 +7,7 @@ AI-Challenge-2026/
 ├── apps/
 │   ├── web/          # Next.js 16 frontend (port 3000)
 │   ├── api/          # Flask backend (port 5001)
-│   └── trake-colab/  # NestJS TRAKE collab + Prisma/SQLite (port 5002)
+│   └── cloud-api/    # NestJS TRAKE collab + submissions, Prisma/SQLite (port 5002)
 ├── docs/
 │   ├── CONTEXT.md    # Domain glossary
 │   ├── adr/          # Architecture Decision Records
@@ -41,7 +41,7 @@ Single resource:
 
 ## Error Response Format
 
-Consistent error envelope:
+Consistent error envelope (apps/api — implemented in `app/errors.py`):
 
 ```json
 {
@@ -55,6 +55,11 @@ Consistent error envelope:
   }
 }
 ```
+
+Exception: apps/cloud-api returns NestJS-default errors and bare resource
+shapes (`{boards: [...]}`) over both HTTP and Socket.IO — the web client and
+board consumers depend on those shapes. Changing them is a coordinated
+client+server migration, not a drive-by.
 
 ## Separation of Concerns
 
@@ -87,6 +92,9 @@ Route (HTTP) → Service (Business Logic) → Database (Data Access)
 - No hardcoded secrets — use `.env` files and environment variables
 - Input validation on all external API inputs (DRES, search queries)
 - Rate limiting on search endpoints (when implemented)
+- cloud-api has no auth **by decision** (ADR 0005): it is reachable only over
+  the team tailnet. Nothing uses cookies — keep CORS credentials off. If the
+  service must ever be exposed beyond the tailnet, add auth first.
 
 ## Testing
 

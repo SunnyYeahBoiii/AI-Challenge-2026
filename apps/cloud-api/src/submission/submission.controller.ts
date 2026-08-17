@@ -10,7 +10,7 @@ import {
   Res,
 } from "@nestjs/common";
 import { Response } from "express";
-import { SubmissionService } from "./submission.service";
+import { SubmissionService, sanitizeFileToken } from "./submission.service";
 import type {
   CreateSubmissionInput,
   UpdateSubmissionInput,
@@ -31,10 +31,11 @@ export class SubmissionController {
     @Res() res: Response,
   ) {
     const csv = await this.submissions.exportCsv(queryName);
+    const fileToken = sanitizeFileToken(queryName ?? "submissions-all");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${queryName ?? "submissions-all"}.csv"`,
+      `attachment; filename="${fileToken}.csv"`,
     );
     res.send(csv);
   }

@@ -256,7 +256,14 @@ export function FrameDetailDialog({
                   const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
                   const isNearEdge = pos <= 1 || pos >= frames.length - 2;
                   if (isNearEdge) {
-                    setFetchFrameIndex(closest.frame_index);
+                    // A big seek (e.g. dragging the native scrubber far away) lands `closest`
+                    // on the stale window's edge, which is still nowhere near `t`. Re-fetching
+                    // around that edge frame would only nudge the window one step closer per
+                    // tick, crawling toward the target over several fetches. Estimate the real
+                    // frame at `t` via fps and jump the fetch window straight there instead.
+                    const estimated = computeFrameId(t, closest.fps);
+                    const isFarJump = Math.abs(estimated - closest.frame_index) > frames.length;
+                    setFetchFrameIndex(isFarJump ? estimated : closest.frame_index);
                   }
                 }}
                 onReady={() => {}}

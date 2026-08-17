@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { FilterPanel, type SearchFilter } from "@/components/filter-panel";
+import { useState, useCallback, useEffect } from "react";
+import { FilterPanel } from "@/components/filter-panel";
 import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
@@ -10,113 +10,44 @@ import { SubmissionConfirmationDialog } from "@/components/submission-confirmati
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
 import { SubmissionsDashboard } from "@/components/submissions-dashboard";
-import type { FrameResult, TemporalSearchResponse, TemporalVideoResult } from "@/lib/api";
-import { multiBoxSearch, searchVideoFrames, healthCheck } from "@/lib/api";
+import type { FrameResult } from "@/lib/api";
+import { healthCheck } from "@/lib/api";
+import { useDresSession } from "@/hooks/use-dres-session";
+import { useSessionStorageState } from "@/hooks/use-session-storage";
+import { useTemporalSearch } from "@/hooks/use-temporal-search";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
+import type { FrameToTrake } from "@/lib/trake-types";
 import { listQueries, type Query } from "@/lib/submissions";
 
-function emptySearchResult(mode: "parallel" | "sequential" = "parallel"): TemporalSearchResponse {
-  return { mode, videos: [], total_videos: 0, total_valid_frames: 0 };
-}
-
-function videoFramesResponse(
-  frames: FrameResult[],
-  mode: "parallel" | "sequential"
-): TemporalSearchResponse {
-  const grouped = new Map<string, FrameResult[]>();
-  frames.forEach((frame) => {
-    const current = grouped.get(frame.video_id) ?? [];
-    const score = Number.isFinite(frame.score) ? frame.score : 0;
-    current.push({
-      ...frame,
-      score,
-      matches: [{ query_index: 0, similarity: score }],
-    });
-    grouped.set(frame.video_id, current);
-  });
-  const videos: TemporalVideoResult[] = Array.from(grouped.entries()).map(([videoId, results]) => {
-    const validFrames = [...results].sort((left, right) => left.frame_idx - right.frame_idx);
-    const best = [...validFrames].sort(
-      (left, right) => right.score - left.score || left.frame_idx - right.frame_idx
-    )[0];
-    return {
-      video_id: videoId,
-      video_score: best?.score ?? 0,
-      has_vector_score: false,
-      valid_frames: validFrames,
-      best_sequence: {
-        sequence_id: `${videoId}:${best?.frame_index ?? 0}`,
-        sequence_score: best?.score ?? 0,
-        total_span_seconds: 0,
-        frames: best ? [{ ...best, query_index: 0, similarity: best.score }] : [],
-      },
-    };
-  });
-  videos.sort((left, right) => right.video_score - left.video_score);
-  return {
-    mode,
-    videos,
-    total_videos: videos.length,
-    total_valid_frames: videos.reduce((total, video) => total + video.valid_frames.length, 0),
-  };
-}
+type SubmissionType = "track" | "qa" | "kis";
+type SubmitMode = "dres" | "cloud";
+type View = "search" | "submissions";
 
 export default function Home() {
-  const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(() => {
-    if (typeof window === "undefined") return emptySearchResult();
-    const saved = sessionStorage.getItem("searchResult");
-    if (saved) {
-      try {
-        return JSON.parse(saved) as TemporalSearchResponse;
-      } catch {
-        // ignore
-      }
-    }
-    return emptySearchResult();
-  });
-  const [queryCount, setQueryCount] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    const saved = sessionStorage.getItem("queryCount");
-    return saved ? Number(saved) : 0;
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return sessionStorage.getItem("hasSearched") === "true";
-  });
+  const { searchResult, queryCount, hasSearched, isLoading, searchError, setSearchError, handleSearch, clearSearch } =
+    useTemporalSearch();
+  const dres = useDresSession();
+
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [dresSessionId, setDresSessionId] = useState<string | null>(null);
-  const [dresUsername, setDresUsername] = useState<string | null>(null);
-  const [dresEvaluationId, setDresEvaluationId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
   const [healthStatus, setHealthStatus] = useState<string>("loading");
-  const [submitMode, setSubmitMode] = useState<"dres" | "cloud">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("submitMode") as "dres" | "cloud") || "dres")
-      : "dres"
-  );
   const [queries, setQueries] = useState<Query[]>([]);
-  const [selectedQueryId, setSelectedQueryId] = useState<string | null>(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem("selectedQueryId") : null
+  const [submissionType, setSubmissionType] = useSessionStorageState<SubmissionType>(
+    "submissionType",
+    "kis",
   );
-  const [view, setView] = useState<"search" | "submissions">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("view") as "search" | "submissions") || "search")
-      : "search"
+  const [submitMode, setSubmitMode] = useSessionStorageState<SubmitMode>("submitMode", "dres");
+  const [selectedQueryId, setSelectedQueryId] = useSessionStorageState<string | null>(
+    "selectedQueryId",
+    null,
   );
-  const searchIdRef = useRef(0);
+  const [view, setView] = useSessionStorageState<View>("view", "search");
 
   // Submission state
-  const [submissionType, setSubmissionType] = useState<"track" | "qa" | "kis">(() =>
-    typeof window !== "undefined"
-      ? ((sessionStorage.getItem("submissionType") as "track" | "qa" | "kis") || "kis")
-      : "kis"
-  );
   const [frameId, setFrameId] = useState("");
   const [videoId, setVideoId] = useState("");
   const [timeSec, setTimeSec] = useState("");
@@ -125,17 +56,22 @@ export default function Home() {
 
   const trake = useTrakeBoard(submissionType === "track");
 
+  useEffect(() => {
+    healthCheck()
+      .then((h) => setHealthStatus(h.status))
+      .catch(() => setHealthStatus("error"));
+  }, []);
+
+  // Tasks can be added from the dashboard; refresh the topbar dropdown each
+  // time the search view becomes active again.
+  useEffect(() => {
+    if (view === "search") {
+      listQueries().then(setQueries).catch(() => {});
+    }
+  }, [view]);
+
   const addFrameToEvent = useCallback(
-    (
-      eventId: string,
-      frame: {
-        video_id: string;
-        timestamp: number;
-        frame_idx: number;
-        fps: number;
-        thumbnail_url: string;
-      },
-    ) => {
+    (eventId: string, frame: FrameToTrake) => {
       if (!eventId) {
         setSearchError("Select or add an Event on the TRAKE board first.");
         return;
@@ -151,163 +87,24 @@ export default function Home() {
         thumbnailUrl: frame.thumbnail_url,
       });
     },
-    [trake.setFocusedEventId, trake.addCandidate],
+    [trake.setFocusedEventId, trake.addCandidate, setSearchError],
   );
 
   const addFrameToFocusedEvent = useCallback(
-    (frame: {
-      video_id: string;
-      timestamp: number;
-      frame_idx: number;
-      fps: number;
-      thumbnail_url: string;
-    }) => {
+    (frame: FrameToTrake) => {
       addFrameToEvent(trake.focusedEventId ?? "", frame);
     },
     [addFrameToEvent, trake.focusedEventId],
   );
 
-  useEffect(() => {
-    healthCheck()
-      .then((h) => setHealthStatus(h.status))
-      .catch(() => setHealthStatus("error"));
-  }, []);
-
-  useEffect(() => {
-    setDresSessionId(sessionStorage.getItem("dresSessionId"));
-    setDresUsername(sessionStorage.getItem("dresUsername"));
-    setDresEvaluationId(sessionStorage.getItem("dresEvaluationId"));
-    listQueries().then(setQueries).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    sessionStorage.setItem("submitMode", submitMode);
-  }, [submitMode]);
-
-  useEffect(() => {
-    if (selectedQueryId) {
-      sessionStorage.setItem("selectedQueryId", selectedQueryId);
-    } else {
-      sessionStorage.removeItem("selectedQueryId");
-    }
-  }, [selectedQueryId]);
-
-  useEffect(() => {
-    sessionStorage.setItem("submissionType", submissionType);
-  }, [submissionType]);
-
-  useEffect(() => {
-    sessionStorage.setItem("view", view);
-  }, [view]);
-
-  useEffect(() => {
-    sessionStorage.setItem("searchResult", JSON.stringify(searchResult));
-  }, [searchResult]);
-
-  useEffect(() => {
-    sessionStorage.setItem("queryCount", String(queryCount));
-  }, [queryCount]);
-
-  useEffect(() => {
-    sessionStorage.setItem("hasSearched", String(hasSearched));
-  }, [hasSearched]);
-
-  const handleDresLogin = useCallback((sessionId: string, username: string) => {
-    sessionStorage.setItem("dresSessionId", sessionId);
-    sessionStorage.setItem("dresUsername", username);
-    setDresSessionId(sessionId);
-    setDresUsername(username);
-  }, []);
-
-  const handleDresEvaluationSelect = useCallback((evaluationId: string) => {
-    sessionStorage.setItem("dresEvaluationId", evaluationId);
-    setDresEvaluationId(evaluationId);
-  }, []);
-
-  const handleDresLogout = useCallback(() => {
-    const sessionId = dresSessionId;
-    sessionStorage.removeItem("dresSessionId");
-    sessionStorage.removeItem("dresUsername");
-    sessionStorage.removeItem("dresEvaluationId");
-    setDresSessionId(null);
-    setDresUsername(null);
-    setDresEvaluationId(null);
-    if (sessionId) {
-      fetch("/api/dres/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      }).catch(() => {});
-    }
-  }, [dresSessionId]);
-
-  const handleSearch = useCallback(async (newFilter: SearchFilter) => {
-    const currentSearchId = ++searchIdRef.current;
-    setIsLoading(true);
-    setSearchError(null);
-    setHasSearched(true);
-    try {
-      if (newFilter.videoId) {
-        const data = await searchVideoFrames(newFilter.videoId);
-        if (currentSearchId !== searchIdRef.current) return;
-        setSearchResult(videoFramesResponse(data.results, newFilter.mode));
-        setQueryCount(1);
-      } else {
-        const enabledQueries = newFilter.queries.filter(
-          (q) => q.enabled && Boolean(
-            q.content.trim() || q.tags?.length || q.ocrKeywords?.length || q.asrKeywords?.length
-          )
-        );
-        const boxQueries = enabledQueries.map((q) => ({
-          text: q.type === "text" ? q.content : undefined,
-          image: q.type === "image" ? q.content : undefined,
-          tags: q.tags?.length ? q.tags : undefined,
-          tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
-          ocr_keywords: q.ocrKeywords?.length ? q.ocrKeywords : undefined,
-          asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
-          ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
-          asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
-          topk: q.topK ?? 1000,
-          enhance: q.enhance ?? true,
-        }));
-        const data = await multiBoxSearch({
-          box_queries: boxQueries,
-          mode: newFilter.mode,
-          temporal_window_seconds: newFilter.temporalWindowSeconds,
-        });
-        if (currentSearchId !== searchIdRef.current) return;
-        setSearchResult(data);
-        setQueryCount(enabledQueries.length);
-      }
-    } catch (error) {
-      if (currentSearchId !== searchIdRef.current) return;
-      console.error("Search failed:", error);
-      setSearchError(error instanceof Error ? error.message : "Search failed. Check the API connection and try again.");
-      setSearchResult(emptySearchResult(newFilter.mode));
-      setQueryCount(0);
-    } finally {
-      if (currentSearchId === searchIdRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
   const handleClear = useCallback(() => {
-    searchIdRef.current += 1;
-    setSearchResult(emptySearchResult());
-    setQueryCount(0);
-    setSearchError(null);
+    clearSearch();
     setSelectedFrame(null);
     setFrameId("");
     setVideoId("");
     setTimeSec("");
     setQaAnswer("");
-    setHasSearched(false);
-    setIsLoading(false);
-    sessionStorage.removeItem("searchResult");
-    sessionStorage.removeItem("queryCount");
-    sessionStorage.removeItem("hasSearched");
-  }, []);
+  }, [clearSearch]);
 
   const handleFrameSelect = useCallback((frame: FrameResult) => {
     setFrameId(String(frame.frame_idx));
@@ -440,16 +237,16 @@ export default function Home() {
           <div className="flex items-center gap-3">
             {submitMode === "dres" && (
               <>
-                {dresSessionId && dresUsername ? (
+                {dres.sessionId && dres.username ? (
                   <div className="flex items-center gap-1.5">
                     <span
                       title="Logged in to DRES"
                       className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
                     >
                       <Icon name="groups" size={18} />
-                      {dresUsername}
-                      {dresEvaluationId && (
-                        <span className="text-on-surface-variant/70">· {dresEvaluationId}</span>
+                      {dres.username}
+                      {dres.evaluationId && (
+                        <span className="text-on-surface-variant/70">· {dres.evaluationId}</span>
                       )}
                     </span>
                     <button
@@ -460,7 +257,7 @@ export default function Home() {
                       <Icon name="tune" size={18} />
                     </button>
                     <button
-                      onClick={handleDresLogout}
+                      onClick={dres.logout}
                       title="Log out of DRES"
                       className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
                     >
@@ -533,8 +330,8 @@ export default function Home() {
           onFrameDetail={handleFrameDetail}
           isLoading={isLoading}
           submissionType={submissionType}
-          dresSessionId={dresSessionId}
-          dresEvaluationId={dresEvaluationId}
+          dresSessionId={dres.sessionId}
+          dresEvaluationId={dres.evaluationId}
           gridCols={gridCols}
           hasSearched={hasSearched}
           trakeFocusedLabel={trake.focusedEvent?.displayLabel}
@@ -609,12 +406,12 @@ export default function Home() {
 
       {showDresSettings && (
         <DresSettingsDialog
-          sessionId={dresSessionId}
-          username={dresUsername}
-          evaluationId={dresEvaluationId}
+          sessionId={dres.sessionId}
+          username={dres.username}
+          evaluationId={dres.evaluationId}
           onClose={() => setShowDresSettings(false)}
-          onLoginSuccess={handleDresLogin}
-          onEvaluationSelect={handleDresEvaluationSelect}
+          onLoginSuccess={dres.login}
+          onEvaluationSelect={dres.selectEvaluation}
         />
       )}
 
@@ -628,8 +425,8 @@ export default function Home() {
           videoId={videoId.trim()}
           timestamp={Number.parseFloat(timeSec) || 0}
           submissionType={submissionType}
-          sessionId={dresSessionId}
-          evaluationId={dresEvaluationId}
+          sessionId={dres.sessionId}
+          evaluationId={dres.evaluationId}
           answer={qaAnswer}
           trakeFrameIds={trakeFrameIds ?? undefined}
           submitMode={submitMode}

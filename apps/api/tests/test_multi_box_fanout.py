@@ -11,6 +11,7 @@ import pytest
 
 from app.services import hybrid_search as hs
 from app.services.encoders import manager
+from app.services.hybrid_search import retrieval
 
 
 def _hit(video_id: str, frame_index: int, timestamp: float, score: float) -> hs.Frame:
@@ -65,12 +66,12 @@ def stub(monkeypatch):
     monkeypatch.setattr(manager, "embed_text", fake_embed_text)
     monkeypatch.setattr(manager, "embed_images", fake_embed_images)
     monkeypatch.setattr(manager, "active_collection_name", lambda: "fake_collection")
-    monkeypatch.setattr(hs, "enhance_queries", lambda queries: [query.upper() for query in queries])
-    monkeypatch.setattr(hs, "get_milvus_client", lambda collection_name: fake)
-    monkeypatch.setattr(hs, "filter_frames", lambda frames, *args, **kwargs: frames)
-    monkeypatch.setattr(hs, "_filter_by_keywords", lambda frames, *args, **kwargs: frames)
-    monkeypatch.setattr(hs, "matching_frame_keys", lambda *args, **kwargs: [("V1", 2), ("V2", 4)])
-    monkeypatch.setattr(hs, "filter_frame_keys", lambda keys, *args, **kwargs: list(keys))
+    monkeypatch.setattr(retrieval, "enhance_queries", lambda queries: [query.upper() for query in queries])
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda collection_name: fake)
+    monkeypatch.setattr(retrieval, "filter_frames", lambda frames, *args, **kwargs: frames)
+    monkeypatch.setattr(retrieval, "_filter_by_keywords", lambda frames, *args, **kwargs: frames)
+    monkeypatch.setattr(retrieval, "matching_frame_keys", lambda *args, **kwargs: [("V1", 2), ("V2", 4)])
+    monkeypatch.setattr(retrieval, "filter_frame_keys", lambda keys, *args, **kwargs: list(keys))
     return fake, embed_calls
 
 
@@ -89,7 +90,7 @@ def test_enhance_respects_per_box_override(monkeypatch, stub):
         seen["queries"] = list(queries)
         return [query.upper() for query in queries]
 
-    monkeypatch.setattr(hs, "enhance_queries", fake_enhance)
+    monkeypatch.setattr(retrieval, "enhance_queries", fake_enhance)
     boxes = [{"text": "a", "enhance": True}, {"text": "b", "enhance": False}, {"text": "c"}]
     hs._box_vectors(boxes, enhance_default=True)
     assert seen["queries"] == ["a", "c"]
@@ -187,7 +188,7 @@ def test_filter_only_continues_after_missing_milvus_keys(monkeypatch, stub):
             ]
 
     fake = MissingFirstMilvus()
-    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: fake)
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda _name: fake)
     monkeypatch.setattr(
         hs.es_client,
         "iter_keyword_frame_hits",
@@ -205,7 +206,7 @@ def test_combined_filter_keeps_es_order_after_polars_intersection(monkeypatch, s
         lambda **kwargs: iter([("V1", 1, 5.0), ("V1", 2, 4.0), ("V1", 3, 3.0)]),
     )
     monkeypatch.setattr(
-        hs,
+        retrieval,
         "filter_frame_keys",
         lambda keys, *args, **kwargs: [key for key in keys if key[1] != 2],
     )
@@ -225,7 +226,7 @@ def test_sequential_filter_only_restricts_before_topk(monkeypatch, stub):
         seen.append(allowed_video_ids)
         return [_hit("V1", 3, 3.0, 0.0)]
 
-    monkeypatch.setattr(hs, "_filter_only_candidates", fake_filter_only)
+    monkeypatch.setattr(retrieval, "_filter_only_candidates", fake_filter_only)
     boxes = [{"text": "first", "topk": 1}, {"tags": ["person"], "topk": 1}]
     hs._sequential_retrieve(boxes, [[1.0] * 4, None], window=90.0)
     assert seen == [{"V1"}]
@@ -239,7 +240,7 @@ def test_parallel_truncates_before_post_filters(monkeypatch, stub):
         lengths_seen.append(len(frames))
         return frames
 
-    monkeypatch.setattr(hs, "filter_frames", record_filter)
+    monkeypatch.setattr(retrieval, "filter_frames", record_filter)
     boxes = [{"text": "a", "topk": 10}, {"text": "b", "topk": 20}]
     hs._parallel_retrieve(boxes, [[1.0] * 4, [2.0] * 4])
     assert lengths_seen == [10, 20]

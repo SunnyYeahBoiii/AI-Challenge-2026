@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
-import { submitFrameToDres } from "@/lib/api";
+import { classifyDresSubmit, submitFrameToDres } from "@/lib/api";
 import type { FrameResult, TemporalSearchResponse } from "@/lib/api";
 import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
@@ -96,14 +96,7 @@ export function ResultsPanel({
         sessionId: dresSessionId,
         evaluationId: dresEvaluationId,
       });
-      const status: QuickSubmitStatus =
-        data.submission === "WRONG"
-          ? "wrong"
-          : data.status === false
-          ? "duplicate"
-          : data.submission === "CORRECT"
-          ? "correct"
-          : "error";
+      const status = classifyDresSubmit(data);
       setQuickSubmit((s) => ({ ...s, [key]: { status } }));
     } catch (err) {
       const message = isAxiosError(err)

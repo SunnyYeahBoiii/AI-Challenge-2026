@@ -1,8 +1,11 @@
-"""Public URL builders for keyframes/videos hosted on MinIO (path-style S3 addressing).
+"""URL builders for keyframes (local disk) and videos (MinIO, path-style S3 addressing).
 
-Read paths never touch the MinIO SDK — plain string formatting only. The browser
-talks to MinIO/Cloudflare directly (Range/206 + CORS already work there), so
-playback is not bottlenecked by Flask's single-threaded proxy.
+Video read paths never touch the MinIO SDK — plain string formatting only. The
+browser talks to MinIO/Cloudflare directly (Range/206 + CORS already work
+there), so playback is not bottlenecked by Flask's single-threaded proxy.
+
+Keyframes are served from local disk via the /api/keyframes/... route (see
+app.routes.keyframes) instead, since the full keyframe set lives on-machine.
 """
 
 from app.config import Config
@@ -15,7 +18,7 @@ def _base_url() -> str:
 
 def keyframe_url(video_id: str, frame_index: int) -> str:
     level = video_id[:3]
-    return f"{_base_url()}/{Config.MINIO_BUCKET_KEYFRAMES}/{level}/{video_id}/{frame_index}.webp"
+    return f"/api/keyframes/{level}/{video_id}/{frame_index}.webp"
 
 
 def video_url(video_id: str) -> str:

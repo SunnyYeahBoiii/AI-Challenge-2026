@@ -6,6 +6,7 @@ Nothing here touches Milvus, Elasticsearch or CLIP.
 import pytest
 
 from app.services import hybrid_search as hs
+from app.services.hybrid_search import retrieval
 
 
 def frame(video_id, frame_index, timestamp=0.0, score=0.0):
@@ -187,7 +188,7 @@ def test_video_frame_window_gets_original_ocr_asr_text(monkeypatch):
             return [frame("V1", 7)]
 
     monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
-    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda _name: FakeMilvus())
     monkeypatch.setattr(
         hs.es_client,
         "fetch_frame_texts",
@@ -204,7 +205,7 @@ def test_video_frame_window_survives_elasticsearch_failure(monkeypatch):
             return [frame("V1", 7)]
 
     monkeypatch.setattr(hs.manager, "active_collection_name", lambda: "frames")
-    monkeypatch.setattr(hs, "get_milvus_client", lambda _name: FakeMilvus())
+    monkeypatch.setattr(retrieval, "get_milvus_client", lambda _name: FakeMilvus())
 
     def fail(_keys):
         raise RuntimeError("ES unavailable")

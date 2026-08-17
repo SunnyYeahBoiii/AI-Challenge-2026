@@ -18,7 +18,7 @@ import type {
 type JoinPayload = { boardId: string; displayName: string };
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: { origin: true },
 })
 export class BoardGateway implements OnGatewayDisconnect {
   @WebSocketServer()
@@ -67,6 +67,21 @@ export class BoardGateway implements OnGatewayDisconnect {
     client.data.boardId = boardId;
     client.data.displayName = name;
     return this.run(boardId, () => this.boards.addMember(boardId, name));
+  }
+
+  @SubscribeMessage("board:rename")
+  handleRename(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { displayName: string },
+  ) {
+    const boardId = client.data.boardId as string | undefined;
+    const oldName = client.data.displayName as string | undefined;
+    if (!boardId || !oldName) return;
+    const name = (body.displayName || "anon").slice(0, 64);
+    client.data.displayName = name;
+    return this.run(boardId, () =>
+      this.boards.renameMember(boardId, oldName, name),
+    );
   }
 
   @SubscribeMessage("event:add")

@@ -10,5 +10,9 @@
 !**/.env.example
 **/data/*.sqlite
 **/data/*.sqlite-*
+# data/ is ~110G (videos, keyframes) and is mounted as volumes, not baked
+# into images. Only the small objects/ dir is COPYed by the Dockerfiles.
+data/*
+!data/objects
 .git
 .turbo
