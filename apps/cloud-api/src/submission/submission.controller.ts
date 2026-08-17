@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { Response } from "express";
 import { SubmissionService, sanitizeFileToken } from "./submission.service";
-import type {
+import {
   CreateSubmissionInput,
   UpdateSubmissionInput,
 } from "./submission.types";

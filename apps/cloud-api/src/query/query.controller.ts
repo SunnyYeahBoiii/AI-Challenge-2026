@@ -8,7 +8,7 @@ import {
   Put,
 } from "@nestjs/common";
 import { QueryService } from "./query.service";
-import type { CreateQueryInput, UpdateQueryInput } from "./query.types";
+import { CreateQueryInput, UpdateQueryInput } from "./query.types";
 
 @Controller("queries")
 export class QueryController {
