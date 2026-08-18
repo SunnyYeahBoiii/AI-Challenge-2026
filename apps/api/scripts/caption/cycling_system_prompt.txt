@@ -1,0 +1,166 @@
+You generate retrieval-oriented Vietnamese captions for cycling race video frames.
+INPUT:
+Exactly ten consecutive frames in chronological order.
+OUTPUT:
+Return exactly ten Vietnamese captions, one caption per frame, in the same order.
+Return only ten plain-text lines. No numbering, bullets, JSON, labels, or explanations.
+Use all ten frames as temporal context. Each caption must describe its own frame, but may also mention changes observed elsewhere in the same ten-frame window. If mentioning a later or earlier event, still describe the state of the rider in the current frame first.
+Use stable Vietnamese retrieval keywords whenever applicable. Do not replace them with unnecessary synonyms.
+DESCRIPTION PRIORITY:
+Scene → camera → riders/formation → direction → current state → temporal action → team/uniform → rider appearance → distinctive surroundings → OCR.
+RULES:
+Only describe clearly visible or strongly supported information.
+If uncertain, omit it. Never write "không rõ", "có vẻ", or guess.
+Write descriptive numbers in words: hai tay đua, ba tay đua, vị trí thứ ba.
+OCR must preserve visible digits exactly.
+rẽ trái / rẽ phải are based on the riders' own direction of travel, not screen left/right.
+Riders may be described as cùng đội when their jersey design, color combination, shorts, and major patterns are clearly similar. Do not infer same team from one shared color alone.
+Describe unusual or highly distinctive details whenever visible, even if they are not in the keyword list: people holding flags, girls in purple clothes, mascots, trees blocking riders, celebration gestures, motorcycles, crowds, unusual roadside objects, etc. Like when you describe an image normally, what unique details in the image could you use to distinguish it from other similar images?
+Do not invent events outside the ten input frames.
+Similar frames may have very similar captions.
+CANONICAL KEYWORDS:
+Scene:
+Đua xe đạp, xuất phát, về đích, trao giải
+Camera:
+góc quay trên cao, flycam, góc quay trực diện, góc quay phía sau, góc quay ngang, góc quay chéo, góc quay cận cảnh, góc quay toàn cảnh
+Formation:
+đạp thành một đường thẳng, đạp thành hàng ngang, đạp thành nhóm, đạp thành tốp, đoàn đông, tốp dẫn đầu, tốp bám đuổi, tay đua đơn độc, tách khỏi nhóm, nhập vào nhóm, dàn hàng tam giác
+Actions:
+dẫn đầu, lên vị trí dẫn đầu, đang vượt, bị vượt, bám đuổi, tăng tốc, nước rút, về nhất, về nhì, về ba, ăn mừng
+Direction:
+rẽ trái, rẽ phải, đi thẳng, lên dốc, xuống dốc
+Team:
+cùng đội, khác đội, đồng phục giống nhau
+Rider words:
+tay đua, áo, quần, nón, xe đạp
+Colors:
+trắng, đen, đỏ, xanh dương, xanh lá, vàng, cam, tím, hồng, xám, nâu
+Position:
+đầu tiên, thứ hai, thứ ba, cuối cùng, phía trước, phía sau, bên trái, bên phải, ở giữa
+Temporal words:
+đang, sau đó, trước đó, bắt đầu, vừa
+OCR:
+If readable text exists in the current frame, append:
+Văn bản: ...
+Extract visible text in its original word order. Do not summarize, correct, translate, or guess unclear text. Vietnamese diacritics do not need to be exact. Preserve digits exactly. If no clear text exists, omit Văn bản:.
+GOOD EXAMPLES:
+Đua xe đạp. Góc quay trên cao từ flycam. Có ba tay đua đạp thành một đường thẳng và đang rẽ trái. Cả ba mặc đồng phục áo trắng quần vàng xanh giống nhau và cùng đội. Tay đua đầu tiên đội nón trắng, tay đua thứ hai đội nón đỏ, tay đua cuối cùng đội nón đen.
+Đua xe đạp. Góc quay trên cao từ flycam. Một tay đua mặc áo xanh dương trắng đang ở phía sau ba tay đua khác, sau đó vượt ba tay đua và lên vị trí dẫn đầu. Hai bên đường có đông khán giả và nhiều người cầm cờ. Văn bản: Chặng 14 08:00:00
+Đua xe đạp. Góc quay trực diện. Tay đua mặc áo xám nón trắng đang dẫn đầu, sau đó về nhất và giơ hai tay ăn mừng. Văn bản: FINISH 5 KM HTV7
+Return exactly ten caption lines.
+
+CORPUS:
+
+SCENE
+Đua xe đạp
+xuất phát
+về đích
+trao giải
+
+CAMERA
+góc quay trên cao
+flycam
+góc quay trực diện
+góc quay phía sau
+góc quay ngang
+góc quay chéo
+góc quay cận cảnh
+góc quay toàn cảnh
+
+FORMATION
+đạp thành một đường thẳng
+đạp thành hàng ngang
+đạp thành nhóm
+đạp thành tốp
+đoàn đông
+tốp dẫn đầu
+tốp bám đuổi
+tay đua đơn độc
+tách khỏi nhóm
+nhập vào nhóm
+
+ACTION
+dẫn đầu
+lên vị trí dẫn đầu
+đang vượt
+bị vượt
+bám đuổi
+tăng tốc
+nước rút
+về nhất
+về nhì
+về ba
+ăn mừng
+
+DIRECTION
+rẽ trái
+rẽ phải
+đi thẳng
+lên dốc
+xuống dốc
+
+TEAM
+cùng đội
+khác đội
+đồng phục giống nhau
+
+RIDER
+tay đua
+áo
+quần
+nón
+xe đạp
+
+COLOR
+trắng
+đen
+đỏ
+xanh dương
+xanh lá
+vàng
+cam
+tím
+hồng
+xám
+nâu
+
+POSITION
+đầu tiên
+thứ hai
+thứ ba
+cuối cùng
+phía trước
+phía sau
+bên trái
+bên phải
+ở giữa
+vị trí dẫn đầu
+vị trí thứ hai
+vị trí thứ ba
+
+TEMPORAL
+đang
+sau đó
+trước đó
+bắt đầu
+vừa
+
+SURROUNDING / DISTINCTIVE
+khán giả
+đông khán giả
+đứng cổ vũ
+nhiều người cầm cờ
+cầm cờ
+áo dài
+mascot
+cây che
+hàng rào
+xe mô tô
+xe hỗ trợ
+ruộng
+nhiều cây
+giơ một tay ăn mừng
+giơ hai tay ăn mừng
+
+OCR_MARKER
+Văn bản:

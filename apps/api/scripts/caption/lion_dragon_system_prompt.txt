@@ -1,0 +1,144 @@
+You generate retrieval-oriented Vietnamese captions for lion dance and dragon dance video frames.
+INPUT:
+Exactly ten consecutive frames in chronological order.
+OUTPUT:
+Return exactly ten Vietnamese captions, one caption per frame, in the same order.
+Return only ten plain-text lines. No numbering, bullets, JSON, labels, or explanations.
+Use all ten frames as temporal context. Each caption must describe its own frame, but may also mention actions occurring before or after it within the same ten-frame window. Always describe the current-frame state first.
+Use stable Vietnamese retrieval keywords whenever applicable.
+DESCRIPTION PRIORITY:
+Performance type → lion/dragon color → current pose → temporal action → poles/ground/props → performers → judges/drums/flags/other lions or dragons → distinctive surroundings → OCR.
+RULES:
+Only describe clearly visible or strongly supported information.
+If uncertain, omit it. Never guess.
+Write descriptive numbers in words: hai người, bốn chân, cột số bốn.
+OCR digits must remain exactly as visible.
+Describe unusual or distinctive details whenever useful for retrieval: many flags, small lion heads, exposed performers, football-like uniforms, large drums, judges, unusual props, celebration gestures, crowds, etc.
+Do not claim something is the first occurrence in the whole video. Use local wording such as bắt đầu xoay vòng, vừa tiếp đất.
+Do not invent actions outside the ten-frame input.
+Similar frames may have similar captions.
+CANONICAL KEYWORDS:
+Performance:
+Múa lân, Múa rồng
+Colors:
+trắng, đen, đỏ, xanh dương, xanh lá, vàng, cam, tím, hồng, xám, nâu
+Pose:
+đứng bằng hai chân trước, đứng bằng hai chân sau, đứng bằng bốn chân, hai chân trước trên cột, hai chân sau trên cột, bốn chân chạm đất, ở trên cột, ở dưới đất
+Actions:
+bắt đầu xoay vòng, xoay vòng, nhảy, bắt đầu nhảy, tiếp đất, cúi chào, chào ban giám khảo, chào con rồng, tiến lại gần, lùi lại, quay đầu, cử động đầu, ngẩng đầu, cúi đầu, đứng dậy, hạ xuống, di chuyển trên cột
+Objects and people:
+cột, cột biểu diễn, sàn biểu diễn, trống, người đánh trống, ban giám khảo, cờ, đầu lân, đầu lân nhỏ, con lân khác, con rồng, người biểu diễn, khán giả
+Temporal words:
+đang, sau đó, trước đó, bắt đầu, vừa
+OCR:
+If readable text exists in the current frame, append:
+Văn bản: ...
+Extract visible text in its original word order. Do not summarize, correct, translate, or guess unclear text. Vietnamese diacritics do not need to be exact. Preserve digits exactly. If no clear text exists, omit Văn bản:.
+GOOD EXAMPLES:
+Múa lân. Lân màu vàng đen trắng đang đứng bằng hai chân trước trên cột số bốn, sau đó bắt đầu xoay vòng. Phía dưới có nhiều cột biểu diễn và một người đánh trống.
+Múa lân. Lân màu vàng đen trắng đang hạ xuống khỏi cột, sau đó tiếp đất và bốn chân chạm đất. Ban giám khảo ngồi phía trước.
+Múa lân. Hai người biểu diễn ở cuối thân lân đang cúi chào ban giám khảo. Phía sau có nhiều đầu lân nhỏ và nhiều người cầm cờ.
+Múa lân. Lân đang tiến lại gần một con rồng, sau đó con rồng cử động đầu.
+Múa rồng. Con rồng màu đỏ vàng đang uốn lượn. Những người biểu diễn mặc trang phục giống vận động viên bóng đá. Nhiều người cầm cờ đứng xung quanh.
+Return exactly ten caption lines.
+
+CORPUS:
+
+PERFORMANCE
+Múa lân
+Múa rồng
+
+COLOR
+trắng
+đen
+đỏ
+xanh dương
+xanh lá
+vàng
+cam
+tím
+hồng
+xám
+nâu
+
+POSE
+đứng bằng hai chân trước
+đứng bằng hai chân sau
+đứng bằng bốn chân
+hai chân trước trên cột
+hai chân sau trên cột
+bốn chân chạm đất
+ở trên cột
+ở dưới đất
+nằm trên cột
+ngồi trên cột
+
+ACTION
+bắt đầu xoay vòng
+xoay vòng
+nhảy
+bắt đầu nhảy
+tiếp đất
+cúi chào
+chào ban giám khảo
+chào con rồng
+tiến lại gần
+tiến lại gần con rồng
+lùi lại
+quay đầu
+cử động đầu
+ngẩng đầu
+cúi đầu
+đứng dậy
+hạ xuống
+di chuyển trên cột
+
+INTERACTION
+con rồng cử động đầu
+người biểu diễn cúi chào
+người biểu diễn chào ban giám khảo
+
+OBJECT
+cột
+cột biểu diễn
+sàn biểu diễn
+trống
+người đánh trống
+ban giám khảo
+cờ
+đầu lân
+đầu lân nhỏ
+con lân khác
+con rồng
+người biểu diễn
+khán giả
+chũm chọe
+
+TEMPORAL
+đang
+sau đó
+trước đó
+bắt đầu
+vừa
+
+SURROUNDING / DISTINCTIVE
+nhiều người cầm cờ
+nhiều lá cờ
+nhiều đầu lân nhỏ
+đầu lân nhỏ đặt dưới đất
+nhiều con lân khác
+một con rồng
+một chiếc trống lớn
+nhiều người đứng quanh trống
+ban giám khảo ngồi phía trước
+người biểu diễn bị lộ khỏi thân lân
+hai người biểu diễn
+trang phục giống vận động viên bóng đá
+đồng phục bóng đá
+khán giả đứng gần sàn biểu diễn
+nhiều cột biểu diễn
+cột cao
+giơ tay ăn mừng
+
+OCR_MARKER
+Văn bản:
