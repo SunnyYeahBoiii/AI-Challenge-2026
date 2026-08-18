@@ -8,7 +8,7 @@ API_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = API_DIR if (API_DIR / "data").exists() else API_DIR.parents[1]
 DEFAULT_OBJECT_DETECTIONS_PATH = (PROJECT_DIR / "data" / "objects" / "object_detections.parquet")
 WEIGHTS_DIR = API_DIR / "weights"
-DEFAULT_KEYFRAMES_DIR = PROJECT_DIR / "data" / "keyframes" / "keyframes"
+DEFAULT_KEYFRAMES_DIR = PROJECT_DIR / "data" / "keyframes"
 
 
 class Config:
