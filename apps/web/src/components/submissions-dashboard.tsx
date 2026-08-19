@@ -13,6 +13,7 @@ import {
   downloadExport,
   listQueries,
   createQuery,
+  deleteQuery,
   type Submission,
   type QueryType,
   type SubmissionStatus,
@@ -162,6 +163,25 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const handleQueryDelete = async (id: string) => {
+    const query = queries.find((q) => q.id === id);
+    const submissionCount = submissions.filter(
+      (s) => s.queryName === query?.name,
+    ).length;
+    const message = submissionCount
+      ? `Delete query "${query?.name}"? ${submissionCount} submission(s) with this query name will remain and should be reviewed before export.`
+      : `Delete query "${query?.name}"?`;
+    if (!confirm(message)) return;
+    try {
+      await deleteQuery(id);
+      if (selectedQueryId === id) setSelectedQueryId(null);
+      await fetchQueries();
+    } catch (err) {
+      console.error("Failed to delete query:", err);
+      alert("Failed to delete query — see console.");
+    }
+  };
+
   const handleStatusChange = async (id: string, status: SubmissionStatus) => {
     try {
       await updateSubmission(id, { status });
@@ -294,6 +314,14 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
                 >
                   <Icon name="download" size={16} />
                   {exporting === selectedQuery.name ? "Exporting..." : "Export CSV"}
+                </button>
+                <button
+                  onClick={() => handleQueryDelete(selectedQuery.id)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded border border-outline-variant text-label-md hover:bg-surface-container hover:text-red-500 transition-colors"
+                  title="Delete query"
+                >
+                  <Icon name="delete" size={16} />
+                  Delete
                 </button>
               </div>
               {selectedQuery.content && (
