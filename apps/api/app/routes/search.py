@@ -41,6 +41,8 @@ def api_search():
             asr_keywords=data.asr_keywords,
             ocr_mode=data.ocr_match_mode,
             asr_mode=data.asr_match_mode,
+            ocr_search_config=(data.ocr_search_config.model_dump() if data.ocr_search_config else None),
+            asr_search_config=(data.asr_search_config.model_dump() if data.asr_search_config else None),
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)

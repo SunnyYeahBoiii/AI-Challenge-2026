@@ -131,11 +131,7 @@ def test_ocr_keywords_search_ocr_field_only():
     group = must[0]
     clause = group["bool"]["should"][0]
     assert clause == {
-        "multi_match": {
-            "query": "hd",
-            "fields": ["ocr_text"],
-            "fuzziness": "AUTO",
-        }
+        "match": {"ocr_text": {"query": "hd", "operator": "and"}}
     }
 
 
@@ -147,11 +143,7 @@ def test_asr_keywords_search_asr_field_only():
     group = must[0]
     clause = group["bool"]["should"][0]
     assert clause == {
-        "multi_match": {
-            "query": "chao",
-            "fields": ["asr_text"],
-            "fuzziness": "AUTO",
-        }
+        "match": {"asr_text": {"query": "chao", "operator": "and"}}
     }
 
 
@@ -165,7 +157,7 @@ def test_ocr_and_asr_groups_are_anded():
     must = _must(client)
     assert len(must) == 2
     fields = {
-        group["bool"]["should"][0]["multi_match"]["fields"][0]
+        next(iter(group["bool"]["should"][0]["match"]))
         for group in must
     }
     assert fields == {"ocr_text", "asr_text"}
@@ -183,7 +175,7 @@ def test_ocr_mode_and_asr_mode_are_independent():
     )
     must = _must(client)
     groups = {
-        group["bool"]["should"][0]["multi_match"]["fields"][0]: group["bool"]
+        next(iter(group["bool"]["should"][0]["match"])): group["bool"]
         for group in must
     }
     assert groups["ocr_text"]["minimum_should_match"] == 1
@@ -204,8 +196,7 @@ def test_legacy_source_ocr_maps_to_ocr_field():
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
     group = _must(client)[0]
     clause = group["bool"]["should"][0]
-    assert clause["multi_match"]["fields"] == ["ocr_text"]
-    assert clause["multi_match"]["fuzziness"] == "AUTO"
+    assert next(iter(clause["match"])) == "ocr_text"
 
 
 def test_legacy_source_asr_maps_to_asr_field():
@@ -213,11 +204,45 @@ def test_legacy_source_asr_maps_to_asr_field():
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="asr")
     group = _must(client)[0]
     clause = group["bool"]["should"][0]
-    assert clause["multi_match"]["fields"] == ["asr_text"]
-    assert clause["multi_match"]["fuzziness"] == "AUTO"
+    assert next(iter(clause["match"])) == "asr_text"
 
 
 def test_legacy_source_all_ands_both_fields():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="all")
     assert len(_must(client)) == 2
+
+
+def test_or_token_operator_uses_custom_minimum_should_match():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)],
+        ocr_keywords=["a b c"],
+        ocr_search_config={"operator": "or", "minimum_should_match": "2<75%"},
+    )
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert clause == {"match": {"ocr_text": {
+        "query": "a b c", "operator": "or", "minimum_should_match": "2<75%"
+    }}}
+
+
+def test_fuzzy_match_uses_prefix_and_expansion_options():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["thoi su"],
+        ocr_search_config={"fuzzy": True, "prefix_length": 3, "max_expansions": 12},
+    )
+    options = _must(client)[0]["bool"]["should"][0]["match"]["ocr_text"]
+    assert options["fuzziness"] == "AUTO"
+    assert options["prefix_length"] == 3
+    assert options["max_expansions"] == 12
+
+
+def test_match_phrase_uses_slop_without_fuzzy_options():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["thu tuong viet nam"],
+        ocr_search_config={"query_type": "match_phrase", "slop": 2},
+    )
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert clause == {"match_phrase": {"ocr_text": {"query": "thu tuong viet nam", "slop": 2}}}

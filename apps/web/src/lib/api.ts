@@ -93,11 +93,23 @@ export interface MultiBoxQuery {
   asr_keywords?: string[];
   ocr_match_mode?: "and" | "or";
   asr_match_mode?: "and" | "or";
+  ocr_search_config?: KeywordSearchConfig;
+  asr_search_config?: KeywordSearchConfig;
   keywords?: string[];
   key_match_mode?: "and" | "or";
   keyword_source?: "all" | "ocr" | "asr";
   enhance?: boolean | null;
   topk?: number;
+}
+
+export interface KeywordSearchConfig {
+  query_type?: "match" | "match_phrase";
+  fuzzy?: boolean;
+  operator?: "and" | "or";
+  minimum_should_match?: string;
+  prefix_length?: number;
+  max_expansions?: number;
+  slop?: number;
 }
 
 export interface MultiBoxRequest {

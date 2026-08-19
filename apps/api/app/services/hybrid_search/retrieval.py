@@ -43,6 +43,8 @@ def search_text(
     asr_keywords: Sequence[str] | None = None,
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_config: dict[str, object] | None = None,
+    asr_search_config: dict[str, object] | None = None,
 ) -> list[Frame]:
     """Search by a vector query, filters, or both."""
     if enhance and query:
@@ -62,6 +64,8 @@ def search_text(
             source=keyword_source,
             ocr_mode=ocr_mode,
             asr_mode=asr_mode,
+            ocr_search_config=ocr_search_config,
+            asr_search_config=asr_search_config,
         )
     else:
         frames = _filter_only_candidates({
@@ -74,6 +78,8 @@ def search_text(
             "asr_keywords": list(asr_keywords or []),
             "ocr_match_mode": ocr_mode,
             "asr_match_mode": asr_mode,
+            "ocr_search_config": ocr_search_config,
+            "asr_search_config": asr_search_config,
             "topk": topk,
         })
     frames = _enrich_frames(frames)
@@ -95,6 +101,8 @@ def search_image(
     asr_keywords: Sequence[str] | None = None,
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_config: dict[str, object] | None = None,
+    asr_search_config: dict[str, object] | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = manager.embed_image(image_bytes).tolist()
@@ -111,6 +119,8 @@ def search_image(
         source=keyword_source,
         ocr_mode=ocr_mode,
         asr_mode=asr_mode,
+        ocr_search_config=ocr_search_config,
+        asr_search_config=asr_search_config,
     )
     frames = _enrich_frames(frames)
     for f in frames:
@@ -236,6 +246,8 @@ def _apply_box_keywords(
             source=box.get("keyword_source", "all"),
             ocr_mode=box.get("ocr_match_mode"),
             asr_mode=box.get("asr_match_mode"),
+            ocr_search_config=box.get("ocr_search_config"),
+            asr_search_config=box.get("asr_search_config"),
         )
     return per_box
 
@@ -281,6 +293,8 @@ def _filter_only_candidates(
                 asr_keywords=box.get("asr_keywords"),
                 ocr_mode=box.get("ocr_match_mode"),
                 asr_mode=box.get("asr_match_mode"),
+                ocr_search_config=box.get("ocr_search_config"),
+                asr_search_config=box.get("asr_search_config"),
                 allowed_video_ids=sorted(allowed_video_ids) if allowed_video_ids is not None else None,
                 page_size=FILTER_FETCH_CHUNK,
             )

@@ -23,21 +23,50 @@ def _normalized_keywords(keywords: Sequence[str]) -> list[str]:
     return [keyword for keyword in (normalize_text(keyword) for keyword in keywords) if keyword]
 
 
-def _fuzzy_field_group(
-    keywords: Sequence[str], field: str, mode: str
+DEFAULT_SEARCH_CONFIG: dict[str, Any] = {
+    "query_type": "match",
+    "fuzzy": False,
+    "operator": "and",
+    "minimum_should_match": "100%",
+    "prefix_length": 2,
+    "max_expansions": 20,
+    "slop": 0,
+}
+
+
+def _resolve_search_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    return {**DEFAULT_SEARCH_CONFIG, **(config or {})}
+
+
+def _keyword_clause(keyword: str, field: str, config: dict[str, Any]) -> dict[str, Any]:
+    if config["query_type"] == "match_phrase":
+        return {"match_phrase": {field: {"query": keyword, "slop": config["slop"]}}}
+
+    options: dict[str, Any] = {"query": keyword, "operator": config["operator"]}
+    if config["operator"] == "or":
+        options["minimum_should_match"] = config["minimum_should_match"]
+    if config["fuzzy"]:
+        options.update({
+            "fuzziness": "AUTO",
+            "prefix_length": config["prefix_length"],
+            "max_expansions": config["max_expansions"],
+        })
+    return {"match": {field: options}}
+
+
+def _keyword_field_group(
+    keywords: Sequence[str], field: str, relation: str, config: dict[str, Any] | None
 ) -> dict[str, Any] | None:
-    """Build a bool should-group of fuzzy matches against one text field."""
+    """Build one source group; relation is between separate TagInput keywords."""
     normalized_keywords = _normalized_keywords(keywords)
     if not normalized_keywords:
         return None
-    clauses = [
-        {"multi_match": {"query": keyword, "fields": [field], "fuzziness": "AUTO"}}
-        for keyword in normalized_keywords
-    ]
+    resolved_config = _resolve_search_config(config)
+    clauses = [_keyword_clause(keyword, field, resolved_config) for keyword in normalized_keywords]
     return {
         "bool": {
             "should": clauses,
-            "minimum_should_match": 1 if mode == "or" else len(clauses),
+            "minimum_should_match": 1 if relation == "or" else len(clauses),
         }
     }
 
@@ -101,12 +130,15 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
+        ocr_search_config: dict[str, Any] | None = None,
+        asr_search_config: dict[str, Any] | None = None,
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches.
 
-        OCR keywords fuzzy-match `ocr_text` only; ASR keywords fuzzy-match
-        `asr_text` only. When both groups are non-empty they are AND-ed. Within each group,
-        `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
+        OCR keywords match `ocr_text` only; ASR keywords match `asr_text` only.
+        When both groups are non-empty they are AND-ed. `ocr_mode`/`asr_mode`
+        control the relationship between separate keywords; each source's
+        search config controls the DSL query for each individual keyword.
 
         Legacy `keywords` + `source` still work when the dedicated lists are empty:
         ocr/asr map to one field; all duplicates keywords into both groups.
@@ -129,8 +161,8 @@ class ESClient:
         video_ids = sorted({vid for vid, _ in keys})
         frame_ids = sorted({idx for _, idx in keys})
         must: list[dict[str, Any]] = []
-        ocr_group = _fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode)
-        asr_group = _fuzzy_field_group(asr, "asr_text", asr_mode or mode)
+        ocr_group = _keyword_field_group(ocr, "ocr_text", ocr_mode or mode, ocr_search_config)
+        asr_group = _keyword_field_group(asr, "asr_text", asr_mode or mode, asr_search_config)
         if ocr_group:
             must.append(ocr_group)
         if asr_group:
@@ -177,6 +209,8 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
+        ocr_search_config: dict[str, Any] | None = None,
+        asr_search_config: dict[str, Any] | None = None,
         allowed_video_ids: Sequence[str] | None = None,
         page_size: int = 500,
     ) -> Iterable[tuple[str, int, float]]:
@@ -195,8 +229,8 @@ class ESClient:
         must = [
             group
             for group in (
-                _fuzzy_field_group(ocr, "ocr_text", ocr_mode or mode),
-                _fuzzy_field_group(asr, "asr_text", asr_mode or mode),
+                _keyword_field_group(ocr, "ocr_text", ocr_mode or mode, ocr_search_config),
+                _keyword_field_group(asr, "asr_text", asr_mode or mode, asr_search_config),
             )
             if group is not None
         ]

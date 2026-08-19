@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models import BoxQuery, MultiBoxRequest, SearchRequest
+from app.models import BoxQuery, KeywordSearchConfig, MultiBoxRequest, SearchRequest
 
 
 @pytest.mark.parametrize(
@@ -104,3 +104,21 @@ def test_multi_box_rejects_non_positive_temporal_window() -> None:
 def test_multi_box_rejects_no_boxes() -> None:
     with pytest.raises(ValidationError):
         MultiBoxRequest(box_queries=[])
+
+
+def test_keyword_search_config_defaults_to_strict_match() -> None:
+    config = KeywordSearchConfig()
+    assert config.query_type == "match"
+    assert config.operator == "and"
+    assert config.minimum_should_match == "100%"
+    assert config.fuzzy is False
+
+
+def test_keyword_search_config_rejects_fuzzy_phrase() -> None:
+    with pytest.raises(ValidationError, match="fuzzy is not supported"):
+        KeywordSearchConfig(query_type="match_phrase", fuzzy=True)
+
+
+def test_keyword_search_config_locks_and_to_full_match() -> None:
+    with pytest.raises(ValidationError, match="must be 100%"):
+        KeywordSearchConfig(operator="and", minimum_should_match="75%")

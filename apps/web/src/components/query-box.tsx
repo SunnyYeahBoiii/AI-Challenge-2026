@@ -7,6 +7,7 @@ import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
 import { MatchModeToggle } from "./match-mode-toggle";
+import { KeywordSearchOptions, type KeywordSearchConfig } from "./keyword-search-options";
 import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
 
 export interface BoxQuery {
@@ -18,8 +19,10 @@ export interface BoxQuery {
   tagMatchMode?: "and" | "or";
   ocrKeywords?: string[];
   ocrMatchMode?: "and" | "or";
+  ocrSearchConfig?: KeywordSearchConfig;
   asrKeywords?: string[];
   asrMatchMode?: "and" | "or";
+  asrSearchConfig?: KeywordSearchConfig;
   topK?: number;
   enhance?: boolean;
 }
@@ -265,9 +268,14 @@ function QueryBoxInner({
                 placeholder="Add OCR keyword..."
               />
               <MatchModeToggle
-                label="Match OCR"
+                label="OCR keyword relation"
                 mode={query.ocrMatchMode ?? "and"}
                 onChange={(ocrMatchMode) => onUpdate({ ocrMatchMode })}
+              />
+              <KeywordSearchOptions
+                source="OCR"
+                config={query.ocrSearchConfig}
+                onChange={(ocrSearchConfig) => onUpdate({ ocrSearchConfig })}
               />
             </div>
             <div>
@@ -278,9 +286,14 @@ function QueryBoxInner({
                 placeholder="Add ASR keyword..."
               />
               <MatchModeToggle
-                label="Match ASR"
+                label="ASR keyword relation"
                 mode={query.asrMatchMode ?? "and"}
                 onChange={(asrMatchMode) => onUpdate({ asrMatchMode })}
+              />
+              <KeywordSearchOptions
+                source="ASR"
+                config={query.asrSearchConfig}
+                onChange={(asrSearchConfig) => onUpdate({ asrSearchConfig })}
               />
             </div>
           </div>

@@ -71,6 +71,8 @@ def _filter_by_keywords(
     source: str = "all",
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_config: dict[str, Any] | None = None,
+    asr_search_config: dict[str, Any] | None = None,
 ) -> list[Frame]:
     """Drop frames whose OCR/ASR text does not match, in one ES round-trip."""
     has_any = bool(ocr_keywords) or bool(asr_keywords) or bool(keywords)
@@ -85,6 +87,8 @@ def _filter_by_keywords(
         asr_keywords=asr_keywords,
         ocr_mode=ocr_mode,
         asr_mode=asr_mode,
+        ocr_search_config=ocr_search_config,
+        asr_search_config=asr_search_config,
     )
     return [f for f in frames if _frame_key(f) in matched]
 
