@@ -1,10 +1,9 @@
 """
-Load AIC2026 batch b1 (videos L21-L30) pre-computed BGE-VL embeddings +
-metadata into Milvus and Elasticsearch. The embeddings are BGE-VL-large
-vectors, so this loads into BgeVlEncoder.collection_name — the collection the
-BGE-VL-large encoder searches at query time. Loading data for the other
-encoders (MetaCLIP, BEiT-3) is out of scope: it requires re-encoding every
-keyframe with each model, which this script does not do.
+Load AIC2026 batch b1 (videos L21-L30) pre-computed MetaCLIP embeddings +
+metadata into Milvus and Elasticsearch. The vectors load into
+MetaClipEncoder.collection_name — the collection
+the MetaCLIP encoder searches at query time. Elasticsearch documents use the
+shared app.services.es_schema.ES_MAPPING through scripts.es_common.
 
 Usage:
     cd apps/api
@@ -48,8 +47,6 @@ from es_common import (
     frame_doc_from_record,
 )
 from app.services.encoders.metaclip import MetaClipEncoder
-from app.services.encoders.beit3 import Beit3Encoder
-from app.services.encoders.bge_vl import BgeVlEncoder
 
 # ── Config ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -132,8 +129,8 @@ def save_checkpoint(processed: set[str]) -> None:
 
 # ── Data loading ────────────────────────────────────────────────────────────
 def load_batch(
-    es: Elasticsearch,
-    col: Collection,
+    es: Elasticsearch | None,
+    col: Collection | None,
     processed: set[str],
     limit: int | None = None,
     dry_run: bool = False,
@@ -220,10 +217,14 @@ def load_batch(
 
         if not dry_run:
             if len(milvus_buffer[0]) >= MILVUS_BATCH:
+                if col is None:
+                    raise RuntimeError("Milvus collection required when not running a dry-run")
                 col.insert(milvus_buffer)
                 total_frames += len(milvus_buffer[0])
                 milvus_buffer = [[] for _ in range(14)]
             if len(es_buffer) >= ES_BATCH:
+                if es is None:
+                    raise RuntimeError("Elasticsearch client required when not running a dry-run")
                 bulk_insert_es(es, es_buffer)
                 es_buffer = []
 
@@ -236,9 +237,13 @@ def load_batch(
 
     if not dry_run:
         if milvus_buffer[0]:
+            if col is None:
+                raise RuntimeError("Milvus collection required when not running a dry-run")
             col.insert(milvus_buffer)
             total_frames += len(milvus_buffer[0])
         if es_buffer:
+            if es is None:
+                raise RuntimeError("Elasticsearch client required when not running a dry-run")
             bulk_insert_es(es, es_buffer)
 
     elapsed = time.time() - t0
@@ -248,16 +253,21 @@ def load_batch(
 
 # ── Main ────────────────────────────────────────────────────────────────────
 def load(limit: int | None = None, dry_run: bool = False) -> None:
-    connect_milvus()
-    col = ensure_milvus_collection()
-    es = connect_elasticsearch()
-    ensure_es_index(es)
+    col: Collection | None = None
+    es: Elasticsearch | None = None
+    if not dry_run:
+        connect_milvus()
+        col = ensure_milvus_collection()
+        es = connect_elasticsearch()
+        ensure_es_index(es)
 
     processed = load_checkpoint() if not dry_run else set()
     t0 = time.time()
     load_batch(es, col, processed, limit, dry_run)
 
     if not dry_run:
+        if col is None:
+            raise RuntimeError("Milvus collection required when not running a dry-run")
         col.flush()
         save_checkpoint(processed)
         elapsed = time.time() - t0

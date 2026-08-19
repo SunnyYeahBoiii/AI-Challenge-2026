@@ -4,30 +4,26 @@ from __future__ import annotations
 
 import os
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
+
+# Scripts run as standalone modules, so expose apps/api before importing the
+# application-owned schema. This prevents ingest and query mappings drifting.
+API_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(API_DIR))
+load_dotenv(API_DIR / ".env")
+
+from app.services.es_schema import ES_MAPPING, mismatched_mapping_fields  # noqa: E402
 
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "")
 ES_PASS = os.getenv("ES_PASS", "")
 ES_INDEX = "video_texts"
 ES_BATCH = 1000
-
-ES_MAPPING: dict[str, Any] = {
-    "mappings": {
-        "properties": {
-            "video_id": {"type": "keyword"},
-            "video_path": {"type": "keyword"},
-            "frame_id": {"type": "integer"},
-            "frame_idx": {"type": "integer"},
-            "frame_path": {"type": "keyword"},
-            "ocr_text": {"type": "text"},
-            "asr_text": {"type": "text"},
-            "timestamp": {"type": "float"},
-        }
-    }
-}
 
 
 def normalize_text(text: str) -> str:
@@ -67,6 +63,16 @@ def ensure_es_index(es: Elasticsearch, *, recreate: bool = False) -> None:
         print(f"Deleted index '{ES_INDEX}'.")
         exists = False
     if exists:
+        mapping: dict[str, Any] = es.indices.get_mapping(index=ES_INDEX)
+        index_mapping = next(iter(mapping.values()))
+        properties = index_mapping.get("mappings", {}).get("properties", {})
+        mismatched_fields = mismatched_mapping_fields(properties)
+        if mismatched_fields:
+            fields = ", ".join(mismatched_fields)
+            raise RuntimeError(
+                f"Elasticsearch index '{ES_INDEX}' does not use the application mapping "
+                f"for: {fields}. Recreate and reindex it before inserting more data."
+            )
         print(f"Index '{ES_INDEX}' exists.")
         return
     es.indices.create(index=ES_INDEX, body=ES_MAPPING)
