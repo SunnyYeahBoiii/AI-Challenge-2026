@@ -11,6 +11,8 @@ export interface Submission {
   frameIds: number[];
   answer: string;
   status: SubmissionStatus;
+  sortOrder: number;
+  version: number;
   submittedBy: string;
   reviewedBy: string;
   reviewNotes: string;
@@ -64,6 +66,22 @@ export async function deleteSubmission(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`Delete submission failed: ${res.status}`);
+}
+
+export async function reorderSubmissions(
+  statusGroup: SubmissionStatus,
+  items: { id: string; expectedVersion: number }[],
+): Promise<Submission[]> {
+  const res = await fetch(`${cloudApiHttpBase()}/submissions/reorder/group`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ statusGroup, items }),
+  });
+  if (!res.ok) {
+    if (res.status === 409) throw new Error("CONFLICT");
+    throw new Error(`Reorder failed: ${res.status}`);
+  }
+  return res.json();
 }
 
 export function getExportUrl(queryName?: string): string {
