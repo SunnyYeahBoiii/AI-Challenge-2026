@@ -10,6 +10,7 @@ import { Server } from "socket.io";
 import { SubmissionService } from "./submission.service";
 import type {
   CreateSubmissionInput,
+  ReorderInput,
   SubmissionSnapshot,
   UpdateSubmissionInput,
 } from "./submission.types";
@@ -23,13 +24,19 @@ export class SubmissionGateway {
 
   constructor(private readonly submissions: SubmissionService) {}
 
-  private async run(fn: () => Promise<SubmissionSnapshot>): Promise<SubmissionSnapshot> {
+  private async run(
+    fn: () => Promise<SubmissionSnapshot>,
+  ): Promise<SubmissionSnapshot> {
     try {
       const snapshot = await fn();
-      this.server.emit("submissions:changed", await this.submissions.listSubmissions());
+      this.server.emit(
+        "submissions:changed",
+        await this.submissions.listSubmissions(),
+      );
       return snapshot;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Submission operation failed";
+      const message =
+        err instanceof Error ? err.message : "Submission operation failed";
       throw new WsException(message);
     }
   }
@@ -52,10 +59,26 @@ export class SubmissionGateway {
     return this.run(() => this.submissions.updateSubmission(id, input));
   }
 
+  @SubscribeMessage("submission:reorder")
+  async handleReorder(@MessageBody() body: ReorderInput) {
+    try {
+      const result = await this.submissions.reorderInGroup(body);
+      this.server.emit("submissions:changed", result);
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Reorder failed";
+      throw new WsException(message);
+    }
+  }
+
   @SubscribeMessage("submission:delete")
   async handleDelete(@MessageBody() body: { id: string }) {
     await this.submissions.deleteSubmission(body.id);
-    this.server.emit("submissions:changed", await this.submissions.listSubmissions());
+    this.server.emit(
+      "submissions:changed",
+      await this.submissions.listSubmissions(),
+    );
     return { ok: true };
   }
 }
