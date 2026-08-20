@@ -1,13 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  useDndContext,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@/components/icon";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import {
   listSubmissions,
   updateSubmission,
   deleteSubmission,
+  reorderSubmissions,
   getExportUrl,
   getExportAllUrl,
   downloadExport,
@@ -40,6 +57,148 @@ const STATUS_LABELS: Record<SubmissionStatus, string> = {
   pending: "Check",
 };
 
+const SortableSubmissionCard = memo(function SortableSubmissionCard({
+  sub,
+  firstKeyframe,
+  keyframes: keyframesMap,
+  onStatusChange,
+  onDelete,
+  onViewVideo,
+}: {
+  sub: Submission;
+  firstKeyframe: KeyframeInfo | null | undefined;
+  keyframes: Record<string, KeyframeInfo | null>;
+  onStatusChange: (id: string, status: SubmissionStatus) => void;
+  onDelete: (id: string) => void;
+  onViewVideo: (sub: Submission, keyframe: KeyframeInfo) => void;
+}) {
+  const { active } = useDndContext();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: sub.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: active ? undefined : transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-lg bg-surface-container-lowest border transition-colors ${
+        isDragging
+          ? "opacity-40 border-primary"
+          : "border-outline-variant hover:bg-surface-container-low"
+      }`}
+    >
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing text-on-surface-variant hover:text-on-surface shrink-0 p-1 rounded hover:bg-surface-container"
+          title="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <Icon name="drag_indicator" size={20} />
+        </button>
+        <button
+          onClick={() => {
+            const nextStatus: SubmissionStatus =
+              sub.status === "confirmed" ? "pending" : "confirmed";
+            onStatusChange(sub.id, nextStatus);
+          }}
+          className={`w-4 h-4 rounded-full ${STATUS_COLORS[sub.status]} hover:opacity-80 shrink-0`}
+          title={STATUS_LABELS[sub.status]}
+        />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-label-sm font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">
+              {sub.queryName || "unnamed"}
+            </span>
+            <span className="text-body-md font-mono">{sub.videoId}</span>
+            <span className="text-body-sm text-on-surface-variant">
+              {sub.frameIds.join(", ")}
+              {firstKeyframe && !firstKeyframe.is_exact && (
+                <span className="text-yellow-600 ml-1">
+                  (nearest: {firstKeyframe.frame_index})
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-label-sm text-on-surface-variant mt-0.5">
+            <span className="uppercase">{sub.queryType}</span>
+            {sub.submittedBy && <span>· by {sub.submittedBy}</span>}
+          </div>
+          {sub.answer && (
+            <div className="text-body-sm text-on-surface-variant mt-0.5">
+              <span className="font-bold">Answer:</span> {sub.answer}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => onStatusChange(sub.id, "pending")}
+            className={`p-1.5 rounded ${sub.status === "pending" ? "bg-gray-400/20 text-gray-600" : "hover:bg-surface-container text-on-surface-variant"}`}
+            title="Check"
+          >
+            <Icon name="help" size={16} />
+          </button>
+          <button
+            onClick={() => onStatusChange(sub.id, "review")}
+            className={`p-1.5 rounded ${sub.status === "review" ? "bg-yellow-500/20 text-yellow-600" : "hover:bg-surface-container text-on-surface-variant"}`}
+            title="Maybe"
+          >
+            <Icon name="question_mark" size={16} />
+          </button>
+          <button
+            onClick={() => onStatusChange(sub.id, "confirmed")}
+            className={`p-1.5 rounded ${sub.status === "confirmed" ? "bg-green-500/20 text-green-600" : "hover:bg-surface-container text-on-surface-variant"}`}
+            title="Sure"
+          >
+            <Icon name="check" size={16} />
+          </button>
+          <button
+            onClick={() => onDelete(sub.id)}
+            className="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-red-500"
+            title="Delete"
+          >
+            <Icon name="delete" size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 px-4 pb-3">
+        {sub.frameIds.map((frameIndex) => {
+          const keyframe = keyframesMap[`${sub.videoId}-${frameIndex}`];
+          const isNearest = keyframe && !keyframe.is_exact;
+          if (!keyframe?.thumbnail_url) return null;
+          return (
+            <button
+              key={frameIndex}
+              onClick={() => onViewVideo(sub, keyframe)}
+              className="relative shrink-0 group"
+              title="View in video player"
+            >
+              <img
+                src={keyframe.thumbnail_url}
+                alt={`Frame ${keyframe.frame_index}`}
+                className="w-20 h-12 object-cover rounded border border-outline-variant group-hover:opacity-80 group-hover:ring-2 group-hover:ring-primary transition"
+                loading="lazy"
+              />
+              {isNearest && (
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-label-xs px-1 rounded">
+                  ~{keyframe.frame_index}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
 export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
   const [queries, setQueries] = useState<Query[]>([]);
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null);
@@ -55,6 +214,10 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
     keyframe: KeyframeInfo;
   } | null>(null);
   const videoPlayerRef = useRef<VideoPlayerHandle>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } })
+  );
 
   const [queryFormData, setQueryFormData] = useState({
     name: "",
@@ -232,15 +395,82 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
 
   const selectedQuery = queries.find((q) => q.id === selectedQueryId);
 
-  const filtered = selectedQueryId
-    ? submissions.filter((s) => s.queryName === selectedQuery?.name)
-    : submissions;
+  const filtered = useMemo(
+    () =>
+      selectedQueryId
+        ? submissions.filter((s) => s.queryName === selectedQuery?.name)
+        : submissions,
+    [submissions, selectedQueryId, selectedQuery?.name]
+  );
 
-  const sorted = [...filtered].sort((a, b) => {
-    const statusDiff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
-    if (statusDiff !== 0) return statusDiff;
-    return a.queryName.localeCompare(b.queryName);
-  });
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        const statusDiff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        if (statusDiff !== 0) return statusDiff;
+        return a.sortOrder - b.sortOrder;
+      }),
+    [filtered]
+  );
+
+  const grouped = useMemo(() => {
+    const result: Record<SubmissionStatus, Submission[]> = {
+      confirmed: [],
+      review: [],
+      pending: [],
+    };
+    for (const sub of sorted) {
+      result[sub.status].push(sub);
+    }
+    return result;
+  }, [sorted]);
+
+  const handleGroupDragEnd = useCallback(
+    (status: SubmissionStatus) => async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const groupItems = grouped[status];
+      const ids = groupItems.map((s) => s.id);
+      const oldIndex = ids.indexOf(String(active.id));
+      const newIndex = ids.indexOf(String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      const reorderedIds = arrayMove(ids, oldIndex, newIndex);
+      const reordered = reorderedIds
+        .map((id) => groupItems.find((s) => s.id === id)!)
+        .filter(Boolean);
+
+      const items = reordered.map((s) => ({
+        id: s.id,
+        expectedVersion: s.version,
+      }));
+
+      setSubmissions((prev) => {
+        const updated = [...prev];
+        for (let i = 0; i < reordered.length; i++) {
+          const sub = reordered[i];
+          const idx = updated.findIndex((u) => u.id === sub.id);
+          if (idx !== -1) {
+            updated[idx] = {
+              ...sub,
+              sortOrder: i,
+              version: sub.version + 1,
+            };
+          }
+        }
+        return updated;
+      });
+
+      try {
+        await reorderSubmissions(status, items);
+      } catch (err) {
+        console.error("Reorder failed:", err);
+        await fetchSubmissions();
+      }
+    },
+    [grouped, fetchSubmissions]
+  );
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
@@ -417,110 +647,48 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
               {selectedQueryId ? "No submissions for this query." : "No submissions yet. Click \"Bulk Load\" or \"Add Query\" to start."}
             </div>
           ) : (
-            <div className="space-y-1">
-              {sorted.map((sub) => {
-                const firstKeyframe = keyframes[`${sub.videoId}-${sub.frameIds[0]}`];
+            <div className="space-y-6">
+              {(Object.keys(grouped) as SubmissionStatus[]).map((status) => {
+                const groupItems = grouped[status];
+                if (groupItems.length === 0) return null;
                 return (
-                  <div
-                    key={sub.id}
-                    className="rounded-lg bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low transition-colors"
-                  >
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <button
-                        onClick={() => {
-                          const nextStatus: SubmissionStatus =
-                            sub.status === "confirmed" ? "pending" : "confirmed";
-                          handleStatusChange(sub.id, nextStatus);
-                        }}
-                        className={`w-4 h-4 rounded-full ${STATUS_COLORS[sub.status]} hover:opacity-80 shrink-0`}
-                        title={STATUS_LABELS[sub.status]}
-                      />
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-label-sm font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">
-                            {sub.queryName || "unnamed"}
-                          </span>
-                          <span className="text-body-md font-mono">{sub.videoId}</span>
-                          <span className="text-body-sm text-on-surface-variant">
-                            {sub.frameIds.join(", ")}
-                            {firstKeyframe && !firstKeyframe.is_exact && (
-                              <span className="text-yellow-600 ml-1">
-                                (nearest: {firstKeyframe.frame_index})
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-label-sm text-on-surface-variant mt-0.5">
-                          <span className="uppercase">{sub.queryType}</span>
-                          {sub.submittedBy && <span>· by {sub.submittedBy}</span>}
-                        </div>
-                        {sub.answer && (
-                          <div className="text-body-sm text-on-surface-variant mt-0.5">
-                            <span className="font-bold">Answer:</span> {sub.answer}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleStatusChange(sub.id, "pending")}
-                          className={`p-1.5 rounded ${sub.status === "pending" ? "bg-gray-400/20 text-gray-600" : "hover:bg-surface-container text-on-surface-variant"}`}
-                          title="Check"
-                        >
-                          <Icon name="help" size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleStatusChange(sub.id, "review")}
-                          className={`p-1.5 rounded ${sub.status === "review" ? "bg-yellow-500/20 text-yellow-600" : "hover:bg-surface-container text-on-surface-variant"}`}
-                          title="Maybe"
-                        >
-                          <Icon name="question_mark" size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleStatusChange(sub.id, "confirmed")}
-                          className={`p-1.5 rounded ${sub.status === "confirmed" ? "bg-green-500/20 text-green-600" : "hover:bg-surface-container text-on-surface-variant"}`}
-                          title="Sure"
-                        >
-                          <Icon name="check" size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(sub.id)}
-                          className="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-red-500"
-                          title="Delete"
-                        >
-                          <Icon name="delete" size={16} />
-                        </button>
-                      </div>
+                  <div key={status}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-3 h-3 rounded-full ${STATUS_COLORS[status]}`} />
+                      <span className="text-label-md font-bold text-on-surface-variant">
+                        {STATUS_LABELS[status]}
+                      </span>
+                      <span className="text-label-sm text-on-surface-variant">
+                        ({groupItems.length})
+                      </span>
                     </div>
-
-                    <div className="flex flex-wrap gap-2 px-4 pb-3">
-                      {sub.frameIds.map((frameIndex) => {
-                        const keyframe = keyframes[`${sub.videoId}-${frameIndex}`];
-                        const isNearest = keyframe && !keyframe.is_exact;
-                        if (!keyframe?.thumbnail_url) return null;
-                        return (
-                          <button
-                            key={frameIndex}
-                            onClick={() => setVideoDialog({ submission: sub, keyframe })}
-                            className="relative shrink-0 group"
-                            title="View in video player"
-                          >
-                            <img
-                              src={keyframe.thumbnail_url}
-                              alt={`Frame ${keyframe.frame_index}`}
-                              className="w-20 h-12 object-cover rounded border border-outline-variant group-hover:opacity-80 group-hover:ring-2 group-hover:ring-primary transition"
-                              loading="lazy"
-                            />
-                            {isNearest && (
-                              <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-label-xs px-1 rounded">
-                                ~{keyframe.frame_index}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleGroupDragEnd(status)}
+                    >
+                      <SortableContext
+                        items={groupItems.map((s) => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-1">
+                          {groupItems.map((sub) => {
+                            const firstKeyframe = keyframes[`${sub.videoId}-${sub.frameIds[0]}`];
+                            return (
+                              <SortableSubmissionCard
+                                key={sub.id}
+                                sub={sub}
+                                firstKeyframe={firstKeyframe}
+                                keyframes={keyframes}
+                                onStatusChange={handleStatusChange}
+                                onDelete={handleDelete}
+                                onViewVideo={(s, k) => setVideoDialog({ submission: s, keyframe: k })}
+                              />
+                            );
+                          })}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   </div>
                 );
               })}
