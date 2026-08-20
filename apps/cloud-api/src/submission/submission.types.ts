@@ -20,6 +20,8 @@ export interface SubmissionSnapshot {
   frameIds: number[];
   answer: string;
   status: SubmissionStatus;
+  sortOrder: number;
+  version: number;
   submittedBy: string;
   reviewedBy: string;
   reviewNotes: string;
@@ -71,4 +73,14 @@ export class UpdateSubmissionInput {
   @IsString()
   @MaxLength(4000)
   reviewNotes?: string;
+}
+
+export interface ReorderItem {
+  id: string;
+  expectedVersion: number;
+}
+
+export interface ReorderInput {
+  statusGroup: SubmissionStatus;
+  items: ReorderItem[];
 }
