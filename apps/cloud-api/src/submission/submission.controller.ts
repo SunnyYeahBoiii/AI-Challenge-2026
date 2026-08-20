@@ -13,6 +13,7 @@ import { Response } from "express";
 import { SubmissionService, sanitizeFileToken } from "./submission.service";
 import {
   CreateSubmissionInput,
+  ReorderInput,
   UpdateSubmissionInput,
 } from "./submission.types";
 
@@ -66,6 +67,11 @@ export class SubmissionController {
     @Body() body: UpdateSubmissionInput,
   ) {
     return this.submissions.updateSubmission(id, body);
+  }
+
+  @Put("reorder/group")
+  async reorder(@Body() body: ReorderInput) {
+    return this.submissions.reorderInGroup(body);
   }
 
   @Delete(":id")
