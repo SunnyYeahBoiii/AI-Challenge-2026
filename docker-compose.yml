@@ -28,6 +28,7 @@ services:
       - MILVUS_URI=http://milvus:19530
       - ES_URL=http://elasticsearch:9200
       - HF_HOME=/root/.cache/huggingface
+      - MEDIA_BASE_URL=${MEDIA_BASE_URL:-https://d76fwc0pqjf9a.cloudfront.net}
     depends_on:
       milvus:
         condition: service_healthy

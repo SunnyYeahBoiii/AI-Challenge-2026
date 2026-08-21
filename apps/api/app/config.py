@@ -28,15 +28,11 @@ class Config:
 
     DRES_URL = os.getenv("DRES_URL", "")
 
-    # MinIO/S3 storage for keyframes + videos. ENDPOINT is host[:port] only, no
-    # scheme — swap it (and MINIO_SECURE) between practice (public domain, https)
-    # and competition (Tailscale IP, plain http) via .env, no code change needed.
-    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-    MINIO_SECURE = os.getenv("MINIO_SECURE", "true").lower() == "true"
-    MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
-    MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
-    MINIO_BUCKET_KEYFRAMES = os.getenv("MINIO_BUCKET_KEYFRAMES", "keyframes")
-    MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos")
+    # CloudFront is the only public origin for HLS videos. It maps /videos/* to
+    # the S3 bucket, so callers never receive an S3 URL or AWS credentials.
+    MEDIA_BASE_URL = os.getenv(
+        "MEDIA_BASE_URL", "https://d76fwc0pqjf9a.cloudfront.net"
+    ).rstrip("/")
 
-    # Keyframes are served from local disk instead of MinIO (videos stay on MinIO).
+    # Keyframes are served from local disk via the API.
     KEYFRAMES_DIR = os.getenv("KEYFRAMES_DIR", str(DEFAULT_KEYFRAMES_DIR))
