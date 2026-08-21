@@ -43,6 +43,7 @@ def get_submission_keyframe() -> tuple[Any, int]:
     return jsonify({
         "frame_index": nearest["frame_index"],
         "timestamp": nearest["timestamp"],
+        "fps": nearest.get("fps"),
         "thumbnail_url": keyframe_url(video_id, nearest["frame_index"]),
         "video_url": video_url(video_id),
         "is_exact": nearest["frame_index"] == frame_index,
@@ -81,6 +82,7 @@ def get_submission_keyframes() -> tuple[Any, int]:
             results[key] = {
                 "frame_index": nearest["frame_index"],
                 "timestamp": nearest["timestamp"],
+                "fps": nearest.get("fps"),
                 "thumbnail_url": keyframe_url(video_id, nearest["frame_index"]),
                 "video_url": video_url(video_id),
                 "is_exact": nearest["frame_index"] == frame_index,
