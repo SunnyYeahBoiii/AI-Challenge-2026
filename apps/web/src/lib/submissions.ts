@@ -34,6 +34,7 @@ export async function createSubmission(input: {
   frameIds: number[];
   answer?: string;
   submittedBy?: string;
+  status?: SubmissionStatus;
 }): Promise<Submission> {
   const res = await fetch(`${cloudApiHttpBase()}/submissions`, {
     method: "POST",

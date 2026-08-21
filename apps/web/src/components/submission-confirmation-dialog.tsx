@@ -5,7 +5,7 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { buildTrakeSubmitText } from "@/lib/cloud-api";
 import { classifyDresSubmit, submitFrameToDres, submitTrakeToDres } from "@/lib/api";
-import { createSubmission, sortQueriesByQuestionId, type Query } from "@/lib/submissions";
+import { createSubmission, sortQueriesByQuestionId, type Query, type SubmissionStatus } from "@/lib/submissions";
 
 interface SubmissionConfirmationDialogProps {
   frameId: string;
@@ -48,6 +48,7 @@ export function SubmissionConfirmationDialog({
   const [response, setResponse] = useState<string | null>(null);
   const [qaAnswer, setQaAnswer] = useState(answer);
   const [localQueryId, setLocalQueryId] = useState<string>(selectedQueryId ?? "");
+  const [localStatus, setLocalStatus] = useState<SubmissionStatus>("pending");
 
   const isQa = submissionType === "qa";
   const isTrake =
@@ -96,6 +97,7 @@ export function SubmissionConfirmationDialog({
           videoId,
           frameIds,
           answer: isQa ? qaAnswerTrimmed : undefined,
+          status: localStatus,
         });
         setResponse(`Saved to "${selectedQuery.name}".`);
         setStatus("saved");
@@ -188,6 +190,37 @@ export function SubmissionConfirmationDialog({
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+          {submitMode === "cloud" && (
+            <div>
+              <label className="text-label-sm text-on-surface-variant mb-1 block">Status</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLocalStatus("pending")}
+                  className={`p-2 rounded ${localStatus === "pending" ? "bg-gray-400/20 text-gray-600 ring-2 ring-gray-400" : "hover:bg-surface-container text-on-surface-variant"}`}
+                  title="Check"
+                >
+                  <Icon name="help" size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalStatus("review")}
+                  className={`p-2 rounded ${localStatus === "review" ? "bg-yellow-500/20 text-yellow-600 ring-2 ring-yellow-500" : "hover:bg-surface-container text-on-surface-variant"}`}
+                  title="Maybe"
+                >
+                  <Icon name="question_mark" size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalStatus("confirmed")}
+                  className={`p-2 rounded ${localStatus === "confirmed" ? "bg-green-500/20 text-green-600 ring-2 ring-green-500" : "hover:bg-surface-container text-on-surface-variant"}`}
+                  title="Sure"
+                >
+                  <Icon name="check" size={20} />
+                </button>
+              </div>
             </div>
           )}
           <div className="text-body-md text-on-surface-variant">
