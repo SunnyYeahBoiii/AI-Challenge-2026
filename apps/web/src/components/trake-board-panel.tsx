@@ -459,7 +459,7 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
               <VideoPlayer
                 src={candidateVideo.video_url}
                 poster={videoCandidate.thumbnailUrl || undefined}
-                initialTime={candidateVideo.timestamp}
+                initialTime={videoCandidate.ptsTime}
               />
             ) : (
               <div className="flex h-full items-center justify-center overflow-hidden bg-black font-mono text-mono-sm text-gray-400">
