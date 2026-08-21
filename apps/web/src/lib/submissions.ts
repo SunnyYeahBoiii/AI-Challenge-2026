@@ -114,6 +114,17 @@ export interface Query {
   updatedAt: string;
 }
 
+export function sortQueriesByQuestionId(queries: Query[]): Query[] {
+  return [...queries].sort((a, b) => {
+    const aOrder = parseInt(a.name.match(/query-[^-]+-(\d+)-/)?.[1] ?? "", 10);
+    const bOrder = parseInt(b.name.match(/query-[^-]+-(\d+)-/)?.[1] ?? "", 10);
+    if (!isNaN(aOrder) && !isNaN(bOrder)) return aOrder - bOrder;
+    if (!isNaN(aOrder)) return -1;
+    if (!isNaN(bOrder)) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export async function listQueries(): Promise<Query[]> {
   const res = await fetch(`${cloudApiHttpBase()}/queries`);
   if (!res.ok) throw new Error(`List queries failed: ${res.status}`);

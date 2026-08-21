@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { FilterPanel } from "@/components/filter-panel";
 import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
@@ -16,7 +16,9 @@ import { useSessionStorageState } from "@/hooks/use-session-storage";
 import { useTemporalSearch } from "@/hooks/use-temporal-search";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
 import type { FrameToTrake } from "@/lib/trake-types";
-import { listQueries, type Query } from "@/lib/submissions";
+import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type Submission } from "@/lib/submissions";
+import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 
 type SubmissionType = "track" | "qa" | "kis";
 type SubmitMode = "dres" | "cloud";
@@ -44,6 +46,14 @@ export default function Home() {
     null,
   );
   const [view, setView] = useSessionStorageState<View>("view", "search");
+  const [showQueryDetail, setShowQueryDetail] = useState(false);
+  const [querySubmissions, setQuerySubmissions] = useState<Submission[]>([]);
+  const [queryKeyframes, setQueryKeyframes] = useState<Record<string, KeyframeInfo | null>>({});
+  const [queryVideoDialog, setQueryVideoDialog] = useState<{
+    submission: Submission;
+    keyframe: KeyframeInfo;
+  } | null>(null);
+  const queryVideoRef = useRef<VideoPlayerHandle>(null);
 
   // Submission state
   const [frameId, setFrameId] = useState("");
@@ -54,6 +64,25 @@ export default function Home() {
 
   const trake = useTrakeBoard(submissionType === "track");
 
+  const selectedQuery = queries.find((q) => q.id === selectedQueryId);
+
+  const handleViewQueryDetail = useCallback(async () => {
+    if (!selectedQuery) return;
+    setShowQueryDetail(true);
+    try {
+      const subs = await listSubmissions();
+      const filtered = subs.filter((s) => s.queryName === selectedQuery.name);
+      setQuerySubmissions(filtered);
+
+      const items = filtered.flatMap((sub) =>
+        sub.frameIds.map((fi) => ({ video_id: sub.videoId, frame_index: fi, key: `${sub.videoId}-${fi}` }))
+      );
+      const kf = await getNearestKeyframes(items);
+      setQueryKeyframes(kf);
+    } catch {
+      // ignore
+    }
+  }, [selectedQuery]);
 
   // Tasks can be added from the dashboard; refresh the topbar dropdown each
   // time the search view becomes active again.

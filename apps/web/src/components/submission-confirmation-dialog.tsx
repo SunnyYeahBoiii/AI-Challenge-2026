@@ -5,7 +5,7 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { buildTrakeSubmitText } from "@/lib/cloud-api";
 import { classifyDresSubmit, submitFrameToDres, submitTrakeToDres } from "@/lib/api";
-import { createSubmission, type Query } from "@/lib/submissions";
+import { createSubmission, sortQueriesByQuestionId, type Query } from "@/lib/submissions";
 
 interface SubmissionConfirmationDialogProps {
   frameId: string;
@@ -182,7 +182,7 @@ export function SubmissionConfirmationDialog({
                 onChange={(e) => setLocalQueryId(e.target.value)}
               >
                 <option value="">Select a task...</option>
-                {queries.map((q) => (
+                {sortQueriesByQuestionId(queries).map((q) => (
                   <option key={q.id} value={q.id}>
                     {q.name} ({q.queryType.toUpperCase()})
                   </option>

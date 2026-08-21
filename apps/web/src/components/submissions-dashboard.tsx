@@ -31,6 +31,7 @@ import {
   listQueries,
   createQuery,
   deleteQuery,
+  sortQueriesByQuestionId,
   type Submission,
   type QueryType,
   type SubmissionStatus,
@@ -535,7 +536,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
               onChange={(e) => setSelectedQueryId(e.target.value || null)}
             >
               <option value="">All Queries</option>
-              {queries.map((q) => (
+              {sortQueriesByQuestionId(queries).map((q) => (
                 <option key={q.id} value={q.id}>
                   {q.name} ({q.queryType.toUpperCase()})
                 </option>
