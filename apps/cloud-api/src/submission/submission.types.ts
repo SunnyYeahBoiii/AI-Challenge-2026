@@ -57,6 +57,10 @@ export class CreateSubmissionInput {
   @IsString()
   @MaxLength(100)
   submittedBy?: string;
+
+  @IsOptional()
+  @IsIn(["pending", "confirmed", "review"])
+  status?: SubmissionStatus;
 }
 
 export class UpdateSubmissionInput {

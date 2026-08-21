@@ -71,7 +71,7 @@ export class SubmissionService {
         videoId: input.videoId,
         frameIds: JSON.stringify(input.frameIds),
         answer: input.answer ?? "",
-        status: "pending",
+        status: input.status ?? "pending",
         sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
         version: 0,
         submittedBy: input.submittedBy ?? "",
