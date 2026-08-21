@@ -180,15 +180,20 @@ export class SubmissionService {
         return `${row.videoId},${frameIds.join(",")}`;
       }
       if (row.queryType === "qa") {
-        const answer =
-          row.answer.includes(",") || row.answer.includes('"')
-            ? `"${row.answer.replace(/"/g, '""')}"`
-            : row.answer;
-        return `${row.videoId},${frameIds[0] ?? ""},${answer}`;
+        return `${row.videoId},${frameIds[0] ?? ""},${this.escapeCsvField(row.answer)}`;
       }
       return `${row.videoId},${frameIds[0] ?? ""}`;
     });
-    return lines.join("\n");
+    return lines.join("\r\n");
+  }
+
+  /** RFC 4180 CSV escaping: wrap in quotes if field contains comma,
+   *  double-quote, or newline; escape internal quotes by doubling. */
+  private escapeCsvField(value: string): string {
+    if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
   }
 
   private toSnapshot = (row: {
