@@ -459,6 +459,157 @@ export default function Home() {
           }}
         />
       )}
+
+      {/* Query Detail Dialog */}
+      {showQueryDetail && selectedQuery && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/80 backdrop-blur-sm">
+          <div className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-outline-variant">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-label-sm font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">
+                  {selectedQuery.queryType.toUpperCase()}
+                </span>
+                <span className="text-headline-sm font-bold">{selectedQuery.name}</span>
+              </div>
+              <button
+                onClick={() => {
+                  setShowQueryDetail(false);
+                  setQuerySubmissions([]);
+                  setQueryKeyframes({});
+                }}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors"
+              >
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+
+            {/* Question - always visible */}
+            {selectedQuery.content && (
+              <div className="px-6 pt-4 shrink-0">
+                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant">
+                  <div className="text-label-sm font-bold text-on-surface-variant mb-1">Question</div>
+                  <div className="text-body-md text-on-surface whitespace-pre-wrap leading-relaxed">
+                    {selectedQuery.content}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Submissions - scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="text-label-md font-bold text-on-surface-variant mb-2">
+                Submissions ({querySubmissions.length})
+              </div>
+              {querySubmissions.length === 0 ? (
+                <div className="text-center py-8 text-on-surface-variant text-body-md">
+                  No submissions for this query yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {querySubmissions
+                    .sort((a, b) => {
+                      const order: Record<string, number> = { confirmed: 0, review: 1, pending: 2 };
+                      return (order[a.status] ?? 2) - (order[b.status] ?? 2) || a.sortOrder - b.sortOrder;
+                    })
+                    .map((sub) => (
+                      <div
+                        key={sub.id}
+                        className="rounded-lg bg-surface-container-low border border-outline-variant px-4 py-3"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`w-3 h-3 rounded-full shrink-0 ${
+                              sub.status === "confirmed"
+                                ? "bg-green-500"
+                                : sub.status === "review"
+                                  ? "bg-yellow-500"
+                                  : "bg-gray-400"
+                            }`}
+                          />
+                          <span className="text-body-md font-mono">{sub.videoId}</span>
+                          <span className="text-body-sm text-on-surface-variant">
+                            Frame {sub.frameIds.join(", ")}
+                          </span>
+                          {sub.submittedBy && (
+                            <span className="text-body-sm text-on-surface-variant">
+                              · by {sub.submittedBy}
+                            </span>
+                          )}
+                        </div>
+                        {sub.answer && (
+                          <div className="text-body-sm text-on-surface-variant mt-1">
+                            <span className="font-bold">Answer:</span> {sub.answer}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {sub.frameIds.map((fi) => {
+                            const kf = queryKeyframes[`${sub.videoId}-${fi}`];
+                            if (!kf?.thumbnail_url) return null;
+                            return (
+                              <button
+                                key={fi}
+                                onClick={() => setQueryVideoDialog({ submission: sub, keyframe: kf })}
+                                className="relative shrink-0 group"
+                                title="View in video player"
+                              >
+                                <img
+                                  src={kf.thumbnail_url}
+                                  alt={`Frame ${fi}`}
+                                  className="w-20 h-12 object-cover rounded border border-outline-variant group-hover:opacity-80 group-hover:ring-2 group-hover:ring-primary transition"
+                                  loading="lazy"
+                                />
+                                {!kf.is_exact && (
+                                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-label-xs px-1 rounded">
+                                    ~{kf.frame_index}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Player Dialog for Query Detail */}
+      {queryVideoDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm">
+          <div className="relative w-full max-w-6xl h-[80vh] bg-black rounded-lg overflow-hidden">
+            <button
+              onClick={() => setQueryVideoDialog(null)}
+              className="absolute top-4 right-4 z-10 text-white hover:bg-white/10 rounded-full p-2 transition-colors"
+            >
+              <Icon name="close" size={24} />
+            </button>
+
+            <div className="absolute top-4 left-4 z-10 bg-black/70 rounded px-3 py-2 text-white">
+              <div className="text-label-sm font-bold">{queryVideoDialog.submission.queryName}</div>
+              <div className="text-body-xs text-gray-300">
+                {queryVideoDialog.submission.videoId} · Frame {queryVideoDialog.keyframe.frame_index}
+                {!queryVideoDialog.keyframe.is_exact && (
+                  <span className="text-yellow-400 ml-2">(nearest: {queryVideoDialog.keyframe.frame_index})</span>
+                )}
+              </div>
+              {queryVideoDialog.submission.answer && (
+                <div className="text-body-xs text-gray-300 mt-1">Answer: {queryVideoDialog.submission.answer}</div>
+              )}
+            </div>
+
+            <VideoPlayer
+              ref={queryVideoRef}
+              src={queryVideoDialog.keyframe.video_url}
+              poster={queryVideoDialog.keyframe.thumbnail_url}
+              initialTime={queryVideoDialog.keyframe.timestamp}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
