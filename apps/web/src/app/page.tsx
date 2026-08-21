@@ -240,18 +240,28 @@ export default function Home() {
 
             {/* Task Dropdown */}
             {submitMode === "cloud" && (
-              <select
-                className="rounded border border-outline-variant bg-surface-container-low px-3 py-1.5 text-label-sm text-on-surface"
-                value={selectedQueryId ?? ""}
-                onChange={(e) => setSelectedQueryId(e.target.value || null)}
-              >
-                <option value="">Select task...</option>
-                {queries.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.name} ({q.queryType.toUpperCase()})
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  className="rounded border border-outline-variant bg-surface-container-low px-3 py-1.5 text-label-sm text-on-surface"
+                  value={selectedQueryId ?? ""}
+                  onChange={(e) => setSelectedQueryId(e.target.value || null)}
+                >
+                  <option value="">Select task...</option>
+                  {sortQueriesByQuestionId(queries).map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.name} ({q.queryType.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleViewQueryDetail}
+                  disabled={!selectedQuery}
+                  title="View question detail"
+                  className="flex items-center justify-center w-8 h-8 rounded border border-outline-variant bg-surface-container-low hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-on-surface-variant"
+                >
+                  <Icon name="visibility" size={18} />
+                </button>
+              </>
             )}
 
           </div>
