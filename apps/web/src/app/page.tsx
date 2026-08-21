@@ -52,6 +52,7 @@ export default function Home() {
   const [queryVideoDialog, setQueryVideoDialog] = useState<{
     submission: Submission;
     keyframe: KeyframeInfo;
+    submittedFrameIndex: number;
   } | null>(null);
   const queryVideoRef = useRef<VideoPlayerHandle>(null);
 
@@ -549,7 +550,7 @@ export default function Home() {
                             return (
                               <button
                                 key={fi}
-                                onClick={() => setQueryVideoDialog({ submission: sub, keyframe: kf })}
+                                onClick={() => setQueryVideoDialog({ submission: sub, keyframe: kf, submittedFrameIndex: fi })}
                                 className="relative shrink-0 group"
                                 title="View in video player"
                               >
@@ -591,7 +592,7 @@ export default function Home() {
             <div className="absolute top-4 left-4 z-10 bg-black/70 rounded px-3 py-2 text-white">
               <div className="text-label-sm font-bold">{queryVideoDialog.submission.queryName}</div>
               <div className="text-body-xs text-gray-300">
-                {queryVideoDialog.submission.videoId} · Frame {queryVideoDialog.keyframe.frame_index}
+                {queryVideoDialog.submission.videoId} · Frame {queryVideoDialog.submittedFrameIndex}
                 {!queryVideoDialog.keyframe.is_exact && (
                   <span className="text-yellow-400 ml-2">(nearest: {queryVideoDialog.keyframe.frame_index})</span>
                 )}
@@ -605,7 +606,11 @@ export default function Home() {
               ref={queryVideoRef}
               src={queryVideoDialog.keyframe.video_url}
               poster={queryVideoDialog.keyframe.thumbnail_url}
-              initialTime={queryVideoDialog.keyframe.timestamp}
+              initialTime={
+                queryVideoDialog.submission.queryType === "trake" && queryVideoDialog.keyframe.fps
+                  ? queryVideoDialog.submittedFrameIndex / queryVideoDialog.keyframe.fps
+                  : queryVideoDialog.keyframe.timestamp
+              }
             />
           </div>
         </div>

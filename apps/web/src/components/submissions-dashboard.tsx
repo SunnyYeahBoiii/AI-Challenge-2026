@@ -71,7 +71,7 @@ const SortableSubmissionCard = memo(function SortableSubmissionCard({
   keyframes: Record<string, KeyframeInfo | null>;
   onStatusChange: (id: string, status: SubmissionStatus) => void;
   onDelete: (id: string) => void;
-  onViewVideo: (sub: Submission, keyframe: KeyframeInfo) => void;
+  onViewVideo: (sub: Submission, keyframe: KeyframeInfo, submittedFrameIndex: number) => void;
 }) {
   const { active } = useDndContext();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -177,7 +177,7 @@ const SortableSubmissionCard = memo(function SortableSubmissionCard({
           return (
             <button
               key={frameIndex}
-              onClick={() => onViewVideo(sub, keyframe)}
+              onClick={() => onViewVideo(sub, keyframe, frameIndex)}
               className="relative shrink-0 group"
               title="View in video player"
             >
@@ -213,6 +213,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
   const [videoDialog, setVideoDialog] = useState<{
     submission: Submission;
     keyframe: KeyframeInfo;
+    submittedFrameIndex: number;
   } | null>(null);
   const videoPlayerRef = useRef<VideoPlayerHandle>(null);
 
@@ -683,7 +684,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
                                 keyframes={keyframes}
                                 onStatusChange={handleStatusChange}
                                 onDelete={handleDelete}
-                                onViewVideo={(s, k) => setVideoDialog({ submission: s, keyframe: k })}
+                                onViewVideo={(s, k, fi) => setVideoDialog({ submission: s, keyframe: k, submittedFrameIndex: fi })}
                               />
                             );
                           })}
@@ -711,7 +712,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
             <div className="absolute top-4 left-4 z-10 bg-black/70 rounded px-3 py-2 text-white">
               <div className="text-label-sm font-bold">{videoDialog.submission.queryName}</div>
               <div className="text-body-xs text-gray-300">
-                {videoDialog.submission.videoId} · Frame {videoDialog.keyframe.frame_index}
+                {videoDialog.submission.videoId} · Frame {videoDialog.submittedFrameIndex}
                 {!videoDialog.keyframe.is_exact && (
                   <span className="text-yellow-400 ml-2">(nearest: {videoDialog.keyframe.frame_index})</span>
                 )}
@@ -725,7 +726,11 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
               ref={videoPlayerRef}
               src={videoDialog.keyframe.video_url}
               poster={videoDialog.keyframe.thumbnail_url}
-              initialTime={videoDialog.keyframe.timestamp}
+              initialTime={
+                videoDialog.submission.queryType === "trake" && videoDialog.keyframe.fps
+                  ? videoDialog.submittedFrameIndex / videoDialog.keyframe.fps
+                  : videoDialog.keyframe.timestamp
+              }
             />
           </div>
         </div>

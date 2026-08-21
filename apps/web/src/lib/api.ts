@@ -140,6 +140,7 @@ export async function listVideos(
 export interface KeyframeInfo {
   frame_index: number;
   timestamp: number;
+  fps: number | null;
   thumbnail_url: string;
   video_url: string;
   is_exact: boolean;
