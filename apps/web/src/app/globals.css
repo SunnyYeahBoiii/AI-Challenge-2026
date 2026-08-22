@@ -91,6 +91,57 @@
   --radius-lg: 0.75rem;
 }
 
+/* Dark theme — overrides the light tokens when .dark is on <html> */
+.dark {
+  --color-primary: #89d0ed;
+  --color-on-primary: #003546;
+  --color-primary-container: #004d62;
+  --color-on-primary-container: #bde9ff;
+  --color-inverse-primary: #0c6780;
+
+  --color-primary-fixed: #baeaff;
+  --color-primary-fixed-dim: #8dcff1;
+  --color-on-primary-fixed: #001f2a;
+
+  --color-secondary: #9ecaff;
+  --color-on-secondary: #003258;
+  --color-secondary-container: #00497d;
+  --color-on-secondary-container: #d4e3ff;
+
+  --color-tertiary: #c6c9cc;
+  --color-on-tertiary: #2e3133;
+  --color-tertiary-container: #444749;
+  --color-on-tertiary-container: #e2e4e7;
+
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  --color-background: #1a1c1e;
+  --color-on-background: #e2e2e5;
+
+  --color-surface: #1a1c1e;
+  --color-on-surface: #e2e2e5;
+  --color-on-surface-variant: #c4c7cc;
+  --color-surface-variant: #444749;
+  --color-surface-dim: #1a1c1e;
+  --color-surface-bright: #3a3d40;
+  --color-surface-tint: #89d0ed;
+
+  --color-surface-container-lowest: #0f1113;
+  --color-surface-container-low: #222426;
+  --color-surface-container: #262a2d;
+  --color-surface-container-high: #313437;
+  --color-surface-container-highest: #3c3f42;
+
+  --color-outline: #8e9196;
+  --color-outline-variant: #444749;
+
+  --color-inverse-surface: #e2e2e5;
+  --color-inverse-on-surface: #2f3133;
+}
+
 @layer base {
   body {
     font-family: var(--font-sans);
@@ -125,5 +176,9 @@
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background-color: var(--color-outline-variant);
     border-radius: 4px;
+  }
+
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-outline);
   }
 }
