@@ -14,6 +14,7 @@ import type { FrameResult } from "@/lib/api";
 import { useDresSession } from "@/hooks/use-dres-session";
 import { useSessionStorageState } from "@/hooks/use-session-storage";
 import { useTemporalSearch } from "@/hooks/use-temporal-search";
+import { useTheme } from "@/hooks/use-theme";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
 import type { FrameToTrake } from "@/lib/trake-types";
 import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type Submission } from "@/lib/submissions";
@@ -28,6 +29,7 @@ export default function Home() {
   const { searchResult, queryCount, hasSearched, isLoading, searchError, setSearchError, handleSearch, clearSearch } =
     useTemporalSearch();
   const dres = useDresSession();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
@@ -322,6 +324,13 @@ export default function Home() {
                 Submissions
               </button>
             )}
+            <button
+              onClick={toggleTheme}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              className="flex items-center justify-center w-9 h-9 rounded border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-on-surface-variant"
+            >
+              <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={18} />
+            </button>
           </div>
         </header>
 
