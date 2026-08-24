@@ -1,6 +1,7 @@
 import json
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 from app.config import Config
 
@@ -33,9 +34,18 @@ class DresClient:
     def __init__(self):
         self.base_url = Config.DRES_URL.rstrip("/")
 
+    def _resolve_base_url(self, base_url: str | None) -> str:
+        if base_url is not None and not isinstance(base_url, str):
+            raise DresError(400, "DRES URL must be a string")
+        candidate = (base_url or self.base_url).strip().rstrip("/")
+        parsed = urlparse(candidate)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise DresError(400, "DRES URL must be an absolute http(s) URL")
+        return candidate
+
     def _request(self, method: str, path: str, body: dict | None = None,
-                 query: dict | None = None) -> dict:
-        url = f"{self.base_url}{path}"
+                 query: dict | None = None, base_url: str | None = None) -> dict:
+        url = f"{self._resolve_base_url(base_url)}{path}"
         if query:
             from urllib.parse import urlencode
             url = f"{url}?{urlencode(query)}"
@@ -54,25 +64,40 @@ class DresClient:
         except urllib.error.URLError as e:
             raise DresError(0, str(e.reason), message=f"DRES unreachable: {e.reason}") from e
 
-    def login(self, username: str, password: str) -> dict:
-        result = self._request("POST", "/api/v2/login",
-                               body={"username": username, "password": password})
+    def login(self, username: str, password: str, base_url: str | None = None) -> dict:
+        result = self._request(
+            "POST",
+            "/api/v2/login",
+            body={"username": username, "password": password},
+            base_url=base_url,
+        )
         if not result.get("sessionId"):
             raise DresError(502, result, message=f"DRES login returned no sessionId: {result}")
         return result
 
-    def logout(self, session_id: str) -> None:
-        self._request("GET", "/api/v2/logout", query={"session": session_id})
+    def logout(self, session_id: str, base_url: str | None = None) -> None:
+        self._request(
+            "GET", "/api/v2/logout", query={"session": session_id}, base_url=base_url
+        )
 
-    def list_evaluations(self, session_id: str) -> list[dict]:
-        return self._request("GET", "/api/v2/client/evaluation/list",
-                             query={"session": session_id})
+    def list_evaluations(self, session_id: str, base_url: str | None = None) -> list[dict]:
+        return self._request(
+            "GET",
+            "/api/v2/client/evaluation/list",
+            query={"session": session_id},
+            base_url=base_url,
+        )
 
-    def list_media_items(self, session_id: str) -> list:
-        return self._request("GET", "/api/v2/client/mediaItem/list",
-                             query={"session": session_id, "collection": ""})
+    def list_media_items(self, session_id: str, base_url: str | None = None) -> list:
+        return self._request(
+            "GET",
+            "/api/v2/client/mediaItem/list",
+            query={"session": session_id, "collection": ""},
+            base_url=base_url,
+        )
 
-    def submit(self, evaluation_id: str, video_id: str, time_ms: int, session_id: str) -> dict:
+    def submit(self, evaluation_id: str, video_id: str, time_ms: int, session_id: str,
+               base_url: str | None = None) -> dict:
         body = {
             "answerSets": [
                 {
@@ -91,6 +116,7 @@ class DresClient:
             f"/api/v2/submit/{evaluation_id}",
             body=body,
             query={"session": session_id},
+            base_url=base_url,
         )
 
     def submit_qa(
@@ -100,6 +126,7 @@ class DresClient:
         video_id: str,
         time_ms: int,
         session_id: str,
+        base_url: str | None = None,
     ) -> dict:
         """Submit one QA answer as text: QA-<ANSWER>-<VIDEO_ID>-<TIME(ms)>."""
         body = {
@@ -116,6 +143,7 @@ class DresClient:
             f"/api/v2/submit/{evaluation_id}",
             body=body,
             query={"session": session_id},
+            base_url=base_url,
         )
 
     def submit_trake(
@@ -124,6 +152,7 @@ class DresClient:
         video_id: str,
         frame_ids: list[int],
         session_id: str,
+        base_url: str | None = None,
     ) -> dict:
         """Submit TRAKE as text: TR-<VIDEO_ID>-<FRAME_ID1>,<FRAME_ID2>,..."""
         ids = ",".join(str(int(fid)) for fid in frame_ids)
@@ -141,6 +170,7 @@ class DresClient:
             f"/api/v2/submit/{evaluation_id}",
             body=body,
             query={"session": session_id},
+            base_url=base_url,
         )
 
 

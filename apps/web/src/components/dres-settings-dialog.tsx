@@ -14,18 +14,22 @@ interface DresSettingsDialogProps {
   username?: string | null;
   /** Currently saved evaluation (contest) run, if any. */
   evaluationId?: string | null;
+  dresUrl: string;
   onClose: () => void;
   onLoginSuccess: (sessionId: string, username: string) => void;
   onEvaluationSelect: (evaluationId: string) => void;
+  onServerChange: (dresUrl: string) => void;
 }
 
 export function DresSettingsDialog({
   sessionId,
   username: initialUsername,
   evaluationId,
+  dresUrl,
   onClose,
   onLoginSuccess,
   onEvaluationSelect,
+  onServerChange,
 }: DresSettingsDialogProps) {
   const [username, setUsername] = useState(initialUsername ?? "");
   const [password, setPassword] = useState("");
@@ -37,11 +41,15 @@ export function DresSettingsDialog({
   const [evaluations, setEvaluations] = useState<DresEvaluation[]>([]);
   const [evalStatus, setEvalStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [selectedEvalId, setSelectedEvalId] = useState(evaluationId ?? "");
+  const [serverUrl, setServerUrl] = useState(dresUrl);
+  const [serverUrlError, setServerUrlError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeSessionId) return;
     setEvalStatus("loading");
-    fetch(`/api/dres/evaluations?session=${encodeURIComponent(activeSessionId)}`)
+    const params = new URLSearchParams({ session: activeSessionId });
+    if (dresUrl) params.set("dresUrl", dresUrl);
+    fetch(`/api/dres/evaluations?${params.toString()}`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error?.description || "Failed to load evaluations");
@@ -49,19 +57,48 @@ export function DresSettingsDialog({
         setEvalStatus("loaded");
       })
       .catch(() => setEvalStatus("error"));
-  }, [activeSessionId]);
+  }, [activeSessionId, dresUrl]);
+
+  const normalizeServerUrl = (): string | null => {
+    const candidate = serverUrl.trim().replace(/\/+$/, "");
+    if (!candidate) return "";
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+      return candidate;
+    } catch {
+      setServerUrlError("Enter an absolute http(s) URL.");
+      return null;
+    }
+  };
+
+  const handleUseServer = () => {
+    const normalized = normalizeServerUrl();
+    if (normalized === null) return;
+    setServerUrl(normalized);
+    setServerUrlError(null);
+    onServerChange(normalized);
+    setActiveSessionId(null);
+    setEvaluations([]);
+    setSelectedEvalId("");
+    setPassword("");
+    setLoginStatus("idle");
+  };
 
   const handleLogin = async () => {
+    const normalized = normalizeServerUrl();
+    if (normalized === null) return;
     setLoginStatus("loading");
     try {
       const res = await fetch("/api/dres/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, dresUrl: normalized || undefined }),
       });
       const data = await res.json();
       if (res.ok && data.sessionId) {
         const resolvedUsername = data.username || username;
+        if (normalized !== dresUrl) onServerChange(normalized);
         onLoginSuccess(data.sessionId, resolvedUsername);
         setActiveSessionId(data.sessionId);
         setLoginStatus("success");
@@ -103,6 +140,35 @@ export function DresSettingsDialog({
 
         {/* Content */}
         <div className="p-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="dres-server-url" className="text-label-md text-on-surface-variant">
+              DRES server URL
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="dres-server-url"
+                type="url"
+                value={serverUrl}
+                onChange={(event) => {
+                  setServerUrl(event.target.value);
+                  setServerUrlError(null);
+                }}
+                placeholder="Use server configured by the deployment"
+                className="min-w-0 flex-1 bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+              />
+              <button
+                type="button"
+                onClick={handleUseServer}
+                className="shrink-0 px-3 py-2 rounded border border-outline-variant text-label-md hover:bg-surface-container transition-colors"
+              >
+                Use server
+              </button>
+            </div>
+            <p className="text-label-xs text-on-surface-variant">
+              Switching server clears the current DRES session and evaluation.
+            </p>
+            {serverUrlError && <p className="text-label-xs text-error">{serverUrlError}</p>}
+          </div>
           {!activeSessionId && (
             <>
               <div className="flex flex-col gap-1">

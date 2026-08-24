@@ -213,6 +213,8 @@ export async function submitFrameToDres(params: {
   answer?: string;
   /** Target evaluation (contest) run. Falls back to first ACTIVE run if omitted. */
   evaluationId?: string;
+  /** Overrides the backend's configured DRES server for this request. */
+  dresUrl?: string;
 }): Promise<DresSubmitResult> {
   const { data } = await api.post(`/dres/submit/${params.submissionType}`, {
     frame_id: params.frameId,
@@ -220,6 +222,7 @@ export async function submitFrameToDres(params: {
     timestamp: params.timestamp,
     sessionId: params.sessionId,
     ...(params.evaluationId ? { evaluationId: params.evaluationId } : {}),
+    ...(params.dresUrl ? { dresUrl: params.dresUrl } : {}),
     ...(params.submissionType === "qa" && params.answer != null
       ? { answer: params.answer }
       : {}),
@@ -234,12 +237,15 @@ export async function submitTrakeToDres(params: {
   sessionId: string;
   /** Target evaluation (contest) run. Falls back to first ACTIVE run if omitted. */
   evaluationId?: string;
+  /** Overrides the backend's configured DRES server for this request. */
+  dresUrl?: string;
 }): Promise<DresSubmitResult> {
   const { data } = await api.post(`/dres/submit/track`, {
     video_path: params.videoId,
     frame_ids: params.frameIds,
     sessionId: params.sessionId,
     ...(params.evaluationId ? { evaluationId: params.evaluationId } : {}),
+    ...(params.dresUrl ? { dresUrl: params.dresUrl } : {}),
   });
   return data;
 }
