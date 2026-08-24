@@ -7,11 +7,13 @@ export function useDresSession() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
+  const [dresUrl, setDresUrl] = useState("");
 
   useEffect(() => {
     setSessionId(sessionStorage.getItem("dresSessionId"));
     setUsername(sessionStorage.getItem("dresUsername"));
     setEvaluationId(sessionStorage.getItem("dresEvaluationId"));
+    setDresUrl(sessionStorage.getItem("dresUrl") ?? "");
   }, []);
 
   const login = useCallback((newSessionId: string, newUsername: string) => {
@@ -38,10 +40,30 @@ export function useDresSession() {
       fetch("/api/dres/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: endedSessionId }),
+        body: JSON.stringify({ sessionId: endedSessionId, dresUrl: dresUrl || undefined }),
       }).catch(() => {});
     }
-  }, [sessionId]);
+  }, [dresUrl, sessionId]);
 
-  return { sessionId, username, evaluationId, login, selectEvaluation, logout };
+  const switchServer = useCallback((newDresUrl: string) => {
+    const endedSessionId = sessionId;
+    const previousDresUrl = dresUrl;
+    sessionStorage.setItem("dresUrl", newDresUrl);
+    sessionStorage.removeItem("dresSessionId");
+    sessionStorage.removeItem("dresUsername");
+    sessionStorage.removeItem("dresEvaluationId");
+    setDresUrl(newDresUrl);
+    setSessionId(null);
+    setUsername(null);
+    setEvaluationId(null);
+    if (endedSessionId) {
+      fetch("/api/dres/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: endedSessionId, dresUrl: previousDresUrl || undefined }),
+      }).catch(() => {});
+    }
+  }, [dresUrl, sessionId]);
+
+  return { sessionId, username, evaluationId, dresUrl, login, selectEvaluation, logout, switchServer };
 }

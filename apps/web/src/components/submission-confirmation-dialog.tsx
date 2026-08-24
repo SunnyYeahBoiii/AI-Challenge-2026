@@ -15,6 +15,7 @@ interface SubmissionConfirmationDialogProps {
   sessionId: string | null;
   /** Selected DRES evaluation (contest) run to submit against. */
   evaluationId?: string | null;
+  dresUrl?: string;
   /** Prefill from frame-detail dialog when type is QA. */
   answer?: string;
   /** TRAKE ordered frame ids for TR-VIDEO-id1,id2,... */
@@ -35,6 +36,7 @@ export function SubmissionConfirmationDialog({
   submissionType,
   sessionId,
   evaluationId,
+  dresUrl,
   answer = "",
   trakeFrameIds,
   submitMode = "dres",
@@ -131,6 +133,7 @@ export function SubmissionConfirmationDialog({
             frameIds: trakeFrameIds!,
             sessionId,
             ...(evaluationId ? { evaluationId } : {}),
+            ...(dresUrl ? { dresUrl } : {}),
           })
         : await submitFrameToDres({
             frameId,
@@ -139,6 +142,7 @@ export function SubmissionConfirmationDialog({
             submissionType,
             sessionId,
             ...(evaluationId ? { evaluationId } : {}),
+            ...(dresUrl ? { dresUrl } : {}),
             ...(isQa ? { answer: qaAnswer } : {}),
           });
       setResponse(JSON.stringify(data, null, 2));

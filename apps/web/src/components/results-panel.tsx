@@ -33,12 +33,14 @@ interface ResultsPanelProps {
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
   dresEvaluationId: string | null;
+  dresUrl?: string;
   gridCols?: number;
   hasSearched?: boolean;
   trakeFocusedLabel?: string;
   onAddToTrake?: (frame: FrameResult) => void;
   submitMode?: "dres" | "cloud";
   onCloudQuickSubmit?: (frame: FrameResult) => void;
+  isInteractionDisabled?: boolean;
 }
 
 export function ResultsPanel({
@@ -51,16 +53,19 @@ export function ResultsPanel({
   submissionType,
   dresSessionId,
   dresEvaluationId,
+  dresUrl,
   gridCols = 6,
   hasSearched = false,
   trakeFocusedLabel,
   onAddToTrake,
   submitMode = "dres",
   onCloudQuickSubmit,
+  isInteractionDisabled = false,
 }: ResultsPanelProps) {
   const [visibleUnitCount, setVisibleUnitCount] = useState(VIDEO_PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
   const [lastOpenedKey, setLastOpenedKey] = useState<string | null>(null);
+  const [selectedFrameKey, setSelectedFrameKey] = useState<string | null>(null);
   const [quickSubmit, setQuickSubmit] = useState<
     Record<string, { status: QuickSubmitStatus; message?: string }>
   >({});
@@ -95,6 +100,7 @@ export function ResultsPanel({
         submissionType,
         sessionId: dresSessionId,
         evaluationId: dresEvaluationId,
+        dresUrl,
       });
       const status = classifyDresSubmit(data);
       setQuickSubmit((s) => ({ ...s, [key]: { status } }));
@@ -142,6 +148,31 @@ export function ResultsPanel({
     }));
   }, [continuousFrames, paginatesFrames, result.videos, viewMode, visibleUnitCount]);
 
+  const navigableFrames = useMemo(
+    () => displayGroups.flatMap((group) => group.frames),
+    [displayGroups],
+  );
+
+  useEffect(() => {
+    const firstFrame = navigableFrames[0];
+    const firstKey = firstFrame ? `${firstFrame.video_id}-${firstFrame.frame_index}` : null;
+    setSelectedFrameKey(firstKey);
+    if (firstKey) requestAnimationFrame(() => document.getElementById(`result-${firstKey}`)?.focus());
+  }, [navigableFrames]);
+
+  useEffect(() => {
+    if (!isInteractionDisabled && selectedFrameKey) {
+      requestAnimationFrame(() => document.getElementById(`result-${selectedFrameKey}`)?.focus());
+    }
+  }, [isInteractionDisabled, selectedFrameKey]);
+
+  const selectedFrame = useMemo(
+    () => navigableFrames.find(
+      (frame) => `${frame.video_id}-${frame.frame_index}` === selectedFrameKey,
+    ) ?? null,
+    [navigableFrames, selectedFrameKey],
+  );
+
   const visibleFrameCount = displayGroups.reduce((total, group) => total + group.frames.length, 0);
   const visibleVideoCount = new Set(
     displayGroups.flatMap((group) => group.frames.map((frame) => frame.video_id))
@@ -163,6 +194,47 @@ export function ResultsPanel({
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [pageSize, totalUnits, visibleUnitCount]);
+
+  const openFrame = (frame: FrameResult) => {
+    const key = `${frame.video_id}-${frame.frame_index}`;
+    setSelectedFrameKey(key);
+    setLastOpenedKey(key);
+    onFrameSelect(frame);
+    onFrameDetail(frame);
+  };
+
+  const quickSubmitFrame = (frame: FrameResult) => {
+    if (submitMode === "cloud") {
+      onCloudQuickSubmit?.(frame);
+      return;
+    }
+    void handleQuickSubmit(frame);
+  };
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isInResultsPanel = event.target instanceof Element && Boolean(event.target.closest("[data-results-panel]"));
+      if (!isInResultsPanel) return;
+      if (isInteractionDisabled || !selectedFrame || isEditableTarget(event.target)) return;
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && event.key === "Enter" && submissionType !== "qa") {
+        event.preventDefault();
+        quickSubmitFrame(selectedFrame);
+        return;
+      }
+
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && event.key.toLowerCase() === "a" && onAddToTrake) {
+        event.preventDefault();
+        onAddToTrake(selectedFrame);
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [gridCols, isInteractionDisabled, navigableFrames, onAddToTrake, selectedFrame, selectedFrameKey, submissionType, submitMode]);
 
   if (isLoading) {
     return (
@@ -200,6 +272,7 @@ export function ResultsPanel({
   return (
     <main
       ref={scrollRootRef}
+      data-results-panel
       className="relative flex-1 bg-surface-container-lowest overflow-y-auto p-container-padding"
     >
       <div className="flex justify-between items-center mb-4">
@@ -248,6 +321,10 @@ export function ResultsPanel({
                 return (
                 <div
                   key={key}
+                  id={`result-${key}`}
+                  tabIndex={0}
+                  role="group"
+                  aria-label={`Frame ${frame.frame_index} from ${frame.video_id}`}
                   draggable={submissionType === "track"}
                   onDragStart={(e) => {
                     if (submissionType !== "track") return;
@@ -257,16 +334,26 @@ export function ResultsPanel({
                     );
                     e.dataTransfer.effectAllowed = "copy";
                   }}
-                  className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors ${
+                  className={`relative group cursor-pointer aspect-video bg-surface-container overflow-hidden border rounded-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
                     isLastOpened
                       ? "border-4 border-red-500 hover:border-red-500 ring-2 ring-red-500/50"
-                      : "border-outline-variant hover:border-primary"
+                      : selectedFrameKey === key
+                        ? "border-primary ring-2 ring-primary/40"
+                        : "border-outline-variant hover:border-primary"
                   }`}
-                  onClick={() => {
-                    setLastOpenedKey(key);
-                    onFrameSelect(frame);
-                    onFrameDetail(frame);
+                  onFocus={() => setSelectedFrameKey(key)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      openFrame(frame);
+                    }
+                    if (event.key.toLowerCase() === "z") {
+                      event.preventDefault();
+                      setSelectedFrameKey(key);
+                      setZoomFrame(frame);
+                    }
                   }}
+                  onClick={() => openFrame(frame)}
                 >
                   <img
                     className="w-full h-full object-cover"
@@ -326,11 +413,7 @@ export function ResultsPanel({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (submitMode === "cloud") {
-                            onCloudQuickSubmit?.(frame);
-                          } else {
-                            handleQuickSubmit(frame);
-                          }
+                          quickSubmitFrame(frame);
                         }}
                         disabled={status === "loading"}
                         title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}

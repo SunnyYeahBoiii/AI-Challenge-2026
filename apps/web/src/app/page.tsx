@@ -34,6 +34,11 @@ export default function Home() {
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [videoSeekStepSeconds, setVideoSeekStepSeconds] = useSessionStorageState<number>(
+    "videoSeekStepSeconds",
+    0.2,
+  );
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
@@ -145,6 +150,27 @@ export default function Home() {
     submissionType === "track"
       ? Boolean(trakeFrameIds?.length && videoId.trim())
       : frameId.trim().length > 0 && videoId.trim().length > 0;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && showKeyboardHelp) {
+        event.preventDefault();
+        setShowKeyboardHelp(false);
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && event.key.toLowerCase() === "i") {
+        event.preventDefault();
+        setShowModelSettings(true);
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && event.key === "/") {
+        event.preventDefault();
+        setShowKeyboardHelp((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showKeyboardHelp]);
 
   if (view === "submissions") {
     return <SubmissionsDashboard onBack={() => setView("search")} />;
@@ -363,6 +389,7 @@ export default function Home() {
           submissionType={submissionType}
           dresSessionId={dres.sessionId}
           dresEvaluationId={dres.evaluationId}
+          dresUrl={dres.dresUrl}
           gridCols={gridCols}
           hasSearched={hasSearched}
           trakeFocusedLabel={trake.focusedEvent?.displayLabel}
@@ -372,6 +399,7 @@ export default function Home() {
               : undefined
           }
           submitMode={submitMode}
+          isInteractionDisabled={Boolean(selectedFrame)}
           onCloudQuickSubmit={(frame) => {
             setFrameId(String(frame.frame_idx));
             setVideoId(frame.video_id);
@@ -401,6 +429,7 @@ export default function Home() {
         <FrameDetailDialog
           frame={selectedFrame}
           submissionType={submissionType}
+          seekStepSeconds={videoSeekStepSeconds}
           onClose={() => setSelectedFrame(null)}
           trakeEvents={
             trake.board?.events.map((e) => ({
@@ -440,14 +469,54 @@ export default function Home() {
           sessionId={dres.sessionId}
           username={dres.username}
           evaluationId={dres.evaluationId}
+          dresUrl={dres.dresUrl}
           onClose={() => setShowDresSettings(false)}
           onLoginSuccess={dres.login}
           onEvaluationSelect={dres.selectEvaluation}
+          onServerChange={dres.switchServer}
         />
       )}
 
       {showModelSettings && (
-        <ModelSettingsDialog onClose={() => setShowModelSettings(false)} />
+        <ModelSettingsDialog
+          onClose={() => setShowModelSettings(false)}
+          seekStepSeconds={videoSeekStepSeconds}
+          onSeekStepSecondsChange={setVideoSeekStepSeconds}
+        />
+      )}
+
+      {showKeyboardHelp && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-on-surface/60 p-4" onClick={() => setShowKeyboardHelp(false)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Keyboard shortcuts"
+            className="w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-headline-sm font-bold">Keyboard shortcuts</h2>
+              <button onClick={() => setShowKeyboardHelp(false)} aria-label="Close keyboard shortcuts" className="rounded p-1 hover:bg-surface-container">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body-sm">
+              <kbd>Ctrl + Enter</kbd><span>Search</span>
+              <kbd>Alt + Q / V</kbd><span>Focus query / Video ID</span>
+              <kbd>Alt + N</kbd><span>Add a query</span>
+              <kbd>Alt + ↑ / ↓</kbd><span>Move active query</span>
+              <kbd>Alt + [ / ]</kbd><span>Decrease / increase grid columns</span>
+              <kbd>Alt + ← / →</kbd><span>Move between frames in Frame Detail</span>
+              <kbd>Alt + Shift + ← / →</kbd><span>Seek video backward / forward by {videoSeekStepSeconds}s</span>
+              <kbd>Enter / Z</kbd><span>Open detail / zoom selected result</span>
+              <kbd>Alt + Enter</kbd><span>Quick submit selected result</span>
+              <kbd>Alt + A</kbd><span>Add selected result to focused TRAKE Event</span>
+              <kbd>Alt + /</kbd><span>Show this shortcut list</span>
+              <kbd>Alt + I</kbd><span>Open Model Settings</span>
+              <kbd>Esc</kbd><span>Close the active dialog</span>
+            </div>
+          </section>
+        </div>
       )}
 
       {showSubmitConfirm && canSubmit && (
@@ -458,6 +527,7 @@ export default function Home() {
           submissionType={submissionType}
           sessionId={dres.sessionId}
           evaluationId={dres.evaluationId}
+          dresUrl={dres.dresUrl}
           answer={qaAnswer}
           trakeFrameIds={trakeFrameIds ?? undefined}
           submitMode={submitMode}
