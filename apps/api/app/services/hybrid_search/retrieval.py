@@ -184,6 +184,16 @@ def _resolve_enhance(box: Box, default: bool) -> bool:
     return default if override is None else bool(override)
 
 
+def _decode_box_image(value: object) -> bytes:
+    """Decode raw Base64 or a browser ``data:image/*;base64,...`` URL."""
+    encoded = str(value)
+    if encoded.startswith("data:"):
+        header, separator, encoded = encoded.partition(",")
+        if not separator or not header.endswith(";base64"):
+            raise ValueError("Image query must be a Base64 data URL")
+    return base64.b64decode(encoded, validate=True)
+
+
 def _box_vectors(boxes: Sequence[Box], enhance_default: bool) -> list[Vector]:
     """One CLIP forward pass for all text boxes and one for all image boxes.
 
@@ -210,7 +220,7 @@ def _box_vectors(boxes: Sequence[Box], enhance_default: bool) -> list[Vector]:
         decoded_idx: list[int] = []
         for i in image_idx:
             try:
-                blobs.append(base64.b64decode(boxes[i]["image"]))
+                blobs.append(_decode_box_image(boxes[i]["image"]))
                 decoded_idx.append(i)
             except Exception:
                 continue

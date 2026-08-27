@@ -4,6 +4,7 @@ Milvus, post-filters, and the encoder are stubbed. These tests pin the RPC
 shape and ensure every box's own raw-candidate Top-K remains authoritative.
 """
 
+import base64
 from threading import Lock
 
 import numpy as np
@@ -100,6 +101,25 @@ def test_box_without_query_yields_no_vector(stub):
     vectors = hs._box_vectors([{"text": "a"}, {"text": "", "image": ""}], enhance_default=False)
     assert vectors[0] is not None
     assert vectors[1] is None
+
+
+def test_image_box_strips_data_url_prefix_before_base64_decoding(monkeypatch, stub):
+    _, embed_calls = stub
+    received: list[bytes] = []
+
+    def fake_embed_images(images):
+        received.extend(images)
+        return np.array([[9.0] * 4 for _ in images], dtype=np.float32)
+
+    monkeypatch.setattr(manager, "embed_images", fake_embed_images)
+    image_bytes = b"webp image bytes"
+    data_url = f"data:image/webp;base64,{base64.b64encode(image_bytes).decode()}"
+
+    vectors = hs._box_vectors([{"image": data_url}], enhance_default=False)
+
+    assert vectors == [[9.0] * 4]
+    assert received == [image_bytes]
+    assert embed_calls["image"] == 0
 
 
 # ── Per-box Top-K bucket batching ───────────────────────────────────────────
