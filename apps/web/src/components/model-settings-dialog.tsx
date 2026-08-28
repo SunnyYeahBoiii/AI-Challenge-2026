@@ -3,12 +3,31 @@
 import { useEffect, useState } from "react";
 import { getModelStatus, setActiveModel, type ModelStatus } from "@/lib/api";
 import { Icon } from "./icon";
+import { KeywordSearchOptions, type KeywordSearchConfig } from "./keyword-search-options";
 
 interface ModelSettingsDialogProps {
   onClose: () => void;
+  seekStepSeconds: number;
+  onSeekStepSecondsChange: (seconds: number) => void;
+  temporalWindowSeconds: number;
+  onTemporalWindowSecondsChange: (seconds: number) => void;
+  ocrSearchConfig: KeywordSearchConfig;
+  onOcrSearchConfigChange: (config: KeywordSearchConfig) => void;
+  asrSearchConfig: KeywordSearchConfig;
+  onAsrSearchConfigChange: (config: KeywordSearchConfig) => void;
 }
 
-export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
+export function ModelSettingsDialog({
+  onClose,
+  seekStepSeconds,
+  onSeekStepSecondsChange,
+  temporalWindowSeconds,
+  onTemporalWindowSecondsChange,
+  ocrSearchConfig,
+  onOcrSearchConfigChange,
+  asrSearchConfig,
+  onAsrSearchConfigChange,
+}: ModelSettingsDialogProps) {
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -27,6 +46,17 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
       })
       .catch(() => setErrorMessage("Failed to load model status"));
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const handleLoad = async () => {
     if (!selectedModel) return;
@@ -94,12 +124,12 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Model settings"
-        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-lg border border-outline-variant"
+        aria-label="Settings"
+        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] border border-outline-variant flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-outline-variant">
-          <h2 className="text-headline-sm text-on-surface font-bold">Model Settings</h2>
+          <h2 className="text-headline-sm text-on-surface font-bold">Setting</h2>
           <button
             onClick={onClose}
             aria-label="Close dialog"
@@ -110,7 +140,7 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
         </div>
 
         {/* Content */}
-        <div className="p-4 flex flex-col gap-4">
+        <div className="p-4 flex flex-col gap-4 overflow-y-auto">
           <div className="flex items-center gap-2 text-body-sm">
             <span className="text-on-surface-variant">Active:</span>
             {status?.state === "ready" && (
@@ -136,6 +166,77 @@ export function ModelSettingsDialog({ onClose }: ModelSettingsDialogProps) {
               ))}
             </select>
           </div>
+
+          <div className="flex flex-col gap-1 border-t border-outline-variant pt-4">
+            <label htmlFor="keyboard-seek-step" className="text-label-md text-on-surface-variant">
+              Keyboard seek step (seconds)
+            </label>
+            <input
+              id="keyboard-seek-step"
+              type="number"
+              min={0.05}
+              max={10}
+              step={0.05}
+              value={seekStepSeconds}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isFinite(value)) {
+                  onSeekStepSecondsChange(Math.min(10, Math.max(0.05, value)));
+                }
+              }}
+              className="w-36 bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+            />
+            <p className="text-label-xs text-on-surface-variant">
+              Alt + Shift + ← / → seeks by this amount. Default: 0.2 seconds.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="temporal-window" className="text-label-md text-on-surface-variant">
+              Max consecutive gap (seconds)
+            </label>
+            <input
+              id="temporal-window"
+              type="number"
+              min={0.1}
+              step={1}
+              value={temporalWindowSeconds}
+              onChange={(event) =>
+                onTemporalWindowSecondsChange(Math.max(0.1, Number(event.target.value) || 0.1))
+              }
+              className="w-36 bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-body-sm outline-none focus:border-primary transition-colors"
+            />
+            <p className="text-label-xs text-on-surface-variant">
+              Limits the gap between consecutive query matches in temporal search.
+            </p>
+          </div>
+
+          <section className="border-t border-outline-variant pt-4">
+            <div className="mb-3">
+              <h3 className="text-label-md text-on-surface-variant">OCR & ASR keyword matching</h3>
+              <p className="text-label-xs text-on-surface-variant">
+                Applies to every OCR or ASR keyword filter in this session.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="mb-1 text-label-sm text-on-surface">OCR</p>
+                <KeywordSearchOptions
+                  source="OCR"
+                  config={ocrSearchConfig}
+                  onChange={onOcrSearchConfigChange}
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-label-sm text-on-surface">ASR</p>
+                <KeywordSearchOptions
+                  source="ASR"
+                  config={asrSearchConfig}
+                  onChange={onAsrSearchConfigChange}
+                />
+              </div>
+            </div>
+          </section>
 
           <div className="flex flex-col gap-1">
             <label className="text-label-md text-on-surface-variant">

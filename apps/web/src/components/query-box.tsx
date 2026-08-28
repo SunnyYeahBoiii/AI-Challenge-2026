@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
 import { MatchModeToggle } from "./match-mode-toggle";
-import { KeywordSearchOptions, type KeywordSearchConfig } from "./keyword-search-options";
 import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
 
 export interface BoxQuery {
@@ -19,10 +18,8 @@ export interface BoxQuery {
   tagMatchMode?: "and" | "or";
   ocrKeywords?: string[];
   ocrMatchMode?: "and" | "or";
-  ocrSearchConfig?: KeywordSearchConfig;
   asrKeywords?: string[];
   asrMatchMode?: "and" | "or";
-  asrSearchConfig?: KeywordSearchConfig;
   topK?: number;
   enhance?: boolean;
 }
@@ -33,6 +30,14 @@ interface QueryBoxProps {
   onUpdate: (updates: Partial<BoxQuery>) => void;
   onRemove: () => void;
   canRemove: boolean;
+  onFocus?: () => void;
+  keywordFocusRequest?: KeywordFocusRequest | null;
+}
+
+export interface KeywordFocusRequest {
+  queryId: string;
+  source: "ocr" | "asr";
+  token: number;
 }
 
 type SortableBindings = ReturnType<typeof useSortable> | null;
@@ -54,6 +59,8 @@ function QueryBoxInner({
   onUpdate,
   onRemove,
   canRemove,
+  onFocus,
+  keywordFocusRequest,
   sortable,
 }: QueryBoxProps & { sortable: SortableBindings }) {
   const style = sortable
@@ -67,6 +74,20 @@ function QueryBoxInner({
   const [showKeywords, setShowKeywords] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasVectorQuery = Boolean(query.content.trim());
+
+  useEffect(() => {
+    if (!keywordFocusRequest || keywordFocusRequest.queryId !== query.id) {
+      return;
+    }
+
+    setShowKeywords(true);
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`${keywordFocusRequest.source}-keywords-${query.id}`)
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [keywordFocusRequest, query.id]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,6 +106,7 @@ function QueryBoxInner({
     <div
       ref={nodeRef}
       style={style}
+      onFocusCapture={onFocus}
       className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0 relative"
     >
       {/* Index badge */}
@@ -139,6 +161,7 @@ function QueryBoxInner({
       <div className="p-3 bg-surface-container-lowest">
         {query.type === "text" ? (
           <textarea
+            id={`query-text-${query.id}`}
             className="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 text-body-sm outline-none"
             placeholder="Enter query text..."
             value={query.content}
@@ -203,7 +226,7 @@ function QueryBoxInner({
         <div className="flex items-center gap-2">
           <span className="text-label-sm text-on-surface-variant">AI Enhance</span>
           <Toggle
-            checked={query.enhance ?? true}
+            checked={query.enhance ?? false}
             onChange={(enhance) => onUpdate({ enhance })}
             label="AI Enhance"
           />
@@ -266,16 +289,13 @@ function QueryBoxInner({
                 tags={query.ocrKeywords || []}
                 onChange={(ocrKeywords) => onUpdate({ ocrKeywords })}
                 placeholder="Add OCR keyword..."
+                inputId={`ocr-keywords-${query.id}`}
+                removeLastOnEmpty
               />
               <MatchModeToggle
                 label="OCR keyword relation"
                 mode={query.ocrMatchMode ?? "and"}
                 onChange={(ocrMatchMode) => onUpdate({ ocrMatchMode })}
-              />
-              <KeywordSearchOptions
-                source="OCR"
-                config={query.ocrSearchConfig}
-                onChange={(ocrSearchConfig) => onUpdate({ ocrSearchConfig })}
               />
             </div>
             <div>
@@ -284,16 +304,13 @@ function QueryBoxInner({
                 tags={query.asrKeywords || []}
                 onChange={(asrKeywords) => onUpdate({ asrKeywords })}
                 placeholder="Add ASR keyword..."
+                inputId={`asr-keywords-${query.id}`}
+                removeLastOnEmpty
               />
               <MatchModeToggle
                 label="ASR keyword relation"
                 mode={query.asrMatchMode ?? "and"}
                 onChange={(asrMatchMode) => onUpdate({ asrMatchMode })}
-              />
-              <KeywordSearchOptions
-                source="ASR"
-                config={query.asrSearchConfig}
-                onChange={(asrSearchConfig) => onUpdate({ asrSearchConfig })}
               />
             </div>
           </div>

@@ -15,7 +15,7 @@ export interface KeywordSearchConfig {
   slop?: number;
 }
 
-const DEFAULT_CONFIG: Required<KeywordSearchConfig> = {
+export const DEFAULT_KEYWORD_SEARCH_CONFIG: Required<KeywordSearchConfig> = {
   queryType: "match",
   fuzzy: false,
   operator: "and",
@@ -25,16 +25,26 @@ const DEFAULT_CONFIG: Required<KeywordSearchConfig> = {
   slop: 0,
 };
 
+export const DEFAULT_OCR_SEARCH_CONFIG: KeywordSearchConfig = {
+  ...DEFAULT_KEYWORD_SEARCH_CONFIG,
+  queryType: "match_phrase",
+};
+
+export const DEFAULT_ASR_SEARCH_CONFIG: KeywordSearchConfig = {
+  ...DEFAULT_KEYWORD_SEARCH_CONFIG,
+  queryType: "match",
+};
+
 interface KeywordSearchOptionsProps {
   source: "OCR" | "ASR";
   config?: KeywordSearchConfig;
   onChange: (config: KeywordSearchConfig) => void;
 }
 
-/** Per-source options for one keyword's Elasticsearch match clause. */
+/** Global Elasticsearch match options for one keyword source. */
 export function KeywordSearchOptions({ source, config, onChange }: KeywordSearchOptionsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const value = { ...DEFAULT_CONFIG, ...config };
+  const value = { ...DEFAULT_KEYWORD_SEARCH_CONFIG, ...config };
   const update = (changes: KeywordSearchConfig) => onChange({ ...value, ...changes });
   const isPhrase = value.queryType === "match_phrase";
 

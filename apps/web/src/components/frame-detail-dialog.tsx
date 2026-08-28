@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { searchVideoFrames } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
@@ -25,6 +25,7 @@ export interface TrakeEventOption {
 interface FrameDetailDialogProps {
   frame: FrameResult;
   submissionType: "track" | "qa" | "kis";
+  seekStepSeconds: number;
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
   /** TRACK: Events available to add into (E1, E2, …). */
@@ -44,6 +45,7 @@ interface FrameDetailDialogProps {
 export function FrameDetailDialog({
   frame,
   submissionType,
+  seekStepSeconds,
   onClose,
   onSubmit,
   trakeEvents = [],
@@ -161,6 +163,20 @@ export function FrameDetailDialog({
     return idx >= 0 ? idx : 0;
   }, [allFrames, currentFrameIndex]);
 
+  const selectFrame = useCallback((next: FrameResult) => {
+    beginSeek(next.timestamp);
+    setCurrentFrameIndex(next.frame_index);
+    videoRef.current?.seekTo(next.timestamp);
+    const nextIndex = allFrames.findIndex((candidate) => candidate.frame_index === next.frame_index);
+    const isNearEdge = nextIndex <= 1 || nextIndex >= allFrames.length - 2;
+    if (isNearEdge) setFetchFrameIndex(next.frame_index);
+  }, [allFrames]);
+
+  const navigateFrame = useCallback((direction: -1 | 1) => {
+    const next = allFrames[currentArrayIndex + direction];
+    if (next) selectFrame(next);
+  }, [allFrames, currentArrayIndex, selectFrame]);
+
   useEffect(() => {
     let cancelled = false;
     setAllFramesLoading(true);
@@ -190,12 +206,56 @@ export function FrameDetailDialog({
       }
       onClose();
     };
+    const handleKeyboardNavigation = (e: KeyboardEvent) => {
+      const target = e.target;
+      const isEditable = target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      if (isEditable || !e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.shiftKey) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        navigateFrame(-1);
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        navigateFrame(1);
+      }
+    };
+
+    // Native <video controls> can consume arrow key events once playback has
+    // focused the media element. Capture this exact shortcut before the native
+    // control sees it; it only moves playback time and never mutates keyframe
+    // selection, frame id, or submission fields.
+    const handlePreciseSeek = (e: KeyboardEvent) => {
+      const target = e.target;
+      const isEditable = target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      const isPreciseSeek =
+        e.altKey &&
+        e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        (e.key === "ArrowLeft" || e.key === "ArrowRight");
+      if (isEditable || !isPreciseSeek) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      const direction = e.key === "ArrowLeft" ? -1 : 1;
+      const currentTime = videoRef.current?.getCurrentTime() ?? 0;
+      const nextTime = Math.max(0, currentTime + direction * seekStepSeconds);
+      beginSeek(nextTime);
+      videoRef.current?.seekTo(nextTime);
+    };
     document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handlePreciseSeek, true);
+    document.addEventListener("keydown", handleKeyboardNavigation);
     return () => {
       document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handlePreciseSeek, true);
+      document.removeEventListener("keydown", handleKeyboardNavigation);
       if (pendingSeekTimeoutRef.current) clearTimeout(pendingSeekTimeoutRef.current);
     };
-  }, [onClose, showFullscreenImage]);
+  }, [navigateFrame, onClose, seekStepSeconds, showFullscreenImage]);
 
   const inputClass =
     "bg-neutral-800 border border-neutral-700 rounded px-3 py-2 font-mono text-mono-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all";
@@ -284,14 +344,7 @@ export function FrameDetailDialog({
                   frames={allFrames}
                   currentArrayIndex={currentArrayIndex}
                   onFrameSelect={(f) => {
-                    beginSeek(f.timestamp);
-                    setCurrentFrameIndex(f.frame_index);
-                    videoRef.current?.seekTo(f.timestamp);
-                    const pos = allFrames.findIndex(fr => fr.frame_index === f.frame_index);
-                    const isNearEdge = pos <= 1 || pos >= allFrames.length - 2;
-                    if (isNearEdge) {
-                      setFetchFrameIndex(f.frame_index);
-                    }
+                    selectFrame(f);
                   }}
                   onFullscreen={() => setShowFullscreenImage(true)}
                 />

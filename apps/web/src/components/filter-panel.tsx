@@ -5,7 +5,8 @@ import type { DragStartEvent, DragEndEvent, Modifier } from "@dnd-kit/core";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Icon } from "./icon";
-import { QueryBox, QueryBoxStatic, type BoxQuery } from "./query-box";
+import { QueryBox, QueryBoxStatic, type BoxQuery, type KeywordFocusRequest } from "./query-box";
+import type { KeywordSearchConfig } from "./keyword-search-options";
 import { listVideos } from "@/lib/api";
 import type { VideoResult } from "@/lib/api";
 
@@ -14,6 +15,8 @@ export interface SearchFilter {
   queries: BoxQuery[];
   mode: "parallel" | "sequential";
   temporalWindowSeconds: number;
+  ocrSearchConfig: KeywordSearchConfig;
+  asrSearchConfig: KeywordSearchConfig;
 }
 
 interface FilterPanelProps {
@@ -21,6 +24,9 @@ interface FilterPanelProps {
   onClear: () => void;
   onValidationError: (message: string) => void;
   isLoading?: boolean;
+  temporalWindowSeconds: number;
+  ocrSearchConfig: KeywordSearchConfig;
+  asrSearchConfig: KeywordSearchConfig;
   gridCols?: number;
   onGridColsChange?: (cols: number) => void;
 }
@@ -30,21 +36,27 @@ export function FilterPanel({
   onClear,
   onValidationError,
   isLoading,
+  temporalWindowSeconds,
+  ocrSearchConfig,
+  asrSearchConfig,
   gridCols = 6,
   onGridColsChange,
 }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
-    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true },
+    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: false },
   ]);
   const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
-  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
   const [suggestions, setSuggestions] = useState<VideoResult[]>([]);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [searchingVideos, setSearchingVideos] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [dndReady, setDndReady] = useState(false);
   const isDraggingRef = useRef(false);
+  const [activeQueryId, setActiveQueryId] = useState("1");
+  const keywordFocusTokenRef = useRef(0);
+  const [keywordFocusRequest, setKeywordFocusRequest] = useState<KeywordFocusRequest | null>(null);
 
   useEffect(() => {
     setDndReady(true);
@@ -105,16 +117,38 @@ export function FilterPanel({
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], mode, temporalWindowSeconds });
+      onSearch({
+        videoId: videoId.trim(),
+        queries: [],
+        mode,
+        temporalWindowSeconds,
+        ocrSearchConfig,
+        asrSearchConfig,
+      });
       return;
     }
     const enabledQueries = queries.filter(isSearchable);
     if (enabledQueries.length > 0) {
-      onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
+      onSearch({
+        queries: enabledQueries,
+        mode,
+        temporalWindowSeconds,
+        ocrSearchConfig,
+        asrSearchConfig,
+      });
     } else {
       onValidationError("Enter a Video ID or at least one enabled query with content");
     }
-  }, [videoId, queries, mode, temporalWindowSeconds, onSearch, onValidationError]);
+  }, [
+    videoId,
+    queries,
+    mode,
+    temporalWindowSeconds,
+    ocrSearchConfig,
+    asrSearchConfig,
+    onSearch,
+    onValidationError,
+  ]);
 
   // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
   useEffect(() => {
@@ -133,6 +167,7 @@ export function FilterPanel({
   useEffect(() => {
     if (videoId.trim().length < 2) {
       setSuggestions([]);
+      setActiveSuggestionIndex(0);
       setShowSuggestions(false);
       return;
     }
@@ -144,6 +179,7 @@ export function FilterPanel({
           (v, i, arr) => arr.findIndex((x) => x.video_id === v.video_id) === i
         );
         setSuggestions(unique);
+        setActiveSuggestionIndex(0);
         setShowSuggestions(unique.length > 0);
       } catch {
         setSuggestions([]);
@@ -158,33 +194,147 @@ export function FilterPanel({
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], mode, temporalWindowSeconds });
+    onSearch({
+      videoId: video.video_id,
+      queries: [],
+      mode,
+      temporalWindowSeconds,
+      ocrSearchConfig,
+      asrSearchConfig,
+    });
   };
 
   const addQuery = () => {
+    const id = Date.now().toString();
     setQueries((prev) => [
       ...prev,
-      { id: Date.now().toString(), type: "text", content: "", enabled: true, topK: 1000, enhance: true },
+      { id, type: "text", content: "", enabled: true, topK: 1000, enhance: false },
     ]);
+    setActiveQueryId(id);
+    requestAnimationFrame(() => document.getElementById(`query-text-${id}`)?.focus());
   };
+
+  useEffect(() => {
+    document.getElementById("query-text-1")?.focus();
+  }, []);
 
   const updateQuery = (id: string, updates: Partial<BoxQuery>) => {
     setQueries((prev) => prev.map((q) => (q.id === id ? { ...q, ...updates } : q)));
   };
 
   const removeQuery = (id: string) => {
-    setQueries((prev) => prev.filter((q) => q.id !== id));
+    setQueries((prev) => {
+      const next = prev.filter((q) => q.id !== id);
+      if (activeQueryId === id) setActiveQueryId(next[0]?.id ?? "");
+      return next;
+    });
   };
 
   const handleClear = useCallback(() => {
     setVideoId("");
-    setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }]);
+    setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: false }]);
+    setActiveQueryId("1");
     setMode("parallel");
-    setTemporalWindowSeconds(90);
   }, []);
 
+  const focusQuery = useCallback((id: string) => {
+    setActiveQueryId(id);
+    document.getElementById(`query-text-${id}`)?.focus();
+  }, []);
+
+  const focusKeyword = useCallback((source: KeywordFocusRequest["source"]) => {
+    const queryId = activeQueryId || queries[0]?.id;
+    if (!queryId) return;
+    setActiveQueryId(queryId);
+    keywordFocusTokenRef.current += 1;
+    setKeywordFocusRequest({
+      queryId,
+      source,
+      token: keywordFocusTokenRef.current,
+    });
+  }, [activeQueryId, queries]);
+
+  const reorderActiveQuery = useCallback((direction: -1 | 1) => {
+    setQueries((prev) => {
+      const index = prev.findIndex((query) => query.id === activeQueryId);
+      const nextIndex = Math.min(Math.max(index + direction, 0), prev.length - 1);
+      if (index < 0 || index === nextIndex) return prev;
+      return arrayMove(prev, index, nextIndex);
+    });
+  }, [activeQueryId]);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const isInFilterPanel = event.target instanceof Element && Boolean(event.target.closest("[data-filter-panel]"));
+
+      if (event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        videoInputRef.current?.focus();
+        return;
+      }
+      if (event.key.toLowerCase() === "q") {
+        event.preventDefault();
+        focusQuery(activeQueryId || queries[0]?.id || "");
+        return;
+      }
+      if (/^[1-9]$/.test(event.key)) {
+        const query = queries[Number(event.key) - 1];
+        if (!query) return;
+        event.preventDefault();
+        focusQuery(query.id);
+        return;
+      }
+      if (event.key.toLowerCase() === "o" || event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        focusKeyword(event.key.toLowerCase() === "o" ? "ocr" : "asr");
+        return;
+      }
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        addQuery();
+        return;
+      }
+      if (event.key.toLowerCase() === "e") {
+        const activeQuery = queries.find((query) => query.id === activeQueryId);
+        if (!activeQuery) return;
+        event.preventDefault();
+        updateQuery(activeQuery.id, { enhance: !(activeQuery.enhance ?? false) });
+        return;
+      }
+      if (isEditableTarget(event.target) && event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      if (event.key === "ArrowUp" && isInFilterPanel) {
+        event.preventDefault();
+        reorderActiveQuery(-1);
+        return;
+      }
+      if (event.key === "ArrowDown" && isInFilterPanel) {
+        event.preventDefault();
+        reorderActiveQuery(1);
+        return;
+      }
+      if (event.key === "[" || event.key === "{") {
+        event.preventDefault();
+        onGridColsChange?.(Math.max(2, gridCols - 1));
+        return;
+      }
+      if (event.key === "]" || event.key === "}") {
+        event.preventDefault();
+        onGridColsChange?.(Math.min(12, gridCols + 1));
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [activeQueryId, addQuery, focusKeyword, focusQuery, gridCols, onGridColsChange, queries, reorderActiveQuery]);
+
   return (
-    <aside className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-sidebar-width flex-shrink-0 z-10 overflow-hidden">
+    <aside data-filter-panel className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-sidebar-width flex-shrink-0 z-10 overflow-hidden">
       {/* Top Section */}
       <div className="p-container-padding pb-2 border-b border-outline-variant">
         {/* Video ID Search */}
@@ -198,16 +348,38 @@ export function FilterPanel({
             placeholder="Type to search videos..."
             value={videoId}
             onChange={(e) => setVideoId(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && suggestions.length > 0) {
+                event.preventDefault();
+                setActiveSuggestionIndex((index) => Math.min(index + 1, suggestions.length - 1));
+                return;
+              }
+              if (event.key === "ArrowUp" && suggestions.length > 0) {
+                event.preventDefault();
+                setActiveSuggestionIndex((index) => Math.max(index - 1, 0));
+                return;
+              }
+              if (event.key === "Escape") {
+                setShowSuggestions(false);
+                return;
+              }
+              if (event.key === "Enter" && suggestions.length > 0) {
+                event.preventDefault();
+                selectVideo(suggestions[activeSuggestionIndex] ?? suggestions[0]);
+              }
+            }}
             onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           />
           {/* Autocomplete dropdown */}
           {showSuggestions && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {suggestions.map((v) => (
+              {suggestions.map((v, index) => (
                 <button
                   key={v.video_id}
-                  className="w-full text-left px-3 py-2 hover:bg-surface-container-high border-b border-outline-variant last:border-b-0 transition-colors flex flex-col gap-0.5"
+                  className={`w-full text-left px-3 py-2 border-b border-outline-variant last:border-b-0 transition-colors flex flex-col gap-0.5 ${
+                    index === activeSuggestionIndex ? "bg-primary-container/40" : "hover:bg-surface-container-high"
+                  }`}
                   onClick={() => selectVideo(v)}
                 >
                   <span className="text-label-sm text-on-surface">{v.video_id}</span>
@@ -250,46 +422,8 @@ export function FilterPanel({
               </button>
             </div>
           </div>
-          <div className="flex justify-between items-center gap-3">
-            <label htmlFor="temporal-window" className="text-label-sm text-on-surface-variant">
-              Max consecutive gap
-            </label>
-            <div className="flex items-center gap-1">
-              <input
-                id="temporal-window"
-                type="number"
-                min={0.1}
-                step={1}
-                value={temporalWindowSeconds}
-                onChange={(event) =>
-                  setTemporalWindowSeconds(Math.max(0.1, Number(event.target.value) || 0.1))
-                }
-                className="w-20 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-mono-sm outline-none focus:border-primary text-right"
-              />
-              <span className="text-label-xs text-on-surface-variant">sec</span>
-            </div>
-          </div>
         </div>
 
-        {/* Grid Columns */}
-        {onGridColsChange && (
-          <div className="mb-4">
-            <label className="text-label-md text-on-surface-variant flex items-center gap-1 mb-1">
-              <Icon name="grid_view" size={16} /> Grid Columns
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min={2}
-                max={12}
-                value={gridCols}
-                onChange={(e) => onGridColsChange(Number(e.target.value))}
-                className="flex-1 accent-primary"
-              />
-              <span className="text-label-sm text-on-surface-variant w-4 text-center">{gridCols}</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Queries List */}
@@ -332,6 +466,8 @@ export function FilterPanel({
                     onUpdate={(updates) => updateQuery(query.id, updates)}
                     onRemove={() => removeQuery(query.id)}
                     canRemove={queries.length > 1}
+                    onFocus={() => setActiveQueryId(query.id)}
+                    keywordFocusRequest={keywordFocusRequest}
                   />
                 ))}
               </div>
@@ -347,6 +483,8 @@ export function FilterPanel({
                 onUpdate={(updates) => updateQuery(query.id, updates)}
                 onRemove={() => removeQuery(query.id)}
                 canRemove={queries.length > 1}
+                onFocus={() => setActiveQueryId(query.id)}
+                keywordFocusRequest={keywordFocusRequest}
               />
             ))}
           </div>

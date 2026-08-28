@@ -16,6 +16,8 @@ interface TagInputProps {
   placeholder?: string;
   suggestions?: readonly string[];
   allowCustomValues?: boolean;
+  inputId?: string;
+  removeLastOnEmpty?: boolean;
 }
 
 export function TagInput({
@@ -24,6 +26,8 @@ export function TagInput({
   placeholder = "Add tag...",
   suggestions,
   allowCustomValues = true,
+  inputId,
+  removeLastOnEmpty = false,
 }: TagInputProps) {
   const tagInputRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
@@ -92,6 +96,11 @@ export function TagInput({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (removeLastOnEmpty && event.key === "Backspace" && input.length === 0 && tags.length > 0) {
+      event.preventDefault();
+      onChange(tags.slice(0, -1));
+      return;
+    }
     if (event.key === "ArrowDown" && matches.length > 0) {
       event.preventDefault();
       setActiveIndex((index) => (index + 1) % matches.length);
@@ -152,6 +161,7 @@ export function TagInput({
         ))}
         <div className="relative min-w-[140px] flex-1">
           <input
+            id={inputId}
             type="text"
             value={input}
             onChange={(event) => setInput(event.target.value)}

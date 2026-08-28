@@ -20,6 +20,11 @@ import type { FrameToTrake } from "@/lib/trake-types";
 import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type Submission } from "@/lib/submissions";
 import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
+import {
+  DEFAULT_ASR_SEARCH_CONFIG,
+  DEFAULT_OCR_SEARCH_CONFIG,
+  type KeywordSearchConfig,
+} from "@/components/keyword-search-options";
 
 type SubmissionType = "track" | "qa" | "kis";
 type SubmitMode = "dres" | "cloud";
@@ -39,9 +44,18 @@ export default function Home() {
     "videoSeekStepSeconds",
     0.2,
   );
+  const [ocrSearchConfig, setOcrSearchConfig] = useSessionStorageState<KeywordSearchConfig>(
+    "ocrSearchConfig",
+    DEFAULT_OCR_SEARCH_CONFIG,
+  );
+  const [asrSearchConfig, setAsrSearchConfig] = useSessionStorageState<KeywordSearchConfig>(
+    "asrSearchConfig",
+    DEFAULT_ASR_SEARCH_CONFIG,
+  );
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
+  const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
   const [queries, setQueries] = useState<Query[]>([]);
   const [submissionType, setSubmissionType] = useSessionStorageState<SubmissionType>(
     "submissionType",
@@ -184,6 +198,9 @@ export default function Home() {
         onClear={handleClear}
         onValidationError={setSearchError}
         isLoading={isLoading}
+        temporalWindowSeconds={temporalWindowSeconds}
+        ocrSearchConfig={ocrSearchConfig}
+        asrSearchConfig={asrSearchConfig}
         gridCols={gridCols}
         onGridColsChange={setGridCols}
       />
@@ -339,7 +356,7 @@ export default function Home() {
               className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
             >
               <Icon name="model_training" size={18} />
-              Model Settings
+              Setting
             </button>
             {submitMode === "cloud" && (
               <button
@@ -482,6 +499,12 @@ export default function Home() {
           onClose={() => setShowModelSettings(false)}
           seekStepSeconds={videoSeekStepSeconds}
           onSeekStepSecondsChange={setVideoSeekStepSeconds}
+          temporalWindowSeconds={temporalWindowSeconds}
+          onTemporalWindowSecondsChange={setTemporalWindowSeconds}
+          ocrSearchConfig={ocrSearchConfig}
+          onOcrSearchConfigChange={setOcrSearchConfig}
+          asrSearchConfig={asrSearchConfig}
+          onAsrSearchConfigChange={setAsrSearchConfig}
         />
       )}
 
@@ -503,7 +526,12 @@ export default function Home() {
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body-sm">
               <kbd>Ctrl + Enter</kbd><span>Search</span>
               <kbd>Alt + Q / V</kbd><span>Focus query / Video ID</span>
+              <kbd>Alt + 1…9</kbd><span>Focus query 1–9</span>
+              <kbd>Alt + O / S</kbd><span>Focus OCR / ASR keyword input</span>
               <kbd>Alt + N</kbd><span>Add a query</span>
+              <kbd>Enter</kbd><span>Add the typed keyword while an OCR/ASR input is focused</span>
+              <kbd>Backspace</kbd><span>Remove the last keyword when the focused keyword input is empty</span>
+              <kbd>Alt + E</kbd><span>Toggle AI Enhance for the active query</span>
               <kbd>Alt + ↑ / ↓</kbd><span>Move active query</span>
               <kbd>Alt + [ / ]</kbd><span>Decrease / increase grid columns</span>
               <kbd>Alt + ← / →</kbd><span>Move between frames in Frame Detail</span>
@@ -512,7 +540,7 @@ export default function Home() {
               <kbd>Alt + Enter</kbd><span>Quick submit selected result</span>
               <kbd>Alt + A</kbd><span>Add selected result to focused TRAKE Event</span>
               <kbd>Alt + /</kbd><span>Show this shortcut list</span>
-              <kbd>Alt + I</kbd><span>Open Model Settings</span>
+              <kbd>Alt + I</kbd><span>Open Setting</span>
               <kbd>Esc</kbd><span>Close the active dialog</span>
             </div>
           </section>

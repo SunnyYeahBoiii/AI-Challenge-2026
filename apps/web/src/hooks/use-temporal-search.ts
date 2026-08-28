@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { SearchFilter } from "@/components/filter-panel";
+import type { KeywordSearchConfig } from "@/components/keyword-search-options";
 import {
   emptySearchResult,
   videoFramesResponse,
@@ -12,6 +13,18 @@ import {
   searchVideoFrames,
   type TemporalSearchResponse,
 } from "@/lib/api";
+
+function toApiKeywordSearchConfig(config: KeywordSearchConfig) {
+  return {
+    query_type: config.queryType,
+    fuzzy: config.fuzzy,
+    operator: config.operator,
+    minimum_should_match: config.minimumShouldMatch,
+    prefix_length: config.prefixLength,
+    max_expansions: config.maxExpansions,
+    slop: config.slop,
+  };
+}
 
 /** Temporal search state and the (race-guarded) search/clear actions. */
 export function useTemporalSearch() {
@@ -50,26 +63,14 @@ export function useTemporalSearch() {
           asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
           ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
           asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
-          ocr_search_config: q.ocrKeywords?.length && q.ocrSearchConfig ? {
-            query_type: q.ocrSearchConfig.queryType,
-            fuzzy: q.ocrSearchConfig.fuzzy,
-            operator: q.ocrSearchConfig.operator,
-            minimum_should_match: q.ocrSearchConfig.minimumShouldMatch,
-            prefix_length: q.ocrSearchConfig.prefixLength,
-            max_expansions: q.ocrSearchConfig.maxExpansions,
-            slop: q.ocrSearchConfig.slop,
-          } : undefined,
-          asr_search_config: q.asrKeywords?.length && q.asrSearchConfig ? {
-            query_type: q.asrSearchConfig.queryType,
-            fuzzy: q.asrSearchConfig.fuzzy,
-            operator: q.asrSearchConfig.operator,
-            minimum_should_match: q.asrSearchConfig.minimumShouldMatch,
-            prefix_length: q.asrSearchConfig.prefixLength,
-            max_expansions: q.asrSearchConfig.maxExpansions,
-            slop: q.asrSearchConfig.slop,
-          } : undefined,
+          ocr_search_config: q.ocrKeywords?.length
+            ? toApiKeywordSearchConfig(filter.ocrSearchConfig)
+            : undefined,
+          asr_search_config: q.asrKeywords?.length
+            ? toApiKeywordSearchConfig(filter.asrSearchConfig)
+            : undefined,
           topk: q.topK ?? 1000,
-          enhance: q.enhance ?? true,
+          enhance: q.enhance ?? false,
         }));
         const data = await multiBoxSearch({
           box_queries: boxQueries,
