@@ -31,7 +31,7 @@ type SubmitMode = "dres" | "cloud";
 type View = "search" | "submissions";
 
 export default function Home() {
-  const { searchResult, queryCount, hasSearched, isLoading, searchError, setSearchError, handleSearch, clearSearch } =
+  const { searchResult, queryCount, isVideoBrowse, hasSearched, isLoading, searchError, setSearchError, handleSearch, clearSearch } =
     useTemporalSearch();
   const dres = useDresSession();
   const { theme, toggle: toggleTheme } = useTheme();
@@ -399,6 +399,7 @@ export default function Home() {
         <ResultsPanel
           result={searchResult}
           queryCount={queryCount}
+          isVideoBrowse={isVideoBrowse}
           viewMode={viewMode}
           onFrameSelect={handleFrameSelect}
           onFrameDetail={handleFrameDetail}

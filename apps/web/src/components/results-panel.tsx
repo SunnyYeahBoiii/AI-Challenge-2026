@@ -3,8 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
-import { classifyDresSubmit, submitFrameToDres } from "@/lib/api";
-import type { FrameResult, TemporalSearchResponse } from "@/lib/api";
+import { classifyDresSubmit, fetchFrameContexts, getModelStatus, submitFrameToDres } from "@/lib/api";
+import type {
+  FrameContext,
+  FrameContextWindow,
+  FrameResult,
+  TemporalSearchResponse,
+} from "@/lib/api";
+import {
+  buildContextWindows,
+  contextCacheKey,
+  mergeContextFrames,
+  type RenderedFrame,
+} from "@/lib/result-context";
 import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 const FRAME_PAGE_SIZE = 48;
@@ -26,6 +37,7 @@ const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }
 interface ResultsPanelProps {
   result: TemporalSearchResponse;
   queryCount: number;
+  isVideoBrowse: boolean;
   viewMode: "grouped" | "continuous";
   onFrameSelect: (frame: FrameResult) => void;
   onFrameDetail: (frame: FrameResult) => void;
@@ -46,6 +58,7 @@ interface ResultsPanelProps {
 export function ResultsPanel({
   result,
   queryCount,
+  isVideoBrowse,
   viewMode,
   onFrameSelect,
   onFrameDetail,
@@ -69,8 +82,16 @@ export function ResultsPanel({
   const [quickSubmit, setQuickSubmit] = useState<
     Record<string, { status: QuickSubmitStatus; message?: string }>
   >({});
+  const [contextCollection, setContextCollection] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const [contextLoading, setContextLoading] = useState<Record<string, boolean>>({});
+  const [contextErrors, setContextErrors] = useState<Record<string, string>>({});
+  const [contextRevision, setContextRevision] = useState(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLElement | null>(null);
+  const contextCacheRef = useRef(new Map<string, FrameContext>());
+  const contextInFlightRef = useRef(new Set<string>());
+  const resultVersionRef = useRef(0);
 
   const clearQuickSubmit = (key: string) => {
     setQuickSubmit((s) => {
@@ -117,6 +138,22 @@ export function ResultsPanel({
     setVisibleUnitCount(viewMode === "continuous" && queryCount <= 1 ? FRAME_PAGE_SIZE : VIDEO_PAGE_SIZE);
   }, [result, viewMode, queryCount]);
 
+  useEffect(() => {
+    const version = ++resultVersionRef.current;
+    setExpandedGroups(new Set());
+    setContextLoading({});
+    setContextErrors({});
+    void getModelStatus()
+      .then(({ status }) => {
+        if (version === resultVersionRef.current) {
+          setContextCollection(status.state === "ready" ? status.collection_name : null);
+        }
+      })
+      .catch(() => {
+        if (version === resultVersionRef.current) setContextCollection(null);
+      });
+  }, [result]);
+
   const continuousFrames = useMemo(
     () =>
       result.videos
@@ -148,9 +185,106 @@ export function ResultsPanel({
     }));
   }, [continuousFrames, paginatesFrames, result.videos, viewMode, visibleUnitCount]);
 
+  const canExpandContext = (hasVideo: boolean): boolean =>
+    hasVideo && !isVideoBrowse && (viewMode === "grouped" || queryCount > 1);
+
+  const prefetchWindows = useMemo(
+    () => displayGroups.flatMap((group) => (
+      canExpandContext(group.video !== null) ? buildContextWindows(group.frames) : []
+    )),
+    [displayGroups, isVideoBrowse, queryCount, viewMode],
+  );
+
+  const loadContextWindows = async (windows: FrameContextWindow[]) => {
+    if (!contextCollection || windows.length === 0) return;
+    const missing = windows.filter((window) => {
+      const key = contextCacheKey(contextCollection, window);
+      return !contextCacheRef.current.has(key) && !contextInFlightRef.current.has(key);
+    });
+    if (missing.length === 0) return;
+
+    const keys = missing.map((window) => contextCacheKey(contextCollection, window));
+    keys.forEach((key) => contextInFlightRef.current.add(key));
+    const resultVersion = resultVersionRef.current;
+    setContextLoading((current) => ({
+      ...current,
+      ...Object.fromEntries(keys.map((key) => [key, true])),
+    }));
+    setContextErrors((current) => {
+      const next = { ...current };
+      keys.forEach((key) => delete next[key]);
+      return next;
+    });
+    try {
+      const response = await fetchFrameContexts(missing);
+      if (resultVersion !== resultVersionRef.current) return;
+      if (response.collection_name !== contextCollection) {
+        setContextErrors((current) => ({
+          ...current,
+          ...Object.fromEntries(keys.map((key) => [key, "Active model changed. Search again."])),
+        }));
+        return;
+      }
+      response.contexts.forEach((context) => {
+        const key = contextCacheKey(contextCollection, context);
+        contextCacheRef.current.set(key, context);
+        [...context.before, ...context.after].forEach((frame) => {
+          const image = new Image();
+          image.src = frame.thumbnail_url;
+        });
+      });
+      setContextRevision((revision) => revision + 1);
+    } catch (error) {
+      if (resultVersion !== resultVersionRef.current) return;
+      const message = isAxiosError(error)
+        ? (error.response?.data as { error?: { message?: string } } | undefined)?.error?.message ?? "Context lookup failed"
+        : "Context lookup failed";
+      setContextErrors((current) => ({
+        ...current,
+        ...Object.fromEntries(keys.map((key) => [key, message])),
+      }));
+    } finally {
+      keys.forEach((key) => contextInFlightRef.current.delete(key));
+      if (resultVersion === resultVersionRef.current) {
+        setContextLoading((current) => {
+          const next = { ...current };
+          keys.forEach((key) => delete next[key]);
+          return next;
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    void loadContextWindows(prefetchWindows);
+  }, [contextCollection, prefetchWindows]);
+
+  const renderedGroups = useMemo(() => displayGroups.map((group) => {
+    const isExpandable = canExpandContext(group.video !== null);
+    const windows = isExpandable ? buildContextWindows(group.frames) : [];
+    const isExpanded = expandedGroups.has(group.key);
+    const contexts = contextCollection
+      ? windows.flatMap((window) => {
+          const context = contextCacheRef.current.get(contextCacheKey(contextCollection, window));
+          return context ? [context] : [];
+        })
+      : [];
+    const frames: RenderedFrame[] = isExpanded
+      ? mergeContextFrames(group.frames, contexts)
+      : group.frames.map((frame) => ({ frame, kind: "official" }));
+    return {
+      ...group,
+      frames,
+      officialFrameCount: group.frames.length,
+      isExpandable,
+      windows,
+      isExpanded,
+    };
+  }), [contextCollection, contextRevision, displayGroups, expandedGroups, isVideoBrowse, queryCount, viewMode]);
+
   const navigableFrames = useMemo(
-    () => displayGroups.flatMap((group) => group.frames),
-    [displayGroups],
+    () => renderedGroups.flatMap((group) => group.frames.map(({ frame }) => frame)),
+    [renderedGroups],
   );
 
   useEffect(() => {
@@ -292,7 +426,7 @@ export function ResultsPanel({
         </span>
       </div>
       <div className="flex flex-col gap-6">
-        {displayGroups.map((group, groupIndex) => (
+        {renderedGroups.map((group, groupIndex) => (
           <div
             key={group.key || groupIndex}
             className="flex flex-col gap-2"
@@ -303,7 +437,7 @@ export function ResultsPanel({
                 <span className="text-label-md text-on-surface">{group.video.video_id}</span>
                 <span className="text-label-sm text-on-surface-variant">
                   {viewMode === "grouped"
-                    ? `${group.frames.length} valid frames`
+                    ? `${group.officialFrameCount} valid frames`
                     : `best sequence · ${group.video.best_sequence.total_span_seconds.toFixed(1)}s`}
                 </span>
                 {group.video.has_vector_score !== false && (
@@ -311,11 +445,39 @@ export function ResultsPanel({
                     {(group.video.video_score * 100).toFixed(0)}%
                   </span>
                 )}
+                {group.isExpandable && (
+                  <button
+                    type="button"
+                    disabled={!contextCollection}
+                    onClick={() => {
+                      const nextExpanded = !group.isExpanded;
+                      setExpandedGroups((current) => {
+                        const next = new Set(current);
+                        if (nextExpanded) next.add(group.key);
+                        else next.delete(group.key);
+                        return next;
+                      });
+                      if (nextExpanded) void loadContextWindows(group.windows);
+                    }}
+                    title={contextCollection ? "Show or hide nearby stored keyframes" : "Waiting for active model"}
+                    className="ml-1 rounded border border-outline-variant px-2 py-0.5 text-label-xs text-on-surface-variant transition-colors hover:border-primary hover:text-primary disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {group.isExpanded ? "Collapse context" : "Expand context"}
+                  </button>
+                )}
+                {group.isExpandable && (() => {
+                  const keys = group.windows.map((window) => contextCollection && contextCacheKey(contextCollection, window));
+                  const isLoadingContext = keys.some((key) => key && contextLoading[key]);
+                  const error = keys.map((key) => key && contextErrors[key]).find(Boolean);
+                  if (isLoadingContext) return <span className="text-label-xs text-on-surface-variant">Loading context…</span>;
+                  if (error) return <span className="text-label-xs text-error">{error}</span>;
+                  return null;
+                })()}
                 <div className="h-px bg-outline-variant flex-1" />
               </div>
             )}
             <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
-              {group.frames.map((frame) => {
+              {group.frames.map(({ frame, kind }) => {
                 const key = `${frame.video_id}-${frame.frame_index}`;
                 const isLastOpened = lastOpenedKey === key;
                 return (
@@ -362,7 +524,7 @@ export function ResultsPanel({
                     loading="lazy"
                   />
                   <div className="absolute top-1 left-8 flex gap-1">
-                    {(frame.matches?.map((match) => match.query_index) ??
+                    {kind === "official" && (frame.matches?.map((match) => match.query_index) ??
                       (frame.query_index !== undefined ? [frame.query_index] : [])).map((queryIndex) => (
                       <span
                         key={queryIndex}
@@ -434,7 +596,7 @@ export function ResultsPanel({
                     <span className="font-mono text-mono-sm text-white/90">
                       #{frame.frame_index}
                     </span>
-                    {!frame.filter_only && frame.score > 0 && (
+                    {kind === "official" && !frame.filter_only && frame.score > 0 && (
                       <span className="text-label-xs text-white/80 bg-black/40 rounded px-1">
                         {(frame.score * 100).toFixed(0)}%
                       </span>

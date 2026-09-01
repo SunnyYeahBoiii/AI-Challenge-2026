@@ -2,8 +2,15 @@ from flask import Blueprint, request, jsonify
 from pymilvus.exceptions import MilvusException
 
 from app.errors import error_response
-from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
+from app.models import (
+    FrameContextRequest,
+    MultiBoxRequest,
+    SearchRequest,
+    SimilarFramesRequest,
+    VideoIdRequest,
+)
 from app.services.encoders.manager import NoActiveModelError
+from app.services.frame_context import get_frame_contexts
 from app.services.hybrid_search import (
     search_text,
     search_image,
@@ -162,3 +169,23 @@ def api_frames():
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify(results)
+
+
+@search_bp.route("/api/frames/context", methods=["POST"])
+def api_frame_context():
+    try:
+        data = FrameContextRequest(**request.get_json())
+    except Exception as error:
+        return error_response("VALIDATION_ERROR", str(error), 400)
+    try:
+        collection_name, contexts = get_frame_contexts([
+            (window.video_id, window.start_frame_index, window.end_frame_index)
+            for window in data.windows
+        ])
+    except NoActiveModelError as error:
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
+    except MilvusException as error:
+        return _milvus_error_response(error)
+    except RuntimeError as error:
+        return error_response("CONTEXT_LOOKUP_FAILED", str(error), 502)
+    return jsonify({"collection_name": collection_name, "contexts": contexts})

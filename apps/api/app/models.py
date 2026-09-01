@@ -131,6 +131,24 @@ class MultiBoxRequest(BaseModel):
     mode: Literal["parallel", "sequential"] = "parallel"
 
 
+class FrameContextWindow(BaseModel):
+    """One official-result interval whose stored-keyframe neighbours are needed."""
+
+    video_id: str = Field(min_length=1)
+    start_frame_index: int = Field(ge=0)
+    end_frame_index: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> "FrameContextWindow":
+        if self.start_frame_index > self.end_frame_index:
+            raise ValueError("start_frame_index must not exceed end_frame_index")
+        return self
+
+
+class FrameContextRequest(BaseModel):
+    windows: list[FrameContextWindow] = Field(min_length=1)
+
+
 class SimilarFramesRequest(BaseModel):
     video_id: str
     frame_index: int

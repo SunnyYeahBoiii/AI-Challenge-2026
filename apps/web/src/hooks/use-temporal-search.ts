@@ -32,6 +32,7 @@ export function useTemporalSearch() {
     emptySearchResult(),
   );
   const [queryCount, setQueryCount] = useState(0);
+  const [isVideoBrowse, setIsVideoBrowse] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function useTemporalSearch() {
         if (currentSearchId !== searchIdRef.current) return;
         setSearchResult(videoFramesResponse(data.results, filter.mode));
         setQueryCount(1);
+        setIsVideoBrowse(true);
       } else {
         const enabledQueries = filter.queries.filter(
           (q) => q.enabled && Boolean(
@@ -80,6 +82,7 @@ export function useTemporalSearch() {
         if (currentSearchId !== searchIdRef.current) return;
         setSearchResult(data);
         setQueryCount(enabledQueries.length);
+        setIsVideoBrowse(false);
       }
     } catch (error) {
       if (currentSearchId !== searchIdRef.current) return;
@@ -91,6 +94,7 @@ export function useTemporalSearch() {
       );
       setSearchResult(emptySearchResult(filter.mode));
       setQueryCount(0);
+      setIsVideoBrowse(false);
     } finally {
       if (currentSearchId === searchIdRef.current) {
         setIsLoading(false);
@@ -102,6 +106,7 @@ export function useTemporalSearch() {
     searchIdRef.current += 1;
     setSearchResult(emptySearchResult());
     setQueryCount(0);
+    setIsVideoBrowse(false);
     setSearchError(null);
     setHasSearched(false);
     setIsLoading(false);
@@ -110,6 +115,7 @@ export function useTemporalSearch() {
   return {
     searchResult,
     queryCount,
+    isVideoBrowse,
     hasSearched,
     isLoading,
     searchError,

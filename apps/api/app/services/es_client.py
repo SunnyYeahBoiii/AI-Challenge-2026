@@ -119,6 +119,74 @@ class ESClient:
         source: dict[str, Any] | None = hits[0]["_source"] if hits else None
         return source
 
+    def context_frame_keys(
+        self,
+        windows: Sequence[tuple[str, int, int]],
+        count: int = 10,
+    ) -> list[tuple[list[FrameKey], list[FrameKey]]]:
+        """Return stored keyframe identities immediately around each interval.
+
+        This deliberately queries Elasticsearch's frame catalogue rather than
+        running another vector search. Results are aligned to ``windows`` and
+        ordered chronologically within each before/after side.
+        """
+        if not windows:
+            return []
+
+        size = max(1, int(count))
+        searches: list[dict[str, Any]] = []
+        for video_id, start_frame_index, end_frame_index in windows:
+            common_filter = [{"term": {"video_id": video_id}}]
+            searches.extend([
+                {},
+                {
+                    "query": {
+                        "bool": {
+                            "filter": common_filter + [
+                                {"range": {"frame_id": {"lt": start_frame_index}}}
+                            ]
+                        }
+                    },
+                    "_source": ["video_id", "frame_id"],
+                    "size": size,
+                    "sort": [{"frame_id": {"order": "desc"}}],
+                },
+                {},
+                {
+                    "query": {
+                        "bool": {
+                            "filter": common_filter + [
+                                {"range": {"frame_id": {"gt": end_frame_index}}}
+                            ]
+                        }
+                    },
+                    "_source": ["video_id", "frame_id"],
+                    "size": size,
+                    "sort": [{"frame_id": {"order": "asc"}}],
+                },
+            ])
+
+        response = self.es.msearch(index=ES_INDEX, searches=searches)
+        responses = response.get("responses", [])
+        if len(responses) != len(windows) * 2:
+            raise RuntimeError("Elasticsearch returned an incomplete context lookup response")
+
+        contexts: list[tuple[list[FrameKey], list[FrameKey]]] = []
+        for offset in range(0, len(responses), 2):
+            before_response, after_response = responses[offset:offset + 2]
+            if "error" in before_response or "error" in after_response:
+                raise RuntimeError("Elasticsearch could not look up neighbouring keyframes")
+            before = [
+                (hit["_source"]["video_id"], hit["_source"]["frame_id"])
+                for hit in before_response.get("hits", {}).get("hits", [])
+            ]
+            after = [
+                (hit["_source"]["video_id"], hit["_source"]["frame_id"])
+                for hit in after_response.get("hits", {}).get("hits", [])
+            ]
+            contexts.append((list(reversed(before)), after))
+        return contexts
+
     def match_frames_by_keywords(
         self,
         frame_keys: Iterable[FrameKey],

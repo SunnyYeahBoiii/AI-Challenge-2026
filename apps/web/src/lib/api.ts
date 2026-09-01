@@ -119,6 +119,25 @@ export interface MultiBoxRequest {
   mode?: "parallel" | "sequential";
 }
 
+export interface FrameContextWindow {
+  video_id: string;
+  start_frame_index: number;
+  end_frame_index: number;
+}
+
+export interface FrameContext {
+  video_id: string;
+  start_frame_index: number;
+  end_frame_index: number;
+  before: FrameResult[];
+  after: FrameResult[];
+}
+
+export interface FrameContextResponse {
+  collection_name: string;
+  contexts: FrameContext[];
+}
+
 // ====== Search API ======
 
 export async function searchVideoFrames(
@@ -137,6 +156,14 @@ export async function multiBoxSearch(
   req: MultiBoxRequest
 ): Promise<TemporalSearchResponse> {
   const { data } = await api.post("/frames", req);
+  return data;
+}
+
+/** Fetch unranked stored-keyframe neighbours for already displayed results. */
+export async function fetchFrameContexts(
+  windows: FrameContextWindow[],
+): Promise<FrameContextResponse> {
+  const { data } = await api.post("/frames/context", { windows });
   return data;
 }
 
