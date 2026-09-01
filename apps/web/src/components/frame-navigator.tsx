@@ -13,7 +13,7 @@ interface FrameNavigatorProps {
 
 export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFullscreen }: FrameNavigatorProps) {
   const { visibleFrames, currentOffset } = useMemo(() => {
-    const windowSize = Math.min(3, frames.length);
+    const windowSize = Math.min(7, frames.length);
     let start = currentArrayIndex - Math.floor(windowSize / 2);
     if (start < 0) start = 0;
     if (start + windowSize > frames.length) start = frames.length - windowSize;
@@ -26,7 +26,7 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFul
   if (frames.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-center gap-2 bg-neutral-900 py-3 px-4">
+    <div className="flex items-center justify-center gap-1 bg-neutral-900 py-3 px-4">
       <button
         onClick={() => onFrameSelect(frames[currentArrayIndex - 1])}
         disabled={currentArrayIndex <= 0}
@@ -36,7 +36,7 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFul
         <Icon name="chevron_left" size={24} className="text-white" />
       </button>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {visibleFrames.map((frame, i) => {
           const isCurrent = i === currentOffset;
           return (

@@ -475,7 +475,6 @@ export default function Home() {
             setTimeSec(submission.timeSec);
             setQaAnswer(submission.answer ?? "");
             setTrakeFrameIds(null);
-            setSelectedFrame(null);
             setShowSubmitConfirm(true);
           }}
         />

@@ -48,6 +48,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const onTimeUpdateEvent = () => {
         cbs.current.onTimeUpdate?.(videoEl.currentTime ?? 0);
       };
+      const onSeeked = () => {
+        cbs.current.onTimeUpdate?.(videoEl.currentTime ?? 0);
+      };
       const onError = () => {
         setError("Failed to load video");
         setLoading(false);
@@ -55,6 +58,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       videoEl.addEventListener("loadedmetadata", ready);
       videoEl.addEventListener("timeupdate", onTimeUpdateEvent);
+      videoEl.addEventListener("seeked", onSeeked);
 
       if (Hls.isSupported()) {
         // startPosition tells hls.js which fragment to request first, so it
@@ -92,6 +96,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       return () => {
         videoEl.removeEventListener("loadedmetadata", ready);
         videoEl.removeEventListener("timeupdate", onTimeUpdateEvent);
+        videoEl.removeEventListener("seeked", onSeeked);
         videoEl.removeEventListener("error", onError);
         hlsRef.current?.destroy();
         hlsRef.current = null;

@@ -9,6 +9,14 @@ import type { VideoPlayerHandle } from "./video-player";
 import { FrameNavigator } from "./frame-navigator";
 import { computeFrameId } from "@/lib/frame-id";
 
+const NAVIGATOR_VISIBLE_FRAME_COUNT = 7;
+const SEEK_SETTLE_TOLERANCE_SECONDS = 0.05;
+
+function shouldRecenterFrameWindow(framePosition: number, frameCount: number): boolean {
+  if (frameCount <= NAVIGATOR_VISIBLE_FRAME_COUNT) return false;
+  return Math.abs(framePosition - Math.floor(frameCount / 2)) >= 1;
+}
+
 export interface FrameSubmission {
   frameId: string;
   videoId: string;
@@ -94,6 +102,9 @@ export function FrameDetailDialog({
   const pendingSeekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userEditedTimeRef = useRef(false);
   const lastMatchedFrameRef = useRef<FrameResult>(frame);
+  // A playback tick changes the highlighted keyframe, but must not replace the
+  // precise player timestamp with that keyframe's stored timestamp.
+  const selectionFollowsPlaybackRef = useRef(false);
   // null (not pre-seeded to the initial frame's key) so the sync effect below
   // also arms pendingSeekRef on first mount, not just on later frame changes —
   // otherwise the first open's premature timeupdate ticks (before the initial
@@ -117,6 +128,7 @@ export function FrameDetailDialog({
     const key = `${frame.video_id}:${frame.frame_index}`;
     if (framePropKeyRef.current === key) return;
     framePropKeyRef.current = key;
+    selectionFollowsPlaybackRef.current = false;
     beginSeek(frame.timestamp);
     setCurrentFrameIndex(frame.frame_index);
     setFetchFrameIndex(frame.frame_index);
@@ -151,10 +163,14 @@ export function FrameDetailDialog({
   }, [timeInput, currentFrame]);
 
   useEffect(() => {
+    const selectionFollowsPlayback = selectionFollowsPlaybackRef.current;
+    selectionFollowsPlaybackRef.current = false;
     setVideoIdInput(currentFrame.video_id);
-    userEditedTimeRef.current = false;
-    setTimeInput(currentFrame.timestamp.toFixed(1));
-    setShowFullscreenImage(false);
+    if (!selectionFollowsPlayback) {
+      userEditedTimeRef.current = false;
+      setTimeInput(currentFrame.timestamp.toFixed(1));
+      setShowFullscreenImage(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key on value, not the fresh object identity a refetch returns
   }, [currentFrame.video_id, currentFrame.frame_index]);
 
@@ -164,12 +180,15 @@ export function FrameDetailDialog({
   }, [allFrames, currentFrameIndex]);
 
   const selectFrame = useCallback((next: FrameResult) => {
+    selectionFollowsPlaybackRef.current = false;
     beginSeek(next.timestamp);
     setCurrentFrameIndex(next.frame_index);
     videoRef.current?.seekTo(next.timestamp);
     const nextIndex = allFrames.findIndex((candidate) => candidate.frame_index === next.frame_index);
     const isNearEdge = nextIndex <= 1 || nextIndex >= allFrames.length - 2;
-    if (isNearEdge) setFetchFrameIndex(next.frame_index);
+    if (isNearEdge || shouldRecenterFrameWindow(nextIndex, allFrames.length)) {
+      setFetchFrameIndex(next.frame_index);
+    }
   }, [allFrames]);
 
   const navigateFrame = useCallback((direction: -1 | 1) => {
@@ -241,7 +260,7 @@ export function FrameDetailDialog({
       e.preventDefault();
       e.stopPropagation();
       const direction = e.key === "ArrowLeft" ? -1 : 1;
-      const currentTime = videoRef.current?.getCurrentTime() ?? 0;
+      const currentTime = pendingSeekRef.current ?? videoRef.current?.getCurrentTime() ?? 0;
       const nextTime = Math.max(0, currentTime + direction * seekStepSeconds);
       beginSeek(nextTime);
       videoRef.current?.seekTo(nextTime);
@@ -269,7 +288,7 @@ export function FrameDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={`Frame ${currentFrameIndex} details`}
-        className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden relative border border-outline-variant"
+          className="bg-surface-container-lowest rounded-xl shadow-2xl w-[95vw] h-[85vh] sm:w-[80vw] sm:h-[75vh] max-w-none max-h-none flex flex-col overflow-hidden relative border border-outline-variant"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -285,7 +304,7 @@ export function FrameDetailDialog({
           {/* Left: Video + Navigator + Submission */}
           <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
             {/* Video — larger but capped so OCR/ASR column always stays visible */}
-            <div className="relative w-full h-[420px] overflow-hidden bg-black flex-shrink-0">
+            <div className="relative w-full h-[clamp(24rem,58vh,42rem)] overflow-hidden bg-black flex-shrink-0">
               <VideoPlayer
                 ref={videoRef}
                 src={frame.video_url}
@@ -296,7 +315,7 @@ export function FrameDetailDialog({
                   // `seeked`); acting on them — even just to display `t` — shows a
                   // transient, pre-seek time/frame instead of the one actually requested.
                   if (pendingSeekRef.current !== null) {
-                    if (Math.abs(t - pendingSeekRef.current) > 0.4) return;
+                    if (Math.abs(t - pendingSeekRef.current) > SEEK_SETTLE_TOLERANCE_SECONDS) return;
                     pendingSeekRef.current = null;
                     if (pendingSeekTimeoutRef.current) {
                       clearTimeout(pendingSeekTimeoutRef.current);
@@ -312,10 +331,11 @@ export function FrameDetailDialog({
                   const closest = frames.reduce((prev, curr) =>
                     Math.abs(curr.timestamp - t) < Math.abs(prev.timestamp - t) ? curr : prev
                   );
+                  selectionFollowsPlaybackRef.current = true;
                   setCurrentFrameIndex(closest.frame_index);
                   const pos = frames.findIndex(f => f.frame_index === closest.frame_index);
                   const isNearEdge = pos <= 1 || pos >= frames.length - 2;
-                  if (isNearEdge) {
+                  if (isNearEdge || shouldRecenterFrameWindow(pos, frames.length)) {
                     // A big seek (e.g. dragging the native scrubber far away) lands `closest`
                     // on the stale window's edge, which is still nowhere near `t`. Re-fetching
                     // around that edge frame would only nudge the window one step closer per
@@ -351,7 +371,7 @@ export function FrameDetailDialog({
             )}
 
             {/* Submission bar */}
-            <div className="flex flex-col gap-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900">
+            <div className="flex flex-col gap-0 px-6 py-0 border-t border-neutral-800 bg-neutral-900">
               <div className="flex items-center gap-4 overflow-x-auto">
                 <input
                   className={`${inputClass} opacity-80 cursor-not-allowed w-20 flex-shrink-0`}
@@ -475,13 +495,13 @@ export function FrameDetailDialog({
               <h3 className="text-label-md font-semibold text-gray-300">Frame Metadata</h3>
               <p className="text-mono-sm text-gray-500 mt-0.5">Frame {currentFrame.frame_index}</p>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+            <div className="flex-1 min-h-0 px-4 py-3 flex flex-col gap-4">
               <div className="flex flex-col min-h-0 flex-1">
                 <h4 className="text-label-md font-medium text-gray-400 mb-1.5 flex items-center gap-1.5 flex-shrink-0">
                   <Icon name="text_fields" size={14} />
                   OCR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] min-w-0 flex-1 overflow-y-auto scrollbar-hidden">
                   {currentFrame.ocr_text || <span className="text-gray-600 italic">No OCR text</span>}
                 </div>
               </div>
@@ -490,7 +510,7 @@ export function FrameDetailDialog({
                   <Icon name="graphic_eq" size={14} />
                   ASR Text
                 </h4>
-                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] flex-1 overflow-y-auto">
+                <div className="bg-neutral-800 rounded-lg p-3 text-mono-sm text-gray-300 whitespace-pre-wrap break-words min-h-[4rem] min-w-0 flex-1 overflow-y-auto scrollbar-hidden">
                   {currentFrame.asr_text || <span className="text-gray-600 italic">No ASR text</span>}
                 </div>
               </div>
