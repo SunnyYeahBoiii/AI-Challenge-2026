@@ -10,7 +10,7 @@ import { SubmissionConfirmationDialog } from "@/components/submission-confirmati
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { Icon } from "@/components/icon";
 import { SubmissionsDashboard } from "@/components/submissions-dashboard";
-import type { FrameResult } from "@/lib/api";
+import type { FrameResult, MediaSourcePreference, MediaSources } from "@/lib/api";
 import { useDresSession } from "@/hooks/use-dres-session";
 import { useSessionStorageState } from "@/hooks/use-session-storage";
 import { useTemporalSearch } from "@/hooks/use-temporal-search";
@@ -18,7 +18,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
 import type { FrameToTrake } from "@/lib/trake-types";
 import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type Submission } from "@/lib/submissions";
-import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
+import { getMediaSources, getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import {
   DEFAULT_ASR_SEARCH_CONFIG,
@@ -44,6 +44,11 @@ export default function Home() {
     "videoSeekStepSeconds",
     0.2,
   );
+  const [mediaSourcePreference, setMediaSourcePreference] = useSessionStorageState<MediaSourcePreference>(
+    "mediaSourcePreference",
+    "auto",
+  );
+  const [mediaSources, setMediaSources] = useState<MediaSources>({ cloudfront: true, minio: false });
   const [ocrSearchConfig, setOcrSearchConfig] = useSessionStorageState<KeywordSearchConfig>(
     "ocrSearchConfig",
     DEFAULT_OCR_SEARCH_CONFIG,
@@ -87,6 +92,10 @@ export default function Home() {
   const trake = useTrakeBoard(submissionType === "track");
 
   const selectedQuery = queries.find((q) => q.id === selectedQueryId);
+
+  useEffect(() => {
+    getMediaSources().then(setMediaSources).catch(() => {});
+  }, []);
 
   const handleViewQueryDetail = useCallback(async () => {
     if (!selectedQuery) return;
@@ -448,6 +457,7 @@ export default function Home() {
           frame={selectedFrame}
           submissionType={submissionType}
           seekStepSeconds={videoSeekStepSeconds}
+          mediaSourcePreference={mediaSourcePreference}
           onClose={() => setSelectedFrame(null)}
           trakeEvents={
             trake.board?.events.map((e) => ({
@@ -505,6 +515,9 @@ export default function Home() {
           onOcrSearchConfigChange={setOcrSearchConfig}
           asrSearchConfig={asrSearchConfig}
           onAsrSearchConfigChange={setAsrSearchConfig}
+          mediaSourcePreference={mediaSourcePreference}
+          mediaSources={mediaSources}
+          onMediaSourcePreferenceChange={setMediaSourcePreference}
         />
       )}
 
@@ -712,6 +725,8 @@ export default function Home() {
             <VideoPlayer
               ref={queryVideoRef}
               src={queryVideoDialog.keyframe.video_url}
+              fallbackSrc={queryVideoDialog.keyframe.video_fallback_url ?? undefined}
+              sourcePreference={mediaSourcePreference}
               poster={queryVideoDialog.keyframe.thumbnail_url}
               initialTime={
                 queryVideoDialog.submission.queryType === "trake" && queryVideoDialog.keyframe.fps

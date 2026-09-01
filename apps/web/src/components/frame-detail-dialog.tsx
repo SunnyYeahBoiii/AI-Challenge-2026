@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { searchVideoFrames } from "@/lib/api";
-import type { FrameResult } from "@/lib/api";
+import type { FrameResult, MediaSourcePreference } from "@/lib/api";
 import { VideoPlayer } from "./video-player";
 import type { VideoPlayerHandle } from "./video-player";
 import { FrameNavigator } from "./frame-navigator";
@@ -34,6 +34,7 @@ interface FrameDetailDialogProps {
   frame: FrameResult;
   submissionType: "track" | "qa" | "kis";
   seekStepSeconds: number;
+  mediaSourcePreference: MediaSourcePreference;
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
   /** TRACK: Events available to add into (E1, E2, …). */
@@ -54,6 +55,7 @@ export function FrameDetailDialog({
   frame,
   submissionType,
   seekStepSeconds,
+  mediaSourcePreference,
   onClose,
   onSubmit,
   trakeEvents = [],
@@ -308,6 +310,8 @@ export function FrameDetailDialog({
               <VideoPlayer
                 ref={videoRef}
                 src={frame.video_url}
+                fallbackSrc={currentFrame.video_fallback_url ?? undefined}
+                sourcePreference={mediaSourcePreference}
                 poster={frame.thumbnail_url}
                 initialTime={frame.timestamp}
                 onTimeUpdate={(t) => {

@@ -23,6 +23,7 @@ export interface FrameResult {
   thumbnail_url: string;
   watch_url: string;
   video_url: string;
+  video_fallback_url?: string | null;
   sequence_idx?: number;
   sequence_id?: string;
   matches?: QueryMatch[];
@@ -182,7 +183,21 @@ export interface KeyframeInfo {
   fps: number | null;
   thumbnail_url: string;
   video_url: string;
+  video_fallback_url?: string | null;
   is_exact: boolean;
+}
+
+export type MediaSourcePreference = "auto" | "cloudfront" | "minio";
+
+export interface MediaSources {
+  cloudfront: boolean;
+  minio: boolean;
+}
+
+/** Return the public playback origins configured by the API server. */
+export async function getMediaSources(): Promise<MediaSources> {
+  const { data } = await api.get("/media/sources");
+  return data;
 }
 
 export async function getNearestKeyframe(

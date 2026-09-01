@@ -18,6 +18,9 @@ export interface VideoPlayerHandle {
 
 interface VideoPlayerProps {
   src: string;
+  /** MinIO playlist used only when automatic CloudFront recovery is enabled. */
+  fallbackSrc?: string;
+  sourcePreference?: "auto" | "cloudfront" | "minio";
   poster?: string;
   initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
@@ -25,18 +28,27 @@ interface VideoPlayerProps {
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, poster, initialTime, onTimeUpdate, onReady }, ref) => {
+  ({ src, fallbackSrc, sourcePreference = "auto", poster, initialTime, onTimeUpdate, onReady }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [activeSrc, setActiveSrc] = useState(src);
+    const fallbackStartTimeRef = useRef<number | null>(null);
+    const hasUsedFallbackRef = useRef(false);
 
     const cbs = useRef({ onTimeUpdate, onReady });
     cbs.current = { onTimeUpdate, onReady };
 
     useEffect(() => {
+      hasUsedFallbackRef.current = false;
+      fallbackStartTimeRef.current = null;
+      setActiveSrc(sourcePreference === "minio" && fallbackSrc ? fallbackSrc : src);
+    }, [fallbackSrc, sourcePreference, src]);
+
+    useEffect(() => {
       const videoEl = videoRef.current;
-      if (!src || !videoEl) return;
+      if (!activeSrc || !videoEl) return;
 
       setLoading(true);
       setError(null);
@@ -51,7 +63,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const onSeeked = () => {
         cbs.current.onTimeUpdate?.(videoEl.currentTime ?? 0);
       };
+      const useFallback = () => {
+        if (sourcePreference !== "auto" || !fallbackSrc || hasUsedFallbackRef.current) {
+          return false;
+        }
+        hasUsedFallbackRef.current = true;
+        fallbackStartTimeRef.current = videoEl.currentTime || initialTime || 0;
+        setActiveSrc(fallbackSrc);
+        return true;
+      };
       const onError = () => {
+        if (useFallback()) return;
         setError("Failed to load video");
         setLoading(false);
       };
@@ -67,23 +89,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         // "startup" fragment into the SourceBuffer and can leave two
         // disjoint buffered ranges that the browser's decoder rejects.
         const hls = new Hls({
-          startPosition: initialTime ?? -1,
+          startPosition: fallbackStartTimeRef.current ?? initialTime ?? -1,
         });
         hlsRef.current = hls;
         hls.on(Hls.Events.ERROR, (_evt, data) => {
           if (data.fatal) onError();
         });
-        hls.loadSource(src);
+        hls.loadSource(activeSrc);
         hls.attachMedia(videoEl);
       } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
         // Safari: native HLS, no startPosition equivalent — seek once
         // metadata is available.
-        videoEl.src = src;
-        if (initialTime !== undefined) {
+        videoEl.src = activeSrc;
+        const startTime = fallbackStartTimeRef.current ?? initialTime;
+        if (startTime !== undefined) {
           videoEl.addEventListener(
             "loadedmetadata",
             () => {
-              videoEl.currentTime = initialTime;
+              videoEl.currentTime = startTime;
             },
             { once: true },
           );
@@ -101,8 +124,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         hlsRef.current?.destroy();
         hlsRef.current = null;
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- poster/initialTime only apply when (re)mounting for a new src
-    }, [src]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- poster/initialTime only apply when (re)mounting for a new source
+    }, [activeSrc, fallbackSrc, sourcePreference]);
 
     useImperativeHandle(
       ref,
@@ -123,7 +146,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       [],
     );
 
-    if (!src) {
+    if (!activeSrc) {
       return (
         <div className="flex h-full w-full items-center justify-center bg-black font-mono text-mono-sm text-gray-400">
           Invalid video URL

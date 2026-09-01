@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getModelStatus, setActiveModel, type ModelStatus } from "@/lib/api";
 import { Icon } from "./icon";
 import { KeywordSearchOptions, type KeywordSearchConfig } from "./keyword-search-options";
+import type { MediaSourcePreference, MediaSources } from "@/lib/api";
 
 interface ModelSettingsDialogProps {
   onClose: () => void;
@@ -15,6 +16,9 @@ interface ModelSettingsDialogProps {
   onOcrSearchConfigChange: (config: KeywordSearchConfig) => void;
   asrSearchConfig: KeywordSearchConfig;
   onAsrSearchConfigChange: (config: KeywordSearchConfig) => void;
+  mediaSourcePreference: MediaSourcePreference;
+  mediaSources: MediaSources;
+  onMediaSourcePreferenceChange: (preference: MediaSourcePreference) => void;
 }
 
 export function ModelSettingsDialog({
@@ -27,6 +31,9 @@ export function ModelSettingsDialog({
   onOcrSearchConfigChange,
   asrSearchConfig,
   onAsrSearchConfigChange,
+  mediaSourcePreference,
+  mediaSources,
+  onMediaSourcePreferenceChange,
 }: ModelSettingsDialogProps) {
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -166,6 +173,44 @@ export function ModelSettingsDialog({
               ))}
             </select>
           </div>
+
+          <section className="flex flex-col gap-2 border-t border-outline-variant pt-4">
+            <div>
+              <h3 className="text-label-md text-on-surface-variant">Video playback source</h3>
+              <p className="text-label-xs text-on-surface-variant">
+                Auto starts with CloudFront and switches to MinIO if HLS playback fails.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["auto", "Auto"],
+                ["cloudfront", "CloudFront"],
+                ["minio", "MinIO"],
+              ] as const).map(([preference, label]) => {
+                const unavailable = preference === "minio" && !mediaSources.minio;
+                return (
+                  <button
+                    key={preference}
+                    type="button"
+                    disabled={unavailable}
+                    onClick={() => onMediaSourcePreferenceChange(preference)}
+                    className={`rounded border px-3 py-1.5 text-label-sm transition-colors ${
+                      mediaSourcePreference === preference
+                        ? "border-primary bg-primary-container text-on-primary-container"
+                        : "border-outline-variant text-on-surface-variant hover:border-primary"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {!mediaSources.minio && (
+              <p className="text-label-xs text-on-surface-variant">
+                MinIO is unavailable until its public endpoint is configured on the API server.
+              </p>
+            )}
+          </section>
 
           <div className="flex flex-col gap-1 border-t border-outline-variant pt-4">
             <label htmlFor="keyboard-seek-step" className="text-label-md text-on-surface-variant">

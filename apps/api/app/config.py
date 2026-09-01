@@ -34,5 +34,11 @@ class Config:
         "MEDIA_BASE_URL", "https://d76fwc0pqjf9a.cloudfront.net"
     ).rstrip("/")
 
+    # Public MinIO origin used as an HLS fallback. Credentials remain server-only;
+    # clients receive only public playlist URLs.
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "").strip().rstrip("/")
+    MINIO_SECURE = os.getenv("MINIO_SECURE", "true").lower() == "true"
+    MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos").strip()
+
     # Keyframes are served from local disk via the API.
     KEYFRAMES_DIR = os.getenv("KEYFRAMES_DIR", str(DEFAULT_KEYFRAMES_DIR))

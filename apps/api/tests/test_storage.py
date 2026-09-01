@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.storage import keyframe_url, video_url
+from app.services.storage import fallback_video_url, keyframe_url, video_url
 
 
 def test_video_url_is_cloudfront_hls_master_playlist(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -12,3 +12,22 @@ def test_video_url_is_cloudfront_hls_master_playlist(monkeypatch: pytest.MonkeyP
 
 def test_keyframe_url_is_local_api_route() -> None:
     assert keyframe_url("L26_V211", 42) == "/api/keyframes/L26/L26_V211/42.webp"
+
+
+def test_fallback_video_url_uses_public_minio_hls_playlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.services.storage.Config.MINIO_ENDPOINT", "minio.example.test")
+    monkeypatch.setattr("app.services.storage.Config.MINIO_SECURE", True)
+    monkeypatch.setattr("app.services.storage.Config.MINIO_BUCKET_VIDEOS", "videos")
+
+    assert fallback_video_url("L26_V211") == (
+        "https://minio.example.test/videos/L26/L26_V211/index.m3u8"
+    )
+
+
+def test_fallback_video_url_is_disabled_without_minio_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.services.storage.Config.MINIO_ENDPOINT", "")
+    assert fallback_video_url("L26_V211") is None

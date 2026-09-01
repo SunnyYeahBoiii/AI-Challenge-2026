@@ -6,7 +6,7 @@ from typing import Any
 
 from app.services import video_meta
 from app.services.es_client import es_client
-from app.services.storage import keyframe_url, video_url
+from app.services.storage import fallback_video_url, keyframe_url, video_url
 
 Frame = dict[str, Any]
 Box = dict[str, Any]
@@ -56,6 +56,7 @@ def _enrich_frames(frames: Iterable[Frame]) -> list[Frame]:
         f["publish_date"] = meta.get("publish_date", "")
         f["watch_url"] = f.get("youtube_url") or meta.get("watch_url", "")
         f["video_url"] = video_url(f.get("video_id", ""))
+        f["video_fallback_url"] = fallback_video_url(f.get("video_id", ""))
         f["thumbnail_url"] = keyframe_url(f.get("video_id", ""), f.get("frame_index", 0))
         deduped.append(f)
     return deduped

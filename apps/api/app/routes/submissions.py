@@ -7,7 +7,7 @@ from pymilvus.exceptions import MilvusException
 from app.errors import error_response
 from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import search_video_frames
-from app.services.storage import keyframe_url, video_url
+from app.services.storage import fallback_video_url, keyframe_url, video_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ def get_submission_keyframe() -> tuple[Any, int]:
         "fps": nearest.get("fps"),
         "thumbnail_url": keyframe_url(video_id, nearest["frame_index"]),
         "video_url": video_url(video_id),
+        "video_fallback_url": fallback_video_url(video_id),
         "is_exact": nearest["frame_index"] == frame_index,
     }), 200
 
@@ -85,6 +86,7 @@ def get_submission_keyframes() -> tuple[Any, int]:
                 "fps": nearest.get("fps"),
                 "thumbnail_url": keyframe_url(video_id, nearest["frame_index"]),
                 "video_url": video_url(video_id),
+                "video_fallback_url": fallback_video_url(video_id),
                 "is_exact": nearest["frame_index"] == frame_index,
             }
         except Exception:
