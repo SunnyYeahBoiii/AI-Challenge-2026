@@ -9,15 +9,20 @@ const ThemeContext = createContext<{
   toggle: () => void;
 }>({ theme: "light", toggle: () => {} });
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "light";
+function getPreferredTheme(): Theme {
   const stored = localStorage.getItem("theme");
   if (stored === "dark" || stored === "light") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  // Use a deterministic initial value so SSR and the first client render match.
+  // Browser-only theme preferences are applied after hydration.
+  const [theme, setTheme] = useState<Theme>("light");
+
+  useEffect(() => {
+    setTheme(getPreferredTheme());
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
