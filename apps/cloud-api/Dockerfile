@@ -1,17 +1,19 @@
-FROM node:22-alpine AS deps
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json bun.lock ./
+COPY apps/api/package.json ./apps/api/
 COPY apps/cloud-api/package.json ./apps/cloud-api/
+COPY apps/web/package.json ./apps/web/
 COPY apps/cloud-api/prisma ./apps/cloud-api/prisma
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
-FROM node:22-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/cloud-api/node_modules ./apps/cloud-api/node_modules
 COPY apps/cloud-api/ ./apps/cloud-api/
-RUN corepack enable && pnpm --filter @repo/cloud-api build
+RUN bunx turbo build --filter=@repo/cloud-api
 
 FROM node:22-alpine AS runner
 WORKDIR /app/apps/cloud-api

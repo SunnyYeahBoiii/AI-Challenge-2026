@@ -1,19 +1,21 @@
-FROM node:22-alpine AS deps
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json bun.lock ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/cloud-api/package.json ./apps/cloud-api/
 COPY apps/web/package.json ./apps/web/
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
-FROM node:22-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 ARG NEXT_PUBLIC_CLOUD_API_URL=http://localhost:5002
 WORKDIR /app
 ENV NEXT_PUBLIC_CLOUD_API_URL=$NEXT_PUBLIC_CLOUD_API_URL
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web/ ./apps/web/
 COPY data/objects/classname.json ./data/objects/classname.json
-RUN corepack enable && pnpm --filter @repo/web build
+RUN bunx turbo build --filter=@repo/web
 
 FROM node:22-alpine AS runner
 WORKDIR /app
