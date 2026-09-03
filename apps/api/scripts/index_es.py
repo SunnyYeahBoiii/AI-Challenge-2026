@@ -45,6 +45,17 @@ BATCH_DIRS = {
 }
 
 
+def _resolve_concat_file(batch_dir: Path) -> Path:
+    """Find concatenate-data JSON in batch_dir (exact name first, then glob)."""
+    exact = batch_dir / "concatenate-data.json"
+    if exact.exists():
+        return exact
+    candidates = sorted(batch_dir.glob("concatenate-data*.json"))
+    if candidates:
+        return candidates[0]
+    return exact  # will raise FileNotFoundError downstream
+
+
 def index_batch(
     batch_dir: Path,
     es: Elasticsearch | None,
@@ -53,7 +64,7 @@ def index_batch(
     limit: int | None = None,
     dry_run: bool = False,
 ) -> int:
-    json_path = batch_dir / "concatenate-data.json"
+    json_path = _resolve_concat_file(batch_dir)
     if not json_path.exists():
         print(f"JSON not found: {json_path}")
         return 0
@@ -112,12 +123,19 @@ def main() -> None:
         action="store_true",
         help="Delete and recreate the video_texts index before indexing",
     )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        help="Custom data directory (overrides --batch/--all default paths)",
+    )
     args = parser.parse_args()
 
-    if not args.all and args.batch is None:
-        parser.error("Specify --batch 1 or --all")
-
-    dirs = list(BATCH_DIRS.values()) if args.all else [BATCH_DIRS[args.batch]]
+    if args.data_dir:
+        dirs = [args.data_dir]
+    elif not args.all and args.batch is None:
+        parser.error("Specify --batch 1 or --all, or --data-dir")
+    else:
+        dirs = list(BATCH_DIRS.values()) if args.all else [BATCH_DIRS[args.batch]]
 
     es: Elasticsearch | None = None
     target_index = ""
