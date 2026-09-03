@@ -106,7 +106,7 @@ class DresClient:
             "answerSets": [
                 {
                     "answers": [
-                        {"text": f"{answer}"}
+                        {"text": f"QA-{answer}-{video_id}-{time_ms}"}
                     ]
                 }
             ]
