@@ -87,7 +87,8 @@ def load_zip(zip_path: Path, col: Collection) -> int:
         manifest_name = next(n for n in names if n.endswith("manifest.json"))
         manifest = json.loads(zf.read(manifest_name))
         total = int(manifest["total_frames"])
-        print(f"Manifest: {manifest['model']['id']}, {total} frames")
+        model_id = manifest.get("model", {}).get("id", "unknown")
+        print(f"Manifest: {model_id}, {total} frames")
 
         shard_names = sorted(
             n
