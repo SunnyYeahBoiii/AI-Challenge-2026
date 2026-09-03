@@ -4,7 +4,7 @@ COPY package.json bun.lock ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/cloud-api/package.json ./apps/cloud-api/
 COPY apps/web/package.json ./apps/web/
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM oven/bun:1-alpine AS builder
 ARG NEXT_PUBLIC_CLOUD_API_URL=http://localhost:5002

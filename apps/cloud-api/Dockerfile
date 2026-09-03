@@ -5,7 +5,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/cloud-api/package.json ./apps/cloud-api/
 COPY apps/web/package.json ./apps/web/
 COPY apps/cloud-api/prisma ./apps/cloud-api/prisma
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM oven/bun:1-alpine AS builder
 WORKDIR /app
