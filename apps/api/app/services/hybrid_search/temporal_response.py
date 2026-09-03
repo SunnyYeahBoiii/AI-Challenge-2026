@@ -1,8 +1,10 @@
 """Structured video/sequence response building for temporal search."""
 
-from collections.abc import Sequence
+import math
+from collections.abc import Callable, Sequence
 from typing import Any
 
+from app.services.encoders import manager
 from app.services.hybrid_search.common import (
     Box,
     Frame,
@@ -187,6 +189,53 @@ def build_temporal_response(
     }
 
 
+def add_text_display_scores(
+    response: dict[str, Any],
+    text_query_indices: set[int],
+    calibrate: Callable[[float], float | None],
+) -> None:
+    """Attach optional display-only confidence to text-result frames.
+
+    Raw cosine similarity is not comparable across encoders, so a model that can
+    map it onto a calibrated probability exposes that through
+    `Encoder.calibrate_text_similarity`. The calibrated number is display-only —
+    ranking still uses the raw similarity, and image-query frames get nothing
+    because the calibration is fitted on text-image pairs.
+    """
+    if not text_query_indices:
+        return
+
+    def add_score(frame: Frame) -> None:
+        if bool(frame.get("filter_only")):
+            return
+        raw_score = _similarity(frame)
+        if raw_score <= 0.0:
+            return
+        matches = frame.get("matches")
+        if isinstance(matches, list):
+            source_indices = {
+                int(match.get("query_index", -1))
+                for match in matches
+                if isinstance(match, dict)
+                and math.isclose(float(match.get("similarity", 0.0)), raw_score)
+            }
+        else:
+            source_indices = {int(frame.get("query_index", -1))}
+        if not source_indices.intersection(text_query_indices):
+            return
+        display_score = calibrate(raw_score)
+        if display_score is None or not math.isfinite(display_score):
+            return
+        frame["display_score"] = display_score
+        frame["display_score_kind"] = "siglip2_text_confidence"
+
+    for video in response.get("videos", []):
+        for frame in video.get("valid_frames", []):
+            add_score(frame)
+        for frame in video.get("best_sequence", {}).get("frames", []):
+            add_score(frame)
+
+
 def multi_box_search(
     box_queries: Sequence[Box],
     temporal_window: float = 90.0,
@@ -202,4 +251,14 @@ def multi_box_search(
         per_box = _parallel_retrieve(box_queries, vectors)
     else:
         per_box = _sequential_retrieve(box_queries, vectors, temporal_window)
-    return build_temporal_response(per_box, temporal_window, mode)
+    response = build_temporal_response(per_box, temporal_window, mode)
+    if manager.get_status()["model_id"] == "siglip2":
+        text_query_indices = {
+            index
+            for index, box in enumerate(box_queries)
+            if bool(str(box.get("text") or "").strip())
+        }
+        add_text_display_scores(
+            response, text_query_indices, manager.calibrate_active_text_similarity
+        )
+    return response

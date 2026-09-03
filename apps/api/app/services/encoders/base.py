@@ -41,6 +41,11 @@ class Encoder(abc.ABC):
     def embed_images(self, images: list[bytes]) -> Embeddings:
         """Encode a batch of images in one forward pass, L2-normalized."""
 
+    def calibrate_text_similarity(self, similarity: float) -> float | None:
+        """Return a model-specific display confidence for text-to-image similarity."""
+        del similarity
+        return None
+
 
 def to_numpy(features: Any) -> Embeddings:
     array: Embeddings = features.detach().to(torch.float32).cpu().numpy()

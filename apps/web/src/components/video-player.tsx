@@ -12,6 +12,8 @@ import Hls from "hls.js";
 export interface VideoPlayerHandle {
   seekTo(seconds: number): void;
   getCurrentTime(): number;
+  setPlaybackRate(rate: number): void;
+  getPlaybackRate(): number;
   play(): void;
   pause(): void;
 }
@@ -22,17 +24,28 @@ interface VideoPlayerProps {
   initialTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onReady?: () => void;
+  playbackRate?: number;
+  onPlaybackRateChange?: (rate: number) => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, poster, initialTime, onTimeUpdate, onReady }, ref) => {
+  ({ src, poster, initialTime, onTimeUpdate, onReady, playbackRate = 1, onPlaybackRateChange }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const cbs = useRef({ onTimeUpdate, onReady });
-    cbs.current = { onTimeUpdate, onReady };
+    const cbs = useRef({ onTimeUpdate, onReady, onPlaybackRateChange });
+    cbs.current = { onTimeUpdate, onReady, onPlaybackRateChange };
+
+    // Mirror the controlled rate onto the element; `ratechange` reports the
+    // element's own rate back, so native controls stay authoritative.
+    useEffect(() => {
+      const video = videoRef.current;
+      if (video && Number.isFinite(playbackRate) && playbackRate > 0) {
+        video.playbackRate = playbackRate;
+      }
+    }, [playbackRate]);
 
     useEffect(() => {
       const videoEl = videoRef.current;
@@ -41,6 +54,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setLoading(true);
       setError(null);
 
+      const reportPlaybackRate = () => {
+        cbs.current.onPlaybackRateChange?.(videoEl.playbackRate);
+      };
       const ready = () => {
         setLoading(false);
         cbs.current.onReady?.();
@@ -55,6 +71,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       videoEl.addEventListener("loadedmetadata", ready);
       videoEl.addEventListener("timeupdate", onTimeUpdateEvent);
+      // `timeupdate` stops firing while paused, so a scrub or a pause would
+      // otherwise leave the reported time stale.
+      videoEl.addEventListener("pause", onTimeUpdateEvent);
+      videoEl.addEventListener("seeked", onTimeUpdateEvent);
+      videoEl.addEventListener("ratechange", reportPlaybackRate);
 
       if (Hls.isSupported()) {
         // startPosition tells hls.js which fragment to request first, so it
@@ -92,6 +113,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       return () => {
         videoEl.removeEventListener("loadedmetadata", ready);
         videoEl.removeEventListener("timeupdate", onTimeUpdateEvent);
+        videoEl.removeEventListener("pause", onTimeUpdateEvent);
+        videoEl.removeEventListener("seeked", onTimeUpdateEvent);
+        videoEl.removeEventListener("ratechange", reportPlaybackRate);
         videoEl.removeEventListener("error", onError);
         hlsRef.current?.destroy();
         hlsRef.current = null;
@@ -107,6 +131,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         },
         getCurrentTime() {
           return videoRef.current?.currentTime ?? 0;
+        },
+        setPlaybackRate(rate: number) {
+          const video = videoRef.current;
+          if (video && Number.isFinite(rate) && rate > 0) video.playbackRate = rate;
+        },
+        getPlaybackRate() {
+          return videoRef.current?.playbackRate ?? 1;
         },
         play() {
           videoRef.current?.play();

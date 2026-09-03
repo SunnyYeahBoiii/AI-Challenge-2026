@@ -45,6 +45,9 @@ def search_text(
     asr_keywords: Sequence[str] | None = None,
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_mode: str = "exact",
+    asr_search_mode: str = "exact",
+    keyword_field_mode: str = "and",
 ) -> list[Frame]:
     """Search by a vector query, filters, or both."""
     if enhance and query:
@@ -64,6 +67,9 @@ def search_text(
             source=keyword_source,
             ocr_mode=ocr_mode,
             asr_mode=asr_mode,
+            ocr_search_mode=ocr_search_mode,
+            asr_search_mode=asr_search_mode,
+            keyword_field_mode=keyword_field_mode,
         )
     else:
         frames = _filter_only_candidates({
@@ -76,6 +82,9 @@ def search_text(
             "asr_keywords": list(asr_keywords or []),
             "ocr_match_mode": ocr_mode,
             "asr_match_mode": asr_mode,
+            "ocr_search_mode": ocr_search_mode,
+            "asr_search_mode": asr_search_mode,
+            "keyword_field_mode": keyword_field_mode,
             "topk": topk,
         })
     frames = _enrich_frames(frames)
@@ -95,6 +104,9 @@ def search_image(
     asr_keywords: Sequence[str] | None = None,
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_mode: str = "exact",
+    asr_search_mode: str = "exact",
+    keyword_field_mode: str = "and",
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = manager.embed_image(image_bytes).tolist()
@@ -111,6 +123,9 @@ def search_image(
         source=keyword_source,
         ocr_mode=ocr_mode,
         asr_mode=asr_mode,
+        ocr_search_mode=ocr_search_mode,
+        asr_search_mode=asr_search_mode,
+        keyword_field_mode=keyword_field_mode,
     )
     frames = _enrich_frames(frames)
     frames = _collapse_shots(_fuse_scores(frames))
@@ -234,6 +249,9 @@ def _apply_box_keywords(
             source=box.get("keyword_source", "all"),
             ocr_mode=box.get("ocr_match_mode"),
             asr_mode=box.get("asr_match_mode"),
+            ocr_search_mode=box.get("ocr_search_mode", "exact"),
+            asr_search_mode=box.get("asr_search_mode", "exact"),
+            keyword_field_mode=box.get("keyword_field_mode", "and"),
         )
     return per_box
 
@@ -279,6 +297,9 @@ def _filter_only_candidates(
                 asr_keywords=box.get("asr_keywords"),
                 ocr_mode=box.get("ocr_match_mode"),
                 asr_mode=box.get("asr_match_mode"),
+                ocr_search_mode=box.get("ocr_search_mode", "exact"),
+                asr_search_mode=box.get("asr_search_mode", "exact"),
+                keyword_field_mode=box.get("keyword_field_mode", "and"),
                 allowed_video_ids=sorted(allowed_video_ids) if allowed_video_ids is not None else None,
                 page_size=FILTER_FETCH_CHUNK,
             ):
@@ -339,8 +360,8 @@ def _parallel_retrieve(
 ) -> list[list[Frame]]:
     """Retrieve independent boxes in at most three concurrent Milvus batches.
 
-    Boxes are grouped by the 1..500, 501..1500, and 1501..5000 ranges. A
-    bucket uses its largest requested Top-K for its one Milvus call, then each
+    Boxes are grouped by the 1..500, 501..1500, 1501..5000 and 5001..10000
+    ranges. A bucket uses its largest requested Top-K for its one Milvus call, then each
     result list is truncated to the owning box's Top-K *before* post-filters.
     """
     per_box: list[list[Frame]] = [[] for _ in boxes]

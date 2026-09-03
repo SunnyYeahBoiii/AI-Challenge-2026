@@ -41,6 +41,7 @@ from app.services.hybrid_search.retrieval import (
     search_video_frames,
 )
 from app.services.hybrid_search.temporal_response import (
+    add_text_display_scores,
     build_temporal_response,
     multi_box_search,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "_filter_only_candidates",
     "_parallel_retrieve",
     "_sequential_retrieve",
+    "add_text_display_scores",
     "build_temporal_response",
     "multi_box_search",
     "search_image",

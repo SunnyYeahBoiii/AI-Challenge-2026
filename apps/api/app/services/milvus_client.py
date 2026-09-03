@@ -146,6 +146,30 @@ class MilvusClient:
                     found[key] = frame
         return [found[key] for key in ordered_keys if key in found]
 
+    def query_frame_embeddings(
+        self, frame_keys: Sequence[tuple[str, int]], chunk_size: int = 500
+    ) -> dict[tuple[str, int], list[float]]:
+        """Fetch stored vectors for a bounded set of exact primary keys only."""
+        ordered_keys = list(dict.fromkeys((str(video), int(index)) for video, index in frame_keys))
+        found: dict[tuple[str, int], list[float]] = {}
+        size = max(1, min(int(chunk_size), QUERY_LIMIT))
+        for start in range(0, len(ordered_keys), size):
+            chunk = ordered_keys[start:start + size]
+            ids = [f"{video_id}/{frame_index}" for video_id, frame_index in chunk]
+            expr = f"id in [{', '.join(json.dumps(frame_id) for frame_id in ids)}]"
+            rows = self.col.query(
+                expr=expr,
+                output_fields=["video_id", "frame_index", "embedding"],
+                limit=len(chunk),
+            )
+            for row in rows:
+                embedding = row.get("embedding")
+                if embedding is None:
+                    continue
+                key = (str(row.get("video_id") or ""), int(row.get("frame_index") or 0))
+                found[key] = list(embedding)
+        return found
+
     def get_frame_embedding(self, video_id: str, frame_index: int) -> list[float] | None:
         expr = f"video_id == {json.dumps(str(video_id))} and frame_index == {int(frame_index)}"
         results = self.col.query(expr=expr, output_fields=["embedding"], limit=1)

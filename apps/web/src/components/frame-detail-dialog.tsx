@@ -9,6 +9,9 @@ import type { VideoPlayerHandle } from "./video-player";
 import { FrameNavigator } from "./frame-navigator";
 import { computeFrameId } from "@/lib/frame-id";
 
+/** Speeds the ↑/↓ shortcut steps through; 4× helps skim long shots. */
+const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+
 export interface FrameSubmission {
   frameId: string;
   videoId: string;
@@ -63,6 +66,7 @@ export function FrameDetailDialog({
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
   const [qaAnswer, setQaAnswer] = useState("");
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [trakeTargetEventId, setTrakeTargetEventId] = useState(
     () =>
       trakeFocusedEventId &&
@@ -87,6 +91,37 @@ export function FrameDetailDialog({
       return trakeEvents[0].id;
     });
   }, [trakeEvents, trakeFocusedEventId]);
+
+  // Reads the element's live rate first: the native control can change it behind React.
+  function adjustPlaybackRate(direction: -1 | 1) {
+    const current = videoRef.current?.getPlaybackRate() ?? playbackRate;
+    const currentIndex = PLAYBACK_RATES.reduce(
+      (best, rate, index) =>
+        Math.abs(rate - current) < Math.abs(PLAYBACK_RATES[best] - current) ? index : best,
+      0,
+    );
+    const nextIndex = Math.max(0, Math.min(PLAYBACK_RATES.length - 1, currentIndex + direction));
+    const nextRate = PLAYBACK_RATES[nextIndex];
+    setPlaybackRate(nextRate);
+    videoRef.current?.setPlaybackRate(nextRate);
+  }
+
+  useEffect(() => {
+    setPlaybackRate(1);
+  }, [frame.video_id]);
+
+  useEffect(() => {
+    const handlePlaybackKeys = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      adjustPlaybackRate(event.key === "ArrowUp" ? 1 : -1);
+    };
+    window.addEventListener("keydown", handlePlaybackKeys);
+    return () => window.removeEventListener("keydown", handlePlaybackKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- adjustPlaybackRate is redeclared each render
+  }, [playbackRate]);
 
   const trakeTargetLabel =
     trakeEvents.find((e) => e.id === trakeTargetEventId)?.displayLabel ?? "Event";
@@ -232,11 +267,38 @@ export function FrameDetailDialog({
           <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
             {/* Video — larger but capped so OCR/ASR column always stays visible */}
             <div className="relative w-full h-[420px] overflow-hidden bg-black flex-shrink-0">
+              <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded bg-black/70 px-1.5 py-1 text-white">
+                <button
+                  type="button"
+                  onClick={() => adjustPlaybackRate(-1)}
+                  disabled={playbackRate <= PLAYBACK_RATES[0]}
+                  aria-label="Decrease playback speed"
+                  title="Decrease playback speed (↓)"
+                  className="rounded px-1.5 py-0.5 text-lg leading-none hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="min-w-12 text-center font-mono text-label-xs">{playbackRate}×</span>
+                <button
+                  type="button"
+                  onClick={() => adjustPlaybackRate(1)}
+                  disabled={playbackRate >= PLAYBACK_RATES[PLAYBACK_RATES.length - 1]}
+                  aria-label="Increase playback speed"
+                  title="Increase playback speed (↑)"
+                  className="rounded px-1.5 py-0.5 text-lg leading-none hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
               <VideoPlayer
                 ref={videoRef}
                 src={frame.video_url}
                 poster={frame.thumbnail_url}
                 initialTime={frame.timestamp}
+                playbackRate={playbackRate}
+                onPlaybackRateChange={(rate) => {
+                  if (Number.isFinite(rate) && rate > 0) setPlaybackRate(rate);
+                }}
                 onTimeUpdate={(t) => {
                   // Stray timeupdate ticks fire while a seek is still landing (before
                   // `seeked`); acting on them — even just to display `t` — shows a

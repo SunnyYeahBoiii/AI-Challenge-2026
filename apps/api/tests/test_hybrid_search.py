@@ -223,3 +223,14 @@ def test_filter_only_scores_are_neutral_in_temporal_dp():
     response = hs.build_temporal_response([[first], [second]], 90.0, "parallel")
     assert response["videos"][0]["video_score"] == pytest.approx(0.4)
     assert response["videos"][0]["has_vector_score"] is True
+
+
+def test_siglip_text_display_score_does_not_change_raw_temporal_score():
+    result = hs.build_temporal_response([[frame("V1", 1, score=0.16)]], 90.0, "parallel")
+
+    hs.add_text_display_scores(result, {0}, lambda similarity: similarity + 0.68)
+
+    displayed = result["videos"][0]["valid_frames"][0]
+    assert displayed["score"] == pytest.approx(0.16)
+    assert displayed["display_score"] == pytest.approx(0.84)
+    assert displayed["display_score_kind"] == "siglip2_text_confidence"

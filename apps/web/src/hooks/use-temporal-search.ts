@@ -50,8 +50,14 @@ export function useTemporalSearch() {
           asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
           ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
           asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
-          topk: q.topK ?? 1000,
-          enhance: q.enhance ?? true,
+          ocr_search_mode: q.ocrKeywords?.length ? (q.ocrSearchMode ?? "exact") : undefined,
+          asr_search_mode: q.asrKeywords?.length ? (q.asrSearchMode ?? "exact") : undefined,
+          keyword_field_mode:
+            q.ocrKeywords?.length || q.asrKeywords?.length
+              ? (q.keywordFieldMode ?? "or")
+              : undefined,
+          topk: q.topK ?? 1500,
+          enhance: q.enhance ?? false,
         }));
         const data = await multiBoxSearch({
           box_queries: boxQueries,

@@ -107,7 +107,7 @@ export function TagInput({
       setActiveIndex(-1);
       return;
     }
-    if (event.key === "Enter" && input.trim()) {
+    if ((event.key === "Enter" || event.key === ",") && input.trim()) {
       event.preventDefault();
       if (activeSuggestion) {
         addTag(activeSuggestion);

@@ -1,8 +1,16 @@
+import logging
+
 from flask import Blueprint, request, jsonify
 from pymilvus.exceptions import MilvusException
 
 from app.errors import error_response
-from app.models import SearchRequest, MultiBoxRequest, VideoIdRequest, SimilarFramesRequest
+from app.models import (
+    MultiBoxRequest,
+    RepeatFramesRequest,
+    SearchRequest,
+    SimilarFramesRequest,
+    VideoIdRequest,
+)
 from app.services.encoders.manager import NoActiveModelError
 from app.services.hybrid_search import (
     search_text,
@@ -12,6 +20,9 @@ from app.services.hybrid_search import (
     search_similar_frames,
 )
 from app.services.object_filter import ObjectFilterError
+from app.services.repeat_detection import find_repeat_frame_details
+
+logger = logging.getLogger(__name__)
 
 search_bp = Blueprint("search", __name__)
 
@@ -41,6 +52,9 @@ def api_search():
             asr_keywords=data.asr_keywords,
             ocr_mode=data.ocr_match_mode,
             asr_mode=data.asr_match_mode,
+            ocr_search_mode=data.ocr_search_mode,
+            asr_search_mode=data.asr_search_mode,
+            keyword_field_mode=data.keyword_field_mode,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
@@ -74,6 +88,17 @@ def api_search_image():
     asr_keywords = (
         request.form.getlist("asr_keywords") if request.form.get("asr_keywords") else []
     )
+    ocr_search_mode = request.form.get("ocr_search_mode", "exact")
+    asr_search_mode = request.form.get("asr_search_mode", "exact")
+    keyword_field_mode = request.form.get("keyword_field_mode", "and")
+    if ocr_search_mode not in {"fuzzy", "exact"}:
+        return error_response("VALIDATION_ERROR", "ocr_search_mode must be fuzzy or exact", 400)
+    if asr_search_mode not in {"fuzzy", "exact"}:
+        return error_response("VALIDATION_ERROR", "asr_search_mode must be fuzzy or exact", 400)
+    if keyword_field_mode not in {"asr", "ocr", "or", "and"}:
+        return error_response(
+            "VALIDATION_ERROR", "keyword_field_mode must be one of: asr, ocr, or, and", 400
+        )
     image_bytes = file.read()
     try:
         results = search_image(
@@ -88,6 +113,9 @@ def api_search_image():
             asr_keywords=asr_keywords,
             ocr_mode=request.form.get("ocr_match_mode") or None,
             asr_mode=request.form.get("asr_match_mode") or None,
+            ocr_search_mode=ocr_search_mode,
+            asr_search_mode=asr_search_mode,
+            keyword_field_mode=keyword_field_mode,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
@@ -160,3 +188,31 @@ def api_frames():
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify(results)
+
+
+@search_bp.route("/api/frames/repeats", methods=["POST"])
+def api_repeat_frames():
+    """Mark visually repeated frames in one bounded displayed-result batch."""
+    try:
+        data = RepeatFramesRequest(**request.get_json())
+    except Exception as error:
+        return error_response("VALIDATION_ERROR", str(error), 400)
+    try:
+        repeat_details = find_repeat_frame_details(
+            [(frame.video_id, frame.frame_index, frame.timestamp) for frame in data.frames]
+        )
+    except NoActiveModelError as error:
+        return error_response("NO_ACTIVE_MODEL", str(error), 409)
+    except MilvusException as error:
+        return _milvus_error_response(error)
+    except ValueError as error:
+        return error_response("VALIDATION_ERROR", str(error), 400)
+    except Exception as error:
+        logger.exception("Could not detect repeated frames")
+        return error_response("REPEAT_DETECTION_FAILED", str(error), 502)
+    return jsonify({
+        "repeat_frames": [
+            {"video_id": video_id, "frame_index": frame_index, **details}
+            for (video_id, frame_index), details in sorted(repeat_details.items())
+        ]
+    })
