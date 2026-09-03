@@ -25,6 +25,7 @@ import {
   DEFAULT_OCR_SEARCH_CONFIG,
   type KeywordSearchConfig,
 } from "@/components/keyword-search-options";
+import { DEFAULT_VOICE_TYPING_CONFIG, type VoiceTypingConfig } from "@/lib/use-voice-typing";
 
 type SubmissionType = "track" | "qa" | "kis";
 type SubmitMode = "dres" | "cloud";
@@ -56,6 +57,10 @@ export default function Home() {
   const [asrSearchConfig, setAsrSearchConfig] = useSessionStorageState<KeywordSearchConfig>(
     "asrSearchConfig",
     DEFAULT_ASR_SEARCH_CONFIG,
+  );
+  const [voiceTypingConfig, setVoiceTypingConfig] = useSessionStorageState<VoiceTypingConfig>(
+    "voiceTypingConfig",
+    DEFAULT_VOICE_TYPING_CONFIG,
   );
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
@@ -210,6 +215,7 @@ export default function Home() {
         temporalWindowSeconds={temporalWindowSeconds}
         ocrSearchConfig={ocrSearchConfig}
         asrSearchConfig={asrSearchConfig}
+        voiceTypingConfig={voiceTypingConfig}
         gridCols={gridCols}
         onGridColsChange={setGridCols}
       />
@@ -515,6 +521,8 @@ export default function Home() {
           onOcrSearchConfigChange={setOcrSearchConfig}
           asrSearchConfig={asrSearchConfig}
           onAsrSearchConfigChange={setAsrSearchConfig}
+          voiceTypingConfig={voiceTypingConfig}
+          onVoiceTypingConfigChange={setVoiceTypingConfig}
           mediaSourcePreference={mediaSourcePreference}
           mediaSources={mediaSources}
           onMediaSourcePreferenceChange={setMediaSourcePreference}

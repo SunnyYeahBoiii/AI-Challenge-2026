@@ -9,6 +9,7 @@ import { QueryBox, QueryBoxStatic, type BoxQuery, type KeywordFocusRequest } fro
 import type { KeywordSearchConfig } from "./keyword-search-options";
 import { listVideos } from "@/lib/api";
 import type { VideoResult } from "@/lib/api";
+import type { VoiceTypingConfig } from "@/lib/use-voice-typing";
 
 export interface SearchFilter {
   videoId?: string;
@@ -27,6 +28,7 @@ interface FilterPanelProps {
   temporalWindowSeconds: number;
   ocrSearchConfig: KeywordSearchConfig;
   asrSearchConfig: KeywordSearchConfig;
+  voiceTypingConfig: VoiceTypingConfig;
   gridCols?: number;
   onGridColsChange?: (cols: number) => void;
 }
@@ -39,6 +41,7 @@ export function FilterPanel({
   temporalWindowSeconds,
   ocrSearchConfig,
   asrSearchConfig,
+  voiceTypingConfig,
   gridCols = 6,
   onGridColsChange,
 }: FilterPanelProps) {
@@ -468,6 +471,7 @@ export function FilterPanel({
                     canRemove={queries.length > 1}
                     onFocus={() => setActiveQueryId(query.id)}
                     keywordFocusRequest={keywordFocusRequest}
+                    voiceTypingConfig={voiceTypingConfig}
                   />
                 ))}
               </div>
@@ -485,6 +489,7 @@ export function FilterPanel({
                 canRemove={queries.length > 1}
                 onFocus={() => setActiveQueryId(query.id)}
                 keywordFocusRequest={keywordFocusRequest}
+                voiceTypingConfig={voiceTypingConfig}
               />
             ))}
           </div>

@@ -8,6 +8,7 @@ import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
 import { MatchModeToggle } from "./match-mode-toggle";
 import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
+import { useVoiceTyping, type VoiceTypingConfig } from "@/lib/use-voice-typing";
 
 export interface BoxQuery {
   id: string;
@@ -32,6 +33,7 @@ interface QueryBoxProps {
   canRemove: boolean;
   onFocus?: () => void;
   keywordFocusRequest?: KeywordFocusRequest | null;
+  voiceTypingConfig: VoiceTypingConfig;
 }
 
 export interface KeywordFocusRequest {
@@ -61,6 +63,7 @@ function QueryBoxInner({
   canRemove,
   onFocus,
   keywordFocusRequest,
+  voiceTypingConfig,
   sortable,
 }: QueryBoxProps & { sortable: SortableBindings }) {
   const style = sortable
@@ -74,6 +77,16 @@ function QueryBoxInner({
   const [showKeywords, setShowKeywords] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasVectorQuery = Boolean(query.content.trim());
+  const voiceStartContentRef = useRef("");
+  const { error: voiceTypingError, isListening, isSupported, startListening, stopListening } = useVoiceTyping({
+    keepListeningAcrossPauses: voiceTypingConfig.keepListeningAcrossPauses,
+    language: "vi-VN",
+    minimumConfidence: voiceTypingConfig.minimumConfidence,
+    onTranscript: (transcript) => {
+      const prefix = voiceStartContentRef.current.trim();
+      onUpdate({ content: prefix ? `${prefix} ${transcript}` : transcript });
+    },
+  });
 
   useEffect(() => {
     if (!keywordFocusRequest || keywordFocusRequest.queryId !== query.id) {
@@ -98,6 +111,16 @@ function QueryBoxInner({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const toggleVoiceTyping = () => {
+    if (isListening) {
+      stopListening();
+      return;
+    }
+
+    voiceStartContentRef.current = query.content;
+    startListening();
   };
 
   const nodeRef = sortable?.setNodeRef;
@@ -145,6 +168,26 @@ function QueryBoxInner({
           >
             <Icon name={query.type === "text" ? "image" : "text_fields"} size={16} />
           </button>
+          {query.type === "text" && isSupported && (
+            <button
+              type="button"
+              onClick={toggleVoiceTyping}
+              aria-label={isListening ? "Stop voice typing" : "Start voice typing"}
+              aria-pressed={isListening}
+              title={
+                isListening
+                  ? "Stop voice typing"
+                  : "Voice typing in Vietnamese. Speak close to the microphone."
+              }
+              className={`p-1 transition-colors ${
+                isListening
+                  ? "text-error animate-pulse"
+                  : "text-outline hover:text-primary"
+              }`}
+            >
+              <Icon name={isListening ? "mic" : "mic_none"} size={16} filled={isListening} />
+            </button>
+          )}
           {canRemove && (
             <button
               onClick={onRemove}
@@ -160,13 +203,25 @@ function QueryBoxInner({
       {/* Body */}
       <div className="p-3 bg-surface-container-lowest">
         {query.type === "text" ? (
-          <textarea
-            id={`query-text-${query.id}`}
-            className="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 text-body-sm outline-none"
-            placeholder="Enter query text..."
-            value={query.content}
-            onChange={(e) => onUpdate({ content: e.target.value })}
-          />
+          <div>
+            <textarea
+              id={`query-text-${query.id}`}
+              className="w-full h-20 resize-none bg-transparent border-none focus:ring-0 p-0 text-body-sm outline-none"
+              placeholder="Enter query text..."
+              value={query.content}
+              onChange={(e) => onUpdate({ content: e.target.value })}
+            />
+            {(isListening || voiceTypingError) && (
+              <p
+                className={`mt-1 text-label-xs ${
+                  voiceTypingError ? "text-error" : "text-primary"
+                }`}
+                role={voiceTypingError ? "alert" : "status"}
+              >
+                {voiceTypingError ?? "Listening in Vietnamese — pauses will not stop voice typing."}
+              </p>
+            )}
+          </div>
         ) : (
           <div className="relative">
             {query.content ? (

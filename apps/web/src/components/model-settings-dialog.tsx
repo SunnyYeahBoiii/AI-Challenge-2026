@@ -5,6 +5,8 @@ import { getModelStatus, setActiveModel, type ModelStatus } from "@/lib/api";
 import { Icon } from "./icon";
 import { KeywordSearchOptions, type KeywordSearchConfig } from "./keyword-search-options";
 import type { MediaSourcePreference, MediaSources } from "@/lib/api";
+import { Toggle } from "./toggle";
+import type { VoiceTypingConfig } from "@/lib/use-voice-typing";
 
 interface ModelSettingsDialogProps {
   onClose: () => void;
@@ -16,6 +18,8 @@ interface ModelSettingsDialogProps {
   onOcrSearchConfigChange: (config: KeywordSearchConfig) => void;
   asrSearchConfig: KeywordSearchConfig;
   onAsrSearchConfigChange: (config: KeywordSearchConfig) => void;
+  voiceTypingConfig: VoiceTypingConfig;
+  onVoiceTypingConfigChange: (config: VoiceTypingConfig) => void;
   mediaSourcePreference: MediaSourcePreference;
   mediaSources: MediaSources;
   onMediaSourcePreferenceChange: (preference: MediaSourcePreference) => void;
@@ -31,6 +35,8 @@ export function ModelSettingsDialog({
   onOcrSearchConfigChange,
   asrSearchConfig,
   onAsrSearchConfigChange,
+  voiceTypingConfig,
+  onVoiceTypingConfigChange,
   mediaSourcePreference,
   mediaSources,
   onMediaSourcePreferenceChange,
@@ -255,6 +261,53 @@ export function ModelSettingsDialog({
               Limits the gap between consecutive query matches in temporal search.
             </p>
           </div>
+
+          <section className="border-t border-outline-variant pt-4">
+            <div className="mb-3">
+              <h3 className="text-label-md text-on-surface-variant">Voice typing</h3>
+              <p className="text-label-xs text-on-surface-variant">
+                The browser controls its own silence timeout. Keep listening restarts recognition after a pause until you press the microphone again.
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-label-sm text-on-surface">Keep listening across pauses</p>
+                <p className="text-label-xs text-on-surface-variant">
+                  Recommended when dictating a query in a noisy environment.
+                </p>
+              </div>
+              <Toggle
+                checked={voiceTypingConfig.keepListeningAcrossPauses}
+                onChange={(keepListeningAcrossPauses) =>
+                  onVoiceTypingConfigChange({ ...voiceTypingConfig, keepListeningAcrossPauses })
+                }
+                label="Keep voice typing active across pauses"
+              />
+            </div>
+            <div className="mt-3 flex flex-col gap-1">
+              <label htmlFor="voice-confidence" className="text-label-sm text-on-surface">
+                Minimum recognition confidence ({Math.round(voiceTypingConfig.minimumConfidence * 100)}%)
+              </label>
+              <input
+                id="voice-confidence"
+                type="range"
+                min={0}
+                max={0.9}
+                step={0.05}
+                value={voiceTypingConfig.minimumConfidence}
+                onChange={(event) =>
+                  onVoiceTypingConfigChange({
+                    ...voiceTypingConfig,
+                    minimumConfidence: Number(event.target.value),
+                  })
+                }
+                className="w-full accent-primary"
+              />
+              <p className="text-label-xs text-on-surface-variant">
+                Higher values reject uncertain results more aggressively. The browser may not provide confidence for every transcript.
+              </p>
+            </div>
+          </section>
 
           <section className="border-t border-outline-variant pt-4">
             <div className="mb-3">
