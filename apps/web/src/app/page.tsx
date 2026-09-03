@@ -225,11 +225,6 @@ export default function Home() {
         {/* Top Bar */}
         <header className="bg-surface-container-lowest border-b border-outline-variant flex items-center gap-4 px-container-padding w-full h-topbar-height shrink-0 z-20 overflow-x-auto">
           <div className="flex items-center gap-6 shrink-0 whitespace-nowrap">
-            <span className="text-headline-sm font-bold text-on-surface tracking-tight shrink-0">
-              Frame Seeker
-            </span>
-            <div className="h-6 w-px bg-outline-variant hidden md:block shrink-0" />
-
             {/* View Mode Toggle */}
             {searchResult.total_valid_frames > 0 && (
               <div className="flex items-center gap-2 mr-2 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
@@ -550,6 +545,9 @@ export default function Home() {
               <kbd>Alt + 1…9</kbd><span>Focus query 1–9</span>
               <kbd>Alt + O / S</kbd><span>Focus OCR / ASR keyword input</span>
               <kbd>Alt + N</kbd><span>Add a query</span>
+              <kbd>Alt + Delete</kbd><span>Remove the active Query Box</span>
+              <kbd>Alt + C</kbd><span>Clear current search results</span>
+              <kbd>Alt + Shift + Delete</kbd><span>Clear every query and current results</span>
               <kbd>Enter</kbd><span>Add the typed keyword while an OCR/ASR input is focused</span>
               <kbd>Backspace</kbd><span>Remove the last keyword when the focused keyword input is empty</span>
               <kbd>Alt + E</kbd><span>Toggle AI Enhance for the active query</span>

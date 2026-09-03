@@ -65,6 +65,10 @@ export function FilterPanel({
     setDndReady(true);
   }, []);
 
+  useEffect(() => {
+    setMode(queries.length > 1 ? "sequential" : "parallel");
+  }, [queries.length]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -213,6 +217,7 @@ export function FilterPanel({
       ...prev,
       { id, type: "text", content: "", enabled: true, topK: 1000, enhance: false },
     ]);
+    setMode("sequential");
     setActiveQueryId(id);
     requestAnimationFrame(() => document.getElementById(`query-text-${id}`)?.focus());
   };
@@ -226,6 +231,7 @@ export function FilterPanel({
   };
 
   const removeQuery = (id: string) => {
+    setMode(queries.length > 2 ? "sequential" : "parallel");
     setQueries((prev) => {
       const next = prev.filter((q) => q.id !== id);
       if (activeQueryId === id) setActiveQueryId(next[0]?.id ?? "");
@@ -272,9 +278,31 @@ export function FilterPanel({
       (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) return;
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const isInFilterPanel = event.target instanceof Element && Boolean(event.target.closest("[data-filter-panel]"));
+
+      if (event.altKey && event.shiftKey && event.key === "Delete") {
+        event.preventDefault();
+        handleClear();
+        onClear();
+        requestAnimationFrame(() => document.getElementById("query-text-1")?.focus());
+        return;
+      }
+      if (event.shiftKey) return;
+
+      if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        onClear();
+        return;
+      }
+      if (event.key === "Delete") {
+        const activeQuery = queries.find((query) => query.id === activeQueryId);
+        if (!activeQuery || queries.length < 2) return;
+        event.preventDefault();
+        removeQuery(activeQuery.id);
+        return;
+      }
 
       if (event.key.toLowerCase() === "v") {
         event.preventDefault();
@@ -334,7 +362,7 @@ export function FilterPanel({
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [activeQueryId, addQuery, focusKeyword, focusQuery, gridCols, onGridColsChange, queries, reorderActiveQuery]);
+  }, [activeQueryId, addQuery, focusKeyword, focusQuery, gridCols, handleClear, onClear, onGridColsChange, queries, removeQuery, reorderActiveQuery]);
 
   return (
     <aside data-filter-panel className="bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-sidebar-width flex-shrink-0 z-10 overflow-hidden">
@@ -414,12 +442,13 @@ export function FilterPanel({
               </button>
               <button
                 onClick={() => setMode("sequential")}
+                disabled={queries.length < 2}
                 title="Retrieve each later box only inside videos with a reachable result from the previous box"
                 className={`px-2 py-1 text-label-xs transition-colors ${
                   mode === "sequential"
                     ? "bg-primary text-on-primary"
                     : "hover:bg-surface-container-high text-on-surface-variant"
-                }`}
+                } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 Sequential
               </button>

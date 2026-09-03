@@ -74,7 +74,7 @@ function QueryBoxInner({
       }
     : undefined;
   const [showTags, setShowTags] = useState(false);
-  const [showKeywords, setShowKeywords] = useState(false);
+  const [showKeywords, setShowKeywords] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasVectorQuery = Boolean(query.content.trim());
   const voiceStartContentRef = useRef("");
@@ -167,6 +167,18 @@ function QueryBoxInner({
             className="text-outline hover:text-on-surface transition-colors p-1"
           >
             <Icon name={query.type === "text" ? "image" : "text_fields"} size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTags(!showTags)}
+            aria-label={showTags ? "Hide tags" : "Show tags"}
+            aria-pressed={showTags}
+            title={query.tags?.length ? `Tags (${query.tags.length})` : "Tags"}
+            className={`p-1 transition-colors ${
+              showTags ? "text-primary" : "text-outline hover:text-primary"
+            }`}
+          >
+            <Icon name="sell" size={16} filled={showTags} />
           </button>
           {query.type === "text" && isSupported && (
             <button
@@ -290,20 +302,6 @@ function QueryBoxInner({
 
       {/* Footer - Expandable Tags/Keywords */}
       <div className="bg-surface-bright rounded-b-lg border-t border-surface-variant">
-        <button
-          onClick={() => setShowTags(!showTags)}
-          className="w-full px-3 py-2 flex items-center gap-2 border-b border-surface-variant cursor-pointer hover:bg-surface-container-high transition-colors"
-        >
-          <Icon name="sell" size={14} className="text-outline" />
-          <span className="text-label-sm text-on-surface-variant">
-            Tags {query.tags && query.tags.length > 0 && `(${query.tags.length})`}
-          </span>
-          <Icon
-            name={showTags ? "expand_less" : "expand_more"}
-            size={16}
-            className="text-outline ml-auto"
-          />
-        </button>
         {showTags && (
           <div className="p-3 border-b border-surface-variant">
             <TagInput

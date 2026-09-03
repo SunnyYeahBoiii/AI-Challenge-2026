@@ -594,7 +594,7 @@ export function ResultsPanel({
                   })()}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pt-4 pb-1 flex justify-between items-end opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="font-mono text-mono-sm text-white/90">
-                      #{frame.frame_index}
+                      {frame.video_id} · #{frame.frame_index}
                     </span>
                     {kind === "official" && !frame.filter_only && frame.score > 0 && (
                       <span className="text-label-xs text-white/80 bg-black/40 rounded px-1">
