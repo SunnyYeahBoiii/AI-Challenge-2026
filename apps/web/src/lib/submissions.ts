@@ -41,7 +41,12 @@ export async function createSubmission(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(`Create submission failed: ${res.status}`);
+  if (!res.ok) {
+    // ponytail: surface backend message (e.g. type-mismatch 400) instead of bare status.
+    const body = await res.text().catch(() => "");
+    const msg = body ? `: ${body.slice(0, 300)}` : "";
+    throw new Error(`Create submission failed: ${res.status}${msg}`);
+  }
   return res.json();
 }
 

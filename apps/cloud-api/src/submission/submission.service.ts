@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -58,6 +59,17 @@ export class SubmissionService {
   async createSubmission(
     input: CreateSubmissionInput,
   ): Promise<SubmissionSnapshot> {
+    // ponytail: trust Query.queryType as source of truth; reject wrong-type
+    // submissions (e.g. QA answer saved under a KIS task) instead of
+    // silently storing mismatched rows that break CSV export format.
+    const query = await this.prisma.query.findFirst({
+      where: { name: input.queryName },
+    });
+    if (query && query.queryType !== input.queryType) {
+      throw new BadRequestException(
+        `Query "${input.queryName}" is ${query.queryType.toUpperCase()}, not ${input.queryType.toUpperCase()}`,
+      );
+    }
     const now = new Date().toISOString();
     const maxSort = await this.prisma.submission.aggregate({
       where: { status: "pending" },
