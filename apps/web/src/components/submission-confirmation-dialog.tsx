@@ -11,7 +11,7 @@ interface SubmissionConfirmationDialogProps {
   frameId: string;
   videoId: string;
   timestamp: number;
-  submissionType: "track" | "qa" | "kis";
+  submissionType: "track" | "trake" | "qa" | "kis";
   sessionId: string | null;
   /** Selected DRES evaluation (contest) run to submit against. */
   evaluationId?: string | null;
@@ -52,9 +52,13 @@ export function SubmissionConfirmationDialog({
 
   const isQa = submissionType === "qa";
   const isTrake =
-    submissionType === "track" &&
+    (submissionType === "track" || submissionType === "trake") &&
     Array.isArray(trakeFrameIds) &&
     trakeFrameIds.length > 0;
+  // ponytail: precompute cloud mismatch so the warning shows before submit.
+  const cloudQuery = submitMode === "cloud" ? queries.find((q) => q.id === localQueryId) : undefined;
+  const cloudQueryType = submissionType === "track" ? "trake" : submissionType;
+  const cloudMismatch = Boolean(cloudQuery && cloudQueryType !== cloudQuery.queryType);
   const timeMs = Math.round(timestamp * 1000);
   const qaAnswerTrimmed = qaAnswer.trim();
   const qaPreview = qaAnswerTrimmed
@@ -77,6 +81,15 @@ export function SubmissionConfirmationDialog({
         setStatus("error");
         return;
       }
+      // ponytail: radio type must match the task's type (e.g. no QA under a KIS query).
+      const queryType = submissionType === "track" ? "trake" : submissionType;
+      if (queryType !== selectedQuery.queryType) {
+        setResponse(
+          `Type mismatch: task "${selectedQuery.name}" is ${selectedQuery.queryType.toUpperCase()}, but submit type is ${queryType.toUpperCase()}. Switch the type radio or pick a matching task.`,
+        );
+        setStatus("error");
+        return;
+      }
       if (isQa && !qaAnswerTrimmed) {
         setResponse("Enter a QA answer.");
         setStatus("error");
@@ -89,7 +102,6 @@ export function SubmissionConfirmationDialog({
       }
       setStatus("loading");
       try {
-        const queryType = submissionType === "track" ? "trake" : submissionType;
         const frameIds = isTrake ? trakeFrameIds! : [Number(frameId)];
         await createSubmission({
           queryName: selectedQuery.name,
@@ -101,8 +113,8 @@ export function SubmissionConfirmationDialog({
         });
         setResponse(`Saved to "${selectedQuery.name}".`);
         setStatus("saved");
-      } catch {
-        setResponse("Failed to save submission");
+      } catch (err) {
+        setResponse(err instanceof Error ? err.message : "Failed to save submission");
         setStatus("error");
       }
       return;
@@ -190,6 +202,12 @@ export function SubmissionConfirmationDialog({
                   </option>
                 ))}
               </select>
+              {cloudMismatch && (
+                <p role="alert" className="mt-1 text-label-sm font-bold text-error">
+                  Task &quot;{cloudQuery!.name}&quot; is {cloudQuery!.queryType.toUpperCase()}, not{" "}
+                  {cloudQueryType.toUpperCase()} — switch type or task.
+                </p>
+              )}
             </div>
           )}
           {submitMode === "cloud" && (

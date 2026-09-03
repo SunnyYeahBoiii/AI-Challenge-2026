@@ -195,7 +195,7 @@ export async function submitFrameToDres(params: {
   frameId: string;
   videoId: string;
   timestamp: number;
-  submissionType: "track" | "qa" | "kis";
+  submissionType: "track" | "trake" | "qa" | "kis";
   sessionId: string;
   /** Required for QA — full answer text (sent as one DRES text answer). */
   answer?: string;

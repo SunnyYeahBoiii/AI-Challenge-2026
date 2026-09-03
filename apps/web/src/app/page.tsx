@@ -8,6 +8,8 @@ import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { ModelSettingsDialog } from "@/components/model-settings-dialog";
 import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
+import { TrakeSingleSearch } from "@/components/trake-single-search";
+import { TrakeChainList, type ChainEditTarget } from "@/components/trake-chain-list";
 import { Icon } from "@/components/icon";
 import { SubmissionsDashboard } from "@/components/submissions-dashboard";
 import type { FrameResult } from "@/lib/api";
@@ -21,7 +23,7 @@ import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type
 import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 
-type SubmissionType = "track" | "qa" | "kis";
+type SubmissionType = "track" | "trake" | "qa" | "kis";
 type SubmitMode = "dres" | "cloud";
 type View = "search" | "submissions";
 
@@ -129,6 +131,8 @@ export default function Home() {
     setVideoId("");
     setTimeSec("");
     setQaAnswer("");
+    setChainEdits({});
+    setEditingChain(null);
   }, [clearSearch]);
 
   const handleFrameSelect = useCallback((frame: FrameResult) => {
@@ -137,12 +141,62 @@ export default function Home() {
     setTimeSec(frame.timestamp.toFixed(1));
   }, []);
 
+  const [chainEdits, setChainEdits] = useState<Record<string, number[]>>({});
+  const [editingChain, setEditingChain] = useState<ChainEditTarget | null>(null);
+
+  const handleTrakeSingleSearch = useCallback(
+    (lines: string[]) => {
+      setChainEdits({});
+      setEditingChain(null);
+      handleSearch({
+        queries: lines.map((content, i) => ({
+          id: `trake-${i}`,
+          type: "text" as const,
+          content,
+          enabled: true,
+          topK: 1000,
+          enhance: true,
+        })),
+        mode: "sequential",
+        temporalWindowSeconds: 90,
+      });
+    },
+    [handleSearch],
+  );
+
+  const handleChainFrameEdit = useCallback((target: ChainEditTarget) => {
+    setEditingChain(target);
+    setSelectedFrame(target.frame);
+  }, []);
+
+  const handleSaveChainFrame = useCallback(
+    (frameIdx: number) => {
+      if (!editingChain) return;
+      setChainEdits((prev) => {
+        const next = [...editingChain.frameIds];
+        next[editingChain.eventIndex] = frameIdx;
+        return { ...prev, [editingChain.sequenceId]: next };
+      });
+      setEditingChain(null);
+      setSelectedFrame(null);
+    },
+    [editingChain],
+  );
+
+  const handleChainSubmit = useCallback((chainVideoId: string, frameIds: number[]) => {
+    setVideoId(chainVideoId);
+    setTrakeFrameIds(frameIds);
+    setFrameId(String(frameIds[0] ?? ""));
+    setTimeSec("0");
+    setShowSubmitConfirm(true);
+  }, []);
+
   const handleFrameDetail = useCallback((frame: FrameResult) => {
     setSelectedFrame(frame);
   }, []);
 
   const canSubmit =
-    submissionType === "track"
+    submissionType === "track" || submissionType === "trake"
       ? Boolean(trakeFrameIds?.length && videoId.trim())
       : frameId.trim().length > 0 && videoId.trim().length > 0;
 
@@ -153,14 +207,23 @@ export default function Home() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
-      <FilterPanel
-        onSearch={handleSearch}
-        onClear={handleClear}
-        onValidationError={setSearchError}
-        isLoading={isLoading}
-        gridCols={gridCols}
-        onGridColsChange={setGridCols}
-      />
+      {submissionType === "trake" ? (
+        <TrakeSingleSearch
+          onSearch={handleTrakeSingleSearch}
+          onClear={handleClear}
+          onValidationError={setSearchError}
+          isLoading={isLoading}
+        />
+      ) : (
+        <FilterPanel
+          onSearch={handleSearch}
+          onClear={handleClear}
+          onValidationError={setSearchError}
+          isLoading={isLoading}
+          gridCols={gridCols}
+          onGridColsChange={setGridCols}
+        />
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -200,17 +263,24 @@ export default function Home() {
 
             {/* Submission Type Radio */}
             <div className="flex items-center gap-2 mr-4 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
-              {(["track", "qa", "kis"] as const).map((type) => (
-                <label key={type} className="flex items-center gap-1 px-2 cursor-pointer">
+              {(
+                [
+                  { value: "track", label: "TRAKE Colab" },
+                  { value: "trake", label: "TRAKE" },
+                  { value: "kis", label: "KIS" },
+                  { value: "qa", label: "QA" },
+                ] as const
+              ).map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-1 px-2 cursor-pointer">
                   <input
                     type="radio"
                     name="search_type"
-                    checked={submissionType === type}
-                    onChange={() => setSubmissionType(type)}
+                    checked={submissionType === value}
+                    onChange={() => setSubmissionType(value)}
                     className="text-primary focus:ring-primary h-3 w-3"
                   />
                   <span className="text-label-sm text-on-surface-variant">
-                    {type.toUpperCase()}
+                    {label}
                   </span>
                 </label>
               ))}
@@ -353,6 +423,16 @@ export default function Home() {
         )}
 
         {/* Results */}
+        {submissionType === "trake" ? (
+          <TrakeChainList
+            result={searchResult}
+            isLoading={isLoading}
+            hasSearched={hasSearched}
+            edits={chainEdits}
+            onSubmitChain={handleChainSubmit}
+            onEditFrame={handleChainFrameEdit}
+          />
+        ) : (
         <ResultsPanel
           result={searchResult}
           queryCount={queryCount}
@@ -381,6 +461,7 @@ export default function Home() {
             setShowSubmitConfirm(true);
           }}
         />
+        )}
       </div>
 
       {submissionType === "track" && (
@@ -400,8 +481,17 @@ export default function Home() {
       {selectedFrame && (
         <FrameDetailDialog
           frame={selectedFrame}
-          submissionType={submissionType}
-          onClose={() => setSelectedFrame(null)}
+          submissionType={submissionType === "trake" ? "kis" : submissionType}
+          onClose={() => {
+            setSelectedFrame(null);
+            setEditingChain(null);
+          }}
+          onSaveChainFrame={editingChain ? handleSaveChainFrame : undefined}
+          chainEventLabel={
+            editingChain
+              ? `Event ${editingChain.eventIndex + 1}/${editingChain.frameIds.length}`
+              : undefined
+          }
           trakeEvents={
             trake.board?.events.map((e) => ({
               id: e.id,

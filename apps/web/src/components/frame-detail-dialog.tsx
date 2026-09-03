@@ -39,6 +39,10 @@ interface FrameDetailDialogProps {
       eventId: string;
     },
   ) => void;
+  /** TRAKE single: save the navigated frame back into the chain instead of submitting. */
+  onSaveChainFrame?: (frameIdx: number) => void;
+  /** Label for the save button, e.g. "Event 2/4". */
+  chainEventLabel?: string;
 }
 
 export function FrameDetailDialog({
@@ -49,6 +53,8 @@ export function FrameDetailDialog({
   trakeEvents = [],
   trakeFocusedEventId,
   onAddToTrake,
+  onSaveChainFrame,
+  chainEventLabel,
 }: FrameDetailDialogProps) {
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
@@ -366,6 +372,16 @@ export function FrameDetailDialog({
                   </select>
                 )}
 
+                {onSaveChainFrame ? (
+                  <button
+                    onClick={() => onSaveChainFrame(Number(computedFrameId))}
+                    disabled={!videoIdInput.trim()}
+                    title="Scrub the video to the right moment, then save this frame into the chain"
+                    className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {`Save ${chainEventLabel ?? "frame"} #${computedFrameId}`}
+                  </button>
+                ) : (
                 <button
                   onClick={() => {
                     if (submissionType === "track" && onAddToTrake) {
@@ -400,6 +416,7 @@ export function FrameDetailDialog({
                     ? `Add to ${trakeTargetLabel}`
                     : `Submit Frame ${computedFrameId}`}
                 </button>
+                )}
               </div>
 
               {submissionType === "qa" && (
