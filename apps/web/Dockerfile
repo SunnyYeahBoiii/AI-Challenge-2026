@@ -10,7 +10,7 @@ FROM oven/bun:1-alpine AS builder
 ARG NEXT_PUBLIC_CLOUD_API_URL=http://localhost:5002
 WORKDIR /app
 ENV NEXT_PUBLIC_CLOUD_API_URL=$NEXT_PUBLIC_CLOUD_API_URL
-COPY package.json turbo.json ./
+COPY package.json bun.lock turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web/ ./apps/web/
