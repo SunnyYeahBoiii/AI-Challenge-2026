@@ -39,6 +39,7 @@ import {
 } from "@/lib/submissions";
 import { cloudApiHttpBase } from "@/lib/cloud-api";
 import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
+import { AutoSubmitDialog } from "@/components/auto-submit-dialog";
 
 const STATUS_ORDER: Record<SubmissionStatus, number> = {
   confirmed: 0,
@@ -209,6 +210,7 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkQueryType, setBulkQueryType] = useState<QueryType>("kis");
   const [exporting, setExporting] = useState<string | null>(null);
+  const [autoSubmitDialogOpen, setAutoSubmitDialogOpen] = useState(false);
   const [keyframes, setKeyframes] = useState<Record<string, KeyframeInfo | null>>({});
   const [videoDialog, setVideoDialog] = useState<{
     submission: Submission;
@@ -517,6 +519,15 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
             <Icon name="post_add" size={18} />
             Add Query
           </button>
+          {selectedQuery && (
+            <button
+              onClick={() => setAutoSubmitDialogOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded bg-primary text-on-primary text-label-md font-medium"
+            >
+              <Icon name="send" size={18} />
+              Auto Submit
+            </button>
+          )}
           <button
             onClick={() => handleExport("all", getExportAllUrl(), "submission.zip")}
             disabled={exporting !== null}
@@ -698,6 +709,16 @@ export function SubmissionsDashboard({ onBack }: { onBack: () => void }) {
           )}
         </div>
       </main>
+
+      <AutoSubmitDialog
+        selectedQuery={selectedQuery ?? null}
+        open={autoSubmitDialogOpen}
+        onClose={() => setAutoSubmitDialogOpen(false)}
+        onSubmitted={() => {
+          setAutoSubmitDialogOpen(false);
+          fetchSubmissions();
+        }}
+      />
 
       {videoDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
