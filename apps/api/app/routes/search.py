@@ -10,6 +10,7 @@ from app.models import (
     VideoIdRequest,
 )
 from app.services.encoders.manager import NoActiveModelError
+from app.services.es_client import ElasticsearchSearchError
 from app.services.frame_context import get_frame_contexts
 from app.services.hybrid_search import (
     search_text,
@@ -26,6 +27,16 @@ search_bp = Blueprint("search", __name__)
 def _milvus_error_response(error: MilvusException):
     """Surface Milvus client failures as JSON instead of Werkzeug HTML."""
     return error_response("MILVUS_ERROR", str(error), 502)
+
+
+def _elasticsearch_error_response(error: ElasticsearchSearchError):
+    """Return a retryable response for an Elasticsearch availability failure."""
+    return error_response(
+        "ELASTICSEARCH_UNAVAILABLE",
+        "Elasticsearch is temporarily unavailable. Please retry.",
+        502,
+        {"operation": error.operation},
+    )
 
 
 @search_bp.route("/api/search", methods=["POST"])
@@ -55,6 +66,8 @@ def api_search():
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
         return error_response("OBJECT_FILTER_FAILED", str(error), 500)
+    except ElasticsearchSearchError as error:
+        return _elasticsearch_error_response(error)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -102,6 +115,8 @@ def api_search_image():
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
         return error_response("OBJECT_FILTER_FAILED", str(error), 500)
+    except ElasticsearchSearchError as error:
+        return _elasticsearch_error_response(error)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify({
@@ -166,6 +181,8 @@ def api_frames():
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except ObjectFilterError as error:
         return error_response("OBJECT_FILTER_FAILED", str(error), 500)
+    except ElasticsearchSearchError as error:
+        return _elasticsearch_error_response(error)
     except MilvusException as error:
         return _milvus_error_response(error)
     return jsonify(results)
@@ -186,6 +203,8 @@ def api_frame_context():
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
     except MilvusException as error:
         return _milvus_error_response(error)
+    except ElasticsearchSearchError as error:
+        return _elasticsearch_error_response(error)
     except RuntimeError as error:
         return error_response("CONTEXT_LOOKUP_FAILED", str(error), 502)
     return jsonify({"collection_name": collection_name, "contexts": contexts})

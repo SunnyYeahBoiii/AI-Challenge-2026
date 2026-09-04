@@ -18,6 +18,8 @@ class Config:
     ES_URL = os.getenv("ES_URL", "http://localhost:9200")
     ES_USER = os.getenv("ES_USER", "")
     ES_PASS = os.getenv("ES_PASS", "")
+    ES_REQUEST_TIMEOUT = float(os.getenv("ES_REQUEST_TIMEOUT", "60"))
+    ES_MAX_RETRIES = max(0, int(os.getenv("ES_MAX_RETRIES", "2")))
     ES_MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     ENHANCE_TIMEOUT = float(os.getenv("ENHANCE_TIMEOUT", "5"))

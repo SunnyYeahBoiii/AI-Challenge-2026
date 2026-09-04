@@ -1,9 +1,14 @@
 """Tests for the metadata cache and the ES keyword filter."""
 
 import json
+import logging
+
+import pytest
+from elasticsearch import ConnectionTimeout
 
 from app.services import video_meta
-from app.services.es_client import ESClient
+from app.services import es_client as es_client_module
+from app.services.es_client import ESClient, ElasticsearchSearchError
 
 
 # ── video_meta ──────────────────────────────────────────────────────────────
@@ -64,6 +69,41 @@ def _client(hits):
 
 def _must(client):
     return client.es.body["query"]["bool"]["must"]
+
+
+def test_es_client_uses_configured_request_timeout(monkeypatch):
+    """Docker Desktop host ports can exceed Elasticsearch's default probe timeout."""
+    constructor_args = {}
+
+    class FakeElasticsearch:
+        def __init__(self, *args, **kwargs):
+            constructor_args["args"] = args
+            constructor_args["kwargs"] = kwargs
+
+    monkeypatch.setattr(es_client_module, "Elasticsearch", FakeElasticsearch)
+    monkeypatch.setattr(es_client_module, "ES_USER", "")
+    monkeypatch.setattr(es_client_module, "ES_PASS", "")
+    ESClient()
+
+    assert constructor_args["args"] == (es_client_module.ES_URL,)
+    assert constructor_args["kwargs"]["request_timeout"] == es_client_module.ES_REQUEST_TIMEOUT
+    assert constructor_args["kwargs"]["max_retries"] == es_client_module.ES_MAX_RETRIES
+    assert constructor_args["kwargs"]["retry_on_timeout"] is True
+
+
+def test_keyword_search_logs_context_and_raises_service_error(caplog):
+    class FailingES:
+        def search(self, index=None, body=None):
+            raise ConnectionTimeout("Docker port stopped responding")
+
+    client = ESClient.__new__(ESClient)
+    client.es = FailingES()
+
+    with caplog.at_level(logging.ERROR), pytest.raises(ElasticsearchSearchError):
+        list(client.iter_keyword_frame_hits(ocr_keywords=["cat soi"]))
+
+    assert "operation=keyword_frame_hits" in caplog.text
+    assert "cat soi" in caplog.text
 
 
 def test_search_videos_prefix_matches_video_id():
