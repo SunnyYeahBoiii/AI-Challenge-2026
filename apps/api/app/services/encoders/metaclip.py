@@ -22,15 +22,22 @@ class MetaClipEncoder(Encoder):
 
     def __init__(self) -> None:
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._precision = "fp16" if self._device == "cuda" else "bf16"
+        self._dtype = torch.float16 if self._device == "cuda" else torch.bfloat16
         self._model: Any = None
         self._tokenizer: Any = None
         self._preprocess: Any = None
 
     def load(self) -> None:
-        model, _, preprocess = open_clip.create_model_and_transforms(_ARCH, pretrained=_PRETRAINED)
+        model, _, preprocess = open_clip.create_model_and_transforms(
+            _ARCH,
+            pretrained=_PRETRAINED,
+            precision=self._precision,
+            device=self._device,
+        )
         self._tokenizer = open_clip.get_tokenizer(_ARCH)
         self._preprocess = preprocess
-        self._model = model.to(self._device).eval()
+        self._model = model.eval()
 
     def unload(self) -> None:
         self._model = None
@@ -50,7 +57,7 @@ class MetaClipEncoder(Encoder):
 
     def embed_image(self, image_bytes: bytes) -> Embeddings:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        batch = self._preprocess(img).unsqueeze(0).to(self._device)
+        batch = self._preprocess(img).unsqueeze(0).to(self._device, dtype=self._dtype)
         with torch.no_grad():
             features = self._model.encode_image(batch)
             features = features / features.norm(dim=-1, keepdim=True)
@@ -61,7 +68,7 @@ class MetaClipEncoder(Encoder):
         if not images:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         tensors = [self._preprocess(Image.open(io.BytesIO(b)).convert("RGB")) for b in images]
-        batch = torch.stack(tensors).to(self._device)
+        batch = torch.stack(tensors).to(self._device, dtype=self._dtype)
         with torch.no_grad():
             features = self._model.encode_image(batch)
             features = features / features.norm(dim=-1, keepdim=True)
