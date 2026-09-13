@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/icon";
 import { createSubmission, type Query } from "@/lib/submissions";
-import type { FrameResult } from "@/lib/api";
+import { searchText, type FrameResult } from "@/lib/api";
 
 interface AutoSubmitDialogProps {
   selectedQuery: Query | null;
@@ -119,13 +119,7 @@ export function AutoSubmitDialog({
   const addLog = (msg: string) => setLogs((prev) => [...prev, msg]);
 
   const searchSingle = async (text: string, topk: number): Promise<FrameResult[]> => {
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, topk, enhance: true }),
-    });
-    if (!res.ok) throw new Error(`Search failed: ${res.status}`);
-    const data = await res.json();
+    const data = await searchText(text, topk);
     return data.results ?? [];
   };
 

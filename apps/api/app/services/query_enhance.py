@@ -1,34 +1,68 @@
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from app.config import Config
 
 logger = logging.getLogger(__name__)
 
-ENHANCE_TIMEOUT = Config.ENHANCE_TIMEOUT
 ENHANCE_MAX_WORKERS = Config.ENHANCE_MAX_WORKERS
 ENHANCE_CACHE_SIZE = 512
 
-_client = None
-_client_lock = threading.Lock()
 _enhance_cache: dict[str, str] = {}
 _enhance_cache_lock = threading.Lock()
 
 
-def _get_openai_client() -> Any | None:
-    global _client
-    api_key = Config.OPENAI_API_KEY
-    if not api_key:
-        return None
-    if _client is None:
-        with _client_lock:
-            if _client is None:
-                from openai import OpenAI
+def _gemini_translate(raw_query: str, api_key: str) -> str:
+    model = quote(Config.GEMINI_MODEL, safe="")
+    request = Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        data=json.dumps(
+            {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": (
+                                    "Translate to English if needed, then rewrite this query as one "
+                                    "descriptive visual scene sentence for image retrieval. Return only "
+                                    f"the rewritten sentence.\n\nQuery: {raw_query}"
+                                )
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {"temperature": 0, "maxOutputTokens": 128},
+            }
+        ).encode("utf-8"),
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        method="POST",
+    )
+    with urlopen(request, timeout=Config.GEMINI_TIMEOUT) as response:
+        payload = json.loads(response.read().decode("utf-8"))
 
-                _client = OpenAI(api_key=api_key)
-    return _client
+    if not isinstance(payload, dict):
+        return ""
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return ""
+    candidate = candidates[0]
+    if not isinstance(candidate, dict):
+        return ""
+    content = candidate.get("content")
+    if not isinstance(content, dict):
+        return ""
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        return ""
+    return "".join(
+        text
+        for part in parts
+        if isinstance(part, dict) and isinstance((text := part.get("text")), str)
+    ).strip()
 
 
 def enhance_query(raw_query: str) -> str:
@@ -42,21 +76,13 @@ def enhance_query(raw_query: str) -> str:
     if cached is not None:
         return cached
 
-    client = _get_openai_client()
-    if client is None:
+    api_key = Config.GEMINI_API_KEY.strip()
+    if not api_key:
         return raw_query
     try:
-        resp = client.responses.create(
-            model="gpt-4.1-nano",
-            input=(
-                "Translate to English if needed, then rephrase as a descriptive "
-                f"scene sentence: {raw_query}"
-            ),
-            timeout=ENHANCE_TIMEOUT,
-        )
-        enhanced: str = resp.output_text
+        enhanced = _gemini_translate(raw_query, api_key)
     except Exception:
-        logger.warning("OpenAI enhance failed for %r", raw_query[:80], exc_info=True)
+        logger.warning("Gemini enhance failed for %r", raw_query[:80], exc_info=True)
         return raw_query
     if not enhanced:
         return raw_query

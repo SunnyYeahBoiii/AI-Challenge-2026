@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { prepareSearchText } from "@/lib/local-translation";
+
 const api = axios.create({ baseURL: "/api" });
 
 // ====== Backend-matching types ======
@@ -121,10 +123,36 @@ export async function searchVideoFrames(
   return data;
 }
 
+export async function searchText(
+  text: string,
+  topk: number,
+): Promise<{ results: FrameResult[]; total: number }> {
+  const prepared = await prepareSearchText(text, true);
+  const { data } = await api.post("/search", {
+    text: prepared.text,
+    topk,
+    enhance: prepared.enhance,
+  });
+  return data;
+}
+
 export async function multiBoxSearch(
   req: MultiBoxRequest
 ): Promise<TemporalSearchResponse> {
-  const { data } = await api.post("/frames", req);
+  const boxQueries = await Promise.all(
+    req.box_queries.map(async (box) => {
+      const shouldEnhance = box.enhance ?? req.enhance ?? true;
+      if (!box.text || !shouldEnhance) return box;
+
+      const prepared = await prepareSearchText(box.text, true);
+      return {
+        ...box,
+        text: prepared.text,
+        enhance: prepared.enhance,
+      };
+    }),
+  );
+  const { data } = await api.post("/frames", { ...req, box_queries: boxQueries });
   return data;
 }
 

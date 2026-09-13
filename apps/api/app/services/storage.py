@@ -1,19 +1,4 @@
-"""URL builders for keyframes (local disk) and videos (MinIO, path-style S3 addressing).
-
-Video read paths never touch the MinIO SDK — plain string formatting only. The
-browser talks to MinIO/Cloudflare directly (Range/206 + CORS already work
-there), so playback is not bottlenecked by Flask's single-threaded proxy.
-
-Keyframes are served from local disk via the /api/keyframes/... route (see
-app.routes.keyframes) instead, since the full keyframe set lives on-machine.
-"""
-
-from app.config import Config
-
-
-def _base_url() -> str:
-    scheme = "https" if Config.MINIO_SECURE else "http"
-    return f"{scheme}://{Config.MINIO_ENDPOINT}"
+"""URL builders for keyframes and videos served from local disk."""
 
 
 def keyframe_url(video_id: str, frame_index: int) -> str:
@@ -22,6 +7,5 @@ def keyframe_url(video_id: str, frame_index: int) -> str:
 
 
 def video_url(video_id: str) -> str:
-    """Public MinIO HLS playlist URL — video.js/VHS fetches segments via XHR."""
-    level = video_id[:3]
-    return f"{_base_url()}/{Config.MINIO_BUCKET_VIDEOS}/{level}/{video_id}/index.m3u8"
+    """Return the same-origin API URL for a local MP4 file."""
+    return f"/api/media/videos/{video_id}.mp4"

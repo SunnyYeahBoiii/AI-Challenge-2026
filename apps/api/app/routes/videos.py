@@ -1,11 +1,21 @@
+import re
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, abort, jsonify, request, send_from_directory
 
+from app.config import Config
 from app.errors import error_response
 from app.services.es_client import es_client
 
 videos_bp = Blueprint("videos", __name__)
+_SAFE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+@videos_bp.route("/api/media/videos/<video_id>.mp4")
+def get_local_video(video_id: str) -> Any:
+    if not _SAFE_VIDEO_ID.fullmatch(video_id):
+        abort(404)
+    return send_from_directory(Config.VIDEOS_DIR, f"{video_id}.mp4", conditional=True)
 
 
 @videos_bp.route("/api/videos")

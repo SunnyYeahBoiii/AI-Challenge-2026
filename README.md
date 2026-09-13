@@ -37,6 +37,11 @@ cp apps/web/.env.example apps/web/.env
 docker compose up --build
 ```
 
+The first time BEiT-3 is selected, the API downloads its COCO retrieval checkpoint and
+sentencepiece tokenizer to `apps/api/weights/`. The checkpoint is about 1.35 GB.
+Local videos are loaded from `data/video/<video_id>.mp4` (for example,
+`data/video/L21_V001.mp4`).
+
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5001
 - TRAKE collab: http://localhost:5002
@@ -199,7 +204,9 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
 | `ES_URL` | Elasticsearch Cloud endpoint | Elastic Cloud dashboard |
 | `ES_USER` | Elasticsearch username | Elastic Cloud dashboard |
 | `ES_PASS` | Elasticsearch password | Elastic Cloud dashboard |
-| `OPENAI_API_KEY` | OpenAI API key (for query enhancement) | OpenAI dashboard |
+| `GEMINI_API_KEY` | Gemini API key (for query enhancement) | Google AI Studio |
+| `GEMINI_MODEL` | Gemini model used for query enhancement | `gemini-2.5-flash-lite` |
+| `GEMINI_TIMEOUT` | Gemini request timeout in seconds | `5` |
 | `SECRET_KEY` | Flask secret key | Generate any random string |
 
 **Web Container**:

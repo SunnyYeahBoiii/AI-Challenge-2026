@@ -56,7 +56,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       videoEl.addEventListener("loadedmetadata", ready);
       videoEl.addEventListener("timeupdate", onTimeUpdateEvent);
 
-      if (Hls.isSupported()) {
+      const isHlsSource = /\.m3u8(?:$|\?)/i.test(src);
+
+      if (isHlsSource && Hls.isSupported()) {
         // startPosition tells hls.js which fragment to request first, so it
         // never loads/appends fragment 0 when we actually want to start
         // elsewhere — unlike seeking after the fact, which races the
@@ -71,9 +73,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         });
         hls.loadSource(src);
         hls.attachMedia(videoEl);
-      } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari: native HLS, no startPosition equivalent — seek once
-        // metadata is available.
+      } else if (!isHlsSource || videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        // MP4 is loaded directly. Safari also reaches this branch for native HLS.
         videoEl.src = src;
         if (initialTime !== undefined) {
           videoEl.addEventListener(

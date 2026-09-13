@@ -5,6 +5,7 @@
 **/*.pyc
 **/.venv
 **/venv
+apps/api/weights
 .env
 **/.env
 !**/.env.example

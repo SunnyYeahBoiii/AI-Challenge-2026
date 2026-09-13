@@ -176,7 +176,7 @@ function QueryBoxInner({
         )}
       </div>
 
-      {/* Top K & AI Enhance */}
+      {/* Top K & local translation */}
       <div className="flex justify-between items-center px-3 py-2 border-t border-surface-variant">
         <div className="flex items-center gap-2">
           <span className="text-label-sm text-on-surface-variant">Top K</span>
@@ -198,11 +198,11 @@ function QueryBoxInner({
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-label-sm text-on-surface-variant">AI Enhance</span>
+          <span className="text-label-sm text-on-surface-variant">Dịch Việt → Anh</span>
           <Toggle
             checked={query.enhance ?? true}
             onChange={(enhance) => onUpdate({ enhance })}
-            label="AI Enhance"
+            label="Dịch Việt → Anh"
           />
         </div>
       </div>

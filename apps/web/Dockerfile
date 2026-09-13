@@ -7,8 +7,10 @@ COPY apps/web/package.json ./apps/web/
 RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM oven/bun:1-alpine AS builder
+ARG API_BASE_URL=http://api:5000
 ARG NEXT_PUBLIC_CLOUD_API_URL=http://localhost:5002
 WORKDIR /app
+ENV API_BASE_URL=$API_BASE_URL
 ENV NEXT_PUBLIC_CLOUD_API_URL=$NEXT_PUBLIC_CLOUD_API_URL
 COPY package.json bun.lock turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -21,8 +23,8 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./.next/static
-COPY --from=builder /app/apps/web/public ./public
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]

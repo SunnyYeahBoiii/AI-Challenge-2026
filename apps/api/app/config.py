@@ -9,6 +9,7 @@ PROJECT_DIR = API_DIR if (API_DIR / "data").exists() else API_DIR.parents[1]
 DEFAULT_OBJECT_DETECTIONS_PATH = (PROJECT_DIR / "data" / "objects" / "object_detections.parquet")
 WEIGHTS_DIR = API_DIR / "weights"
 DEFAULT_KEYFRAMES_DIR = PROJECT_DIR / "data" / "keyframes" / "keyframes"
+DEFAULT_VIDEOS_DIR = PROJECT_DIR / "data" / "video"
 
 
 class Config:
@@ -28,8 +29,9 @@ class Config:
     RRF_TEXT_WEIGHT = float(os.getenv("RRF_TEXT_WEIGHT", "1.0"))
     # Collapse consecutive near-duplicate keyframes of one shot into a single hit.
     ES_DEDUPE_BY_SHOT = os.getenv("ES_DEDUPE_BY_SHOT", "true").lower() == "true"
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-    ENHANCE_TIMEOUT = float(os.getenv("ENHANCE_TIMEOUT", "5"))
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    GEMINI_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT", "5"))
     ENHANCE_MAX_WORKERS = int(os.getenv("ENHANCE_MAX_WORKERS", "8"))
     DEFAULT_TOP_K = 20
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
@@ -47,5 +49,6 @@ class Config:
     MINIO_BUCKET_KEYFRAMES = os.getenv("MINIO_BUCKET_KEYFRAMES", "keyframes")
     MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos")
 
-    # Keyframes are served from local disk instead of MinIO (videos stay on MinIO).
+    # Keyframes and source videos are served from local disk.
     KEYFRAMES_DIR = os.getenv("KEYFRAMES_DIR", str(DEFAULT_KEYFRAMES_DIR))
+    VIDEOS_DIR = os.getenv("VIDEOS_DIR", str(DEFAULT_VIDEOS_DIR))

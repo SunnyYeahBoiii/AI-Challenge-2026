@@ -31,6 +31,6 @@ Both multi-box modes share one fan-out stage — concurrent query enhancement, a
 - Chain selection is a dynamic program with a monotonic-deque sliding-window maximum, so it stays linear in pool size. A naive pairwise scan is quadratic and does not survive a 500-frame-per-box recall pool across dozens of candidate videos.
 - A box carrying tags but no text or image is answered with a scalar `query()` instead of an ANN search — it contributes membership to the path, not ordering, so its `vector_score` is 0. Previously such a box returned nothing at all, silently. Keywords alone still do not constitute a query: they narrow an existing hit set, so the frontend keeps requiring text or tags per box.
 - Elasticsearch keyword matching pages at `ES_MAX_KEYWORD_HITS` (default 10000). Hitting the page size now logs a warning; truncation is otherwise indistinguishable from "the keyword matched nothing".
-- `enhance_query` results are cached in-process (successes only) and enhanced concurrently with a 5s timeout. A hung OpenAI call no longer hangs the whole request.
+- `enhance_query` uses Gemini to translate/rephrase queries. Successful results are cached in-process and enhanced concurrently with a 5s timeout, so a hung API call does not hang the whole request.
 
 **Benchmarking:** `uv run python scripts/bench_search.py --boxes 3 --mode sequential` reports per-stage p50/p95 against a live Milvus. The round-trip reduction above is counted from the code, not measured — no run against live infrastructure has been recorded yet.

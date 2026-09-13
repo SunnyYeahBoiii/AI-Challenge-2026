@@ -35,10 +35,11 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api/app:/app/app
-      - ./apps/api/weights:/app/weights:ro
+      - ./apps/api/weights:/app/weights
       - ./data/objects:/app/data/objects:ro
       - ./data/media-info:/app/data/media-info:ro
       - ./data/keyframes:/app/data/keyframes:ro
+      - ./data/video:/app/data/video:ro
       - hf_cache:/root/.cache/huggingface
     develop:
       watch:

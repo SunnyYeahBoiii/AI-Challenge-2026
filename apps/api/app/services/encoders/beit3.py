@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -13,12 +14,27 @@ from app.services.encoders.base import Embeddings, Encoder, to_numpy
 
 _CHECKPOINT = WEIGHTS_DIR / "beit3_large_patch16_384_coco_retrieval.pth"
 _SPM_MODEL = WEIGHTS_DIR / "beit3.spm"
+_CHECKPOINT_URL = (
+    "https://github.com/addf400/files/releases/download/beit3/"
+    "beit3_large_patch16_384_coco_retrieval.pth"
+)
+_SPM_MODEL_URL = "https://github.com/addf400/files/releases/download/beit3/beit3.spm"
 
 _MAX_TEXT_LEN = 64
 
 # IMAGENET_INCEPTION_MEAN/STD, per unilm/beit3's eval transform for non-imagenet tasks.
 _MEAN = (0.5, 0.5, 0.5)
 _STD = (0.5, 0.5, 0.5)
+
+
+def _ensure_weight(path: Path, url: str) -> None:
+    if path.is_file():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        torch.hub.download_url_to_file(url, str(path), progress=True)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to download BEiT-3 weight from {url} to {path}") from exc
 
 
 class Beit3Encoder(Encoder):
@@ -33,6 +49,8 @@ class Beit3Encoder(Encoder):
         self._transform: Any = None
 
     def load(self) -> None:
+        _ensure_weight(_CHECKPOINT, _CHECKPOINT_URL)
+        _ensure_weight(_SPM_MODEL, _SPM_MODEL_URL)
         model = beit3_large_patch16_384_retrieval()
         checkpoint = torch.load(_CHECKPOINT, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"], strict=False)
