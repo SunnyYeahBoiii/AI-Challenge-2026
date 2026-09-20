@@ -474,7 +474,13 @@ export default function Home() {
         <ModelSettingsDialog onClose={() => setShowModelSettings(false)} />
       )}
 
-      <PinPanel pins={pins} onOpenPin={handleOpenPin} />
+      <PinPanel
+        pins={pins}
+        onOpenPin={handleOpenPin}
+        submissionType={submissionType === "trake" ? "kis" : submissionType}
+        dresSessionId={dres.sessionId}
+        dresEvaluationId={dres.evaluationId}
+      />
     </div>
   );
 }

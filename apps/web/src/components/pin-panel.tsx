@@ -1,13 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { isAxiosError } from "axios";
 import { Icon } from "./icon";
+import { classifyDresSubmit, submitFrameToDres } from "@/lib/api";
+import { pinKey } from "@/lib/pin-types";
 import type { PinsApi } from "@/hooks/use-pins";
 import type { PinSnapshot } from "@/lib/pin-types";
+
+/** How long a result indicator stays on the pin before reverting to idle. */
+const QUICK_SUBMIT_RESULT_MS = 2500;
+
+type QuickSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
+
+const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }> = {
+  loading: { bg: "bg-black/50", icon: "send" },
+  correct: { bg: "bg-green-600", icon: "check_circle" },
+  wrong: { bg: "bg-orange-600", icon: "cancel" },
+  duplicate: { bg: "bg-orange-600", icon: "content_copy" },
+  error: { bg: "bg-red-600", icon: "error" },
+};
 
 interface PinPanelProps {
   pins: PinsApi;
   onOpenPin: (pin: PinSnapshot) => void;
+  submissionType: "track" | "qa" | "kis";
+  dresSessionId: string | null;
+  dresEvaluationId: string | null;
 }
 
 /**
@@ -17,9 +36,58 @@ interface PinPanelProps {
  * the TRAKE board for width; collapsing leaves only a tab with the count, so
  * the wall never hides a row of keyframes while someone is scanning.
  */
-export function PinPanel({ pins, onOpenPin }: PinPanelProps) {
+export function PinPanel({
+  pins,
+  onOpenPin,
+  submissionType,
+  dresSessionId,
+  dresEvaluationId,
+}: PinPanelProps) {
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [quickSubmit, setQuickSubmit] = useState<
+    Record<string, { status: QuickSubmitStatus; message?: string }>
+  >({});
+
+  const clearQuickSubmit = (key: string) => {
+    setQuickSubmit((s) => {
+      if (!(key in s)) return s;
+      const { [key]: _removed, ...rest } = s;
+      return rest;
+    });
+  };
+
+  const handleQuickSubmit = async (pin: PinSnapshot) => {
+    const key = pinKey(pin.videoId, pin.frameIndex);
+    if (submissionType === "qa") return;
+    if (!dresSessionId || !dresEvaluationId) {
+      setQuickSubmit((s) => ({
+        ...s,
+        [key]: { status: "error", message: "Log in and select a DRES evaluation" },
+      }));
+      setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
+      return;
+    }
+    setQuickSubmit((s) => ({ ...s, [key]: { status: "loading" } }));
+    try {
+      const data = await submitFrameToDres({
+        frameId: String(pin.frameIndex),
+        videoId: pin.videoId,
+        timestamp: pin.timestamp,
+        submissionType,
+        sessionId: dresSessionId,
+        evaluationId: dresEvaluationId,
+      });
+      const status = classifyDresSubmit(data);
+      setQuickSubmit((s) => ({ ...s, [key]: { status } }));
+    } catch (err) {
+      const message = isAxiosError(err)
+        ? (err.response?.data as { message?: string } | undefined)?.message ?? err.message
+        : "Submission failed";
+      setQuickSubmit((s) => ({ ...s, [key]: { status: "error", message } }));
+    }
+    setTimeout(() => clearQuickSubmit(key), QUICK_SUBMIT_RESULT_MS);
+  };
 
   if (hidden) {
     return (
@@ -81,37 +149,70 @@ export function PinPanel({ pins, onOpenPin }: PinPanelProps) {
             </p>
           ) : (
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {pins.pins.map((pin) => (
-                <div key={pin.id} className="relative group">
-                  <button
-                    onClick={() => onOpenPin(pin)}
-                    title={`${pin.videoId} · frame ${pin.frameIndex}`}
-                    className="block w-full text-left"
-                  >
-                    {pin.thumbnailUrl ? (
-                      <img
-                        src={pin.thumbnailUrl}
-                        alt={`${pin.videoId} frame ${pin.frameIndex}`}
-                        loading="lazy"
-                        className="w-full aspect-video object-cover rounded border border-outline-variant group-hover:ring-2 group-hover:ring-primary transition"
-                      />
-                    ) : (
-                      <div className="w-full aspect-video rounded border border-outline-variant bg-surface-container" />
+              {pins.pins.map((pin) => {
+                const key = pinKey(pin.videoId, pin.frameIndex);
+                const entry = quickSubmit[key];
+                const status = entry?.status;
+                const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
+                const titleByStatus: Record<QuickSubmitStatus, string> = {
+                  loading: "Submitting…",
+                  correct: "Correct",
+                  wrong: "Wrong",
+                  duplicate: "Already submitted",
+                  error: entry?.message ?? "Submission failed",
+                };
+                return (
+                  <div key={pin.id} className="relative group">
+                    <button
+                      onClick={() => onOpenPin(pin)}
+                      title={`${pin.videoId} · frame ${pin.frameIndex}`}
+                      className="block w-full text-left"
+                    >
+                      {pin.thumbnailUrl ? (
+                        <img
+                          src={pin.thumbnailUrl}
+                          alt={`${pin.videoId} frame ${pin.frameIndex}`}
+                          loading="lazy"
+                          className="w-full aspect-video object-cover rounded border border-outline-variant group-hover:ring-2 group-hover:ring-primary transition"
+                        />
+                      ) : (
+                        <div className="w-full aspect-video rounded border border-outline-variant bg-surface-container" />
+                      )}
+                      <div className="mt-0.5 font-mono text-mono-sm text-on-surface-variant truncate">
+                        {pin.videoId} #{pin.frameIndex}
+                      </div>
+                    </button>
+                    {submissionType !== "qa" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleQuickSubmit(pin);
+                        }}
+                        disabled={status === "loading"}
+                        title={status ? titleByStatus[status] : `Submit frame ${pin.frameIndex}`}
+                        aria-label="Quick submit pinned frame"
+                        className={`absolute top-1 left-1 p-1 rounded text-white transition-opacity ${
+                          status ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        } ${status ? style.bg : "bg-black/50 hover:bg-primary-container"}`}
+                      >
+                        {status === "loading" ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                        ) : (
+                          <Icon name={status ? style.icon : "send"} size={16} />
+                        )}
+                      </button>
                     )}
-                    <div className="mt-0.5 font-mono text-mono-sm text-on-surface-variant truncate">
-                      {pin.videoId} #{pin.frameIndex}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => pins.remove(pin.videoId, pin.frameIndex)}
-                    title="Unpin"
-                    aria-label={`Unpin ${pin.videoId} frame ${pin.frameIndex}`}
-                    className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-error transition-opacity"
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                </div>
-              ))}
+                    <button
+                      onClick={() => pins.remove(pin.videoId, pin.frameIndex)}
+                      title="Unpin"
+                      aria-label={`Unpin ${pin.videoId} frame ${pin.frameIndex}`}
+                      className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-error transition-opacity"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </aside>
