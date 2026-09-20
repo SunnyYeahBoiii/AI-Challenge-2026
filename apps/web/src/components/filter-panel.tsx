@@ -25,6 +25,22 @@ interface FilterPanelProps {
   onGridColsChange?: (cols: number) => void;
 }
 
+function createDefaultQuery(id: string): BoxQuery {
+  return {
+    id,
+    type: "text",
+    content: "",
+    enabled: true,
+    topK: 1500,
+    enhance: false,
+    keywordFieldMode: "or",
+    ocrMatchMode: "and",
+    asrMatchMode: "and",
+    ocrSearchMode: "exact",
+    asrSearchMode: "exact",
+  };
+}
+
 export function FilterPanel({
   onSearch,
   onClear,
@@ -35,7 +51,7 @@ export function FilterPanel({
 }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
   const [queries, setQueries] = useState<BoxQuery[]>([
-    { id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true },
+    createDefaultQuery("1"),
   ]);
   const [mode, setMode] = useState<"parallel" | "sequential">("parallel");
   const [temporalWindowSeconds, setTemporalWindowSeconds] = useState(90);
@@ -96,8 +112,7 @@ export function FilterPanel({
     q.enabled && (
       q.content.trim() ||
       q.tags?.length ||
-      q.ocrKeywords?.length ||
-      q.asrKeywords?.length
+      q.keywords?.length
     )
   );
 
@@ -164,7 +179,7 @@ export function FilterPanel({
   const addQuery = () => {
     setQueries((prev) => [
       ...prev,
-      { id: Date.now().toString(), type: "text", content: "", enabled: true, topK: 1000, enhance: true },
+      createDefaultQuery(Date.now().toString()),
     ]);
   };
 
@@ -178,7 +193,7 @@ export function FilterPanel({
 
   const handleClear = useCallback(() => {
     setVideoId("");
-    setQueries([{ id: "1", type: "text", content: "", enabled: true, topK: 1000, enhance: true }]);
+    setQueries([createDefaultQuery("1")]);
     setMode("parallel");
     setTemporalWindowSeconds(90);
   }, []);

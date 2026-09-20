@@ -20,9 +20,6 @@ class Config:
     ES_USER = os.getenv("ES_USER", "")
     ES_PASS = os.getenv("ES_PASS", "")
     ES_MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
-    # ASR keywords phrase-match: 0 keeps order and adjacency exact. Raise it only
-    # if transcript filler words start swallowing otherwise-correct phrases.
-    ES_ASR_PHRASE_SLOP = int(os.getenv("ES_ASR_PHRASE_SLOP", "0"))
     # Reciprocal Rank Fusion: score = w / (RRF_K + rank), summed per source.
     RRF_K = int(os.getenv("RRF_K", "60"))
     RRF_VECTOR_WEIGHT = float(os.getenv("RRF_VECTOR_WEIGHT", "1.0"))
@@ -33,6 +30,16 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     GEMINI_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT", "5"))
     ENHANCE_MAX_WORKERS = int(os.getenv("ENHANCE_MAX_WORKERS", "8"))
+    # Optional SigLIP2 retrieval backend. Disabled unless SIGLIP2_ENABLED is set,
+    # because its weights are downloaded from HuggingFace at load time.
+    SIGLIP2_ENABLED = os.getenv("SIGLIP2_ENABLED", "false").lower() == "true"
+    SIGLIP2_COLLECTION = os.getenv(
+        "SIGLIP2_COLLECTION", "data_frames_siglip2_so400m_patch14_384"
+    )
+    SIGLIP2_MODEL_ID = os.getenv("SIGLIP2_MODEL_ID", "google/siglip2-so400m-patch14-384")
+    SIGLIP2_REVISION = os.getenv(
+        "SIGLIP2_REVISION", "e8e487298228002f3d8a82e0cd5c8ea9c567f57f"
+    )
     DEFAULT_TOP_K = 20
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     OBJECT_DETECTIONS_PATH = os.getenv("OBJECT_DETECTIONS_PATH", str(DEFAULT_OBJECT_DETECTIONS_PATH))

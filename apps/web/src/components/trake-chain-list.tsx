@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./icon";
 import { getNearestKeyframe, type FrameResult, type TemporalSearchResponse } from "@/lib/api";
+import { SubmitStatusBadge } from "./submit-status";
+import type { DresSubmitState } from "@/hooks/use-dres-submit";
 
 export interface ChainEditTarget {
   sequenceId: string;
@@ -18,7 +20,9 @@ interface TrakeChainListProps {
   hasSearched: boolean;
   /** Edited frameIds per sequence_id (overrides best_sequence). */
   edits: Record<string, number[]>;
-  onSubmitChain: (videoId: string, frameIds: number[]) => void;
+  onSubmitChain: (videoId: string, frameIds: number[], sequenceId: string) => void;
+  /** Verdict per sequence id, keyed as `chain:<sequenceId>` upstream. */
+  submitStates: Record<string, DresSubmitState>;
   onEditFrame: (target: ChainEditTarget) => void;
 }
 
@@ -82,6 +86,7 @@ export function TrakeChainList({
   hasSearched,
   edits,
   onSubmitChain,
+  submitStates,
   onEditFrame,
 }: TrakeChainListProps) {
   if (isLoading) {
@@ -134,13 +139,16 @@ export function TrakeChainList({
                   edited
                 </span>
               )}
+              <div className="ml-auto flex items-center gap-2">
+              <SubmitStatusBadge state={submitStates[`chain:${seq.sequence_id}`]} />
               <button
-                onClick={() => onSubmitChain(video.video_id, frameIds)}
-                className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded bg-primary text-on-primary text-label-md font-bold hover:bg-primary/90 transition-colors"
+                onClick={() => onSubmitChain(video.video_id, frameIds, seq.sequence_id)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded bg-primary text-on-primary text-label-md font-bold hover:bg-primary/90 transition-colors"
               >
                 <Icon name="send" size={16} />
                 Submit chain
               </button>
+              </div>
             </div>
             <div className="flex gap-2 overflow-x-auto">
               {seq.frames.map((frame, i) => (

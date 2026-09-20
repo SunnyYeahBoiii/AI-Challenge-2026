@@ -76,3 +76,7 @@ _Avoid_: locked frame, final pick, chosen keyframe
 **Target Video**:
 The Video that every Selection on a TrakeBoard must share. Chosen when the first Selection is made (or changed only by clearing Selections).
 _Avoid_: board video, locked video
+
+**Pin**:
+A Frame shared on the team's realtime pin wall (Video + frame_index + timestamp + fps + thumbnail_url only — no note, no status, no pinner identity). Unauthenticated and shared by everyone connected to cloud-api, like TrakeBoard; anyone may unpin or clear the wall.
+_Avoid_: bookmark, favorite, star, submission (a Pin is never sent to DRES)

@@ -1,11 +1,17 @@
 # 0005: TRAKE collab in NestJS + SQLite; DRES submit stays on Flask
 
 > **Amended 2026-08:** `apps/trake-colab` was renamed/migrated to
-> `apps/cloud-api` and grew the submissions/queries endpoints (CSV + zip
-> export, task list). Teammates point `NEXT_PUBLIC_CLOUD_API_URL` at the host
+> `apps/cloud-api`. Teammates point `NEXT_PUBLIC_CLOUD_API_URL` at the host
 > running it — the value is baked into the browser bundle, so it must be a
 > browser-reachable address (LAN/Tailscale IP), never a docker-internal
 > hostname. Everything below still applies to the renamed service.
+>
+> **Amended 2026-09:** the submissions/queries endpoints it grew (shared
+> submission tracking, task list, CSV + zip export) are removed, along with
+> their Prisma models and the web Cloud submit mode. Submitting is DRES-live
+> only: one click on a frame goes straight to Flask and the verdict comes back
+> as a badge on the button, with no confirmation dialog in between. CSV export
+> is gone with them. cloud-api is back to TrakeBoard state only.
 
 ## Context
 

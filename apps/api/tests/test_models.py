@@ -61,6 +61,34 @@ def test_search_request_expands_legacy_all_to_both_lists() -> None:
     req = SearchRequest(text="q", keywords=["x"], keyword_source="all")
     assert req.ocr_keywords == ["x"]
     assert req.asr_keywords == ["x"]
+    assert req.keyword_field_mode == "and"
+
+
+@pytest.mark.parametrize(
+    ("field_mode", "ocr_keywords", "asr_keywords"),
+    [
+        ("ocr", ["x"], []),
+        ("asr", [], ["x"]),
+        ("or", ["x"], ["x"]),
+        ("and", ["x"], ["x"]),
+    ],
+)
+def test_unified_keywords_expand_by_field_mode(
+    field_mode: str, ocr_keywords: list[str], asr_keywords: list[str]
+) -> None:
+    req = BoxQuery(text="q", keywords=["x"], keyword_field_mode=field_mode)
+    assert req.ocr_keywords == ocr_keywords
+    assert req.asr_keywords == asr_keywords
+    assert req.keyword_field_mode == field_mode
+
+
+def test_explicit_field_mode_defaults_to_or_for_new_clients() -> None:
+    assert BoxQuery(text="q", keyword_field_mode="or").keyword_field_mode == "or"
+
+
+def test_dedicated_legacy_keywords_keep_field_and_semantics() -> None:
+    req = SearchRequest(text="q", ocr_keywords=["ocr"], asr_keywords=["asr"])
+    assert req.keyword_field_mode == "and"
 
 
 def test_explicit_ocr_asr_keywords_skip_legacy_expand() -> None:
@@ -81,14 +109,47 @@ def test_box_query_expands_legacy_keywords() -> None:
     assert box.ocr_keywords == []
 
 
-def test_box_query_topk_defaults_to_500() -> None:
-    assert BoxQuery(text="q").topk == 500
+def test_box_query_topk_defaults_to_1500() -> None:
+    assert BoxQuery(text="q").topk == 1500
 
 
-@pytest.mark.parametrize("topk", [0, 5001])
+def test_legacy_search_topk_defaults_to_1500() -> None:
+    assert SearchRequest(text="q").topk == 1500
+
+
+def test_topk_accepts_10000() -> None:
+    assert BoxQuery(text="q", topk=10000).topk == 10000
+    assert SearchRequest(text="q", topk=10000).topk == 10000
+
+
+def test_keyword_search_modes_default_to_exact() -> None:
+    assert SearchRequest(text="q").ocr_search_mode == "exact"
+    assert SearchRequest(text="q").asr_search_mode == "exact"
+    assert BoxQuery(text="q").ocr_search_mode == "exact"
+    assert BoxQuery(text="q").asr_search_mode == "exact"
+
+
+@pytest.mark.parametrize("field", ["ocr_search_mode", "asr_search_mode"])
+def test_box_query_rejects_invalid_keyword_search_mode(field: str) -> None:
+    with pytest.raises(ValidationError):
+        BoxQuery(text="q", **{field: "substring"})
+
+
+def test_box_query_rejects_invalid_keyword_field_mode() -> None:
+    with pytest.raises(ValidationError):
+        BoxQuery(text="q", keywords=["x"], keyword_field_mode="either")
+
+
+@pytest.mark.parametrize("topk", [0, 10001])
 def test_box_query_rejects_topk_outside_supported_range(topk: int) -> None:
     with pytest.raises(ValidationError):
         BoxQuery(text="q", topk=topk)
+
+
+@pytest.mark.parametrize("topk", [0, 10001])
+def test_legacy_search_rejects_topk_outside_supported_range(topk: int) -> None:
+    with pytest.raises(ValidationError):
+        SearchRequest(text="q", topk=topk)
 
 
 def test_multi_box_temporal_window_defaults_to_90_seconds() -> None:

@@ -38,7 +38,7 @@ export function useTemporalSearch() {
       } else {
         const enabledQueries = filter.queries.filter(
           (q) => q.enabled && Boolean(
-            q.content.trim() || q.tags?.length || q.ocrKeywords?.length || q.asrKeywords?.length
+            q.content.trim() || q.tags?.length || q.keywords?.length
           )
         );
         const boxQueries = enabledQueries.map((q) => ({
@@ -46,12 +46,14 @@ export function useTemporalSearch() {
           image: q.type === "image" ? q.content : undefined,
           tags: q.tags?.length ? q.tags : undefined,
           tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
-          ocr_keywords: q.ocrKeywords?.length ? q.ocrKeywords : undefined,
-          asr_keywords: q.asrKeywords?.length ? q.asrKeywords : undefined,
-          ocr_match_mode: q.ocrKeywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
-          asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
-          topk: q.topK ?? 1000,
-          enhance: q.enhance ?? true,
+          keywords: q.keywords?.length ? q.keywords : undefined,
+          ocr_match_mode: q.keywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
+          asr_match_mode: q.keywords?.length ? (q.asrMatchMode ?? "and") : undefined,
+          ocr_search_mode: q.keywords?.length ? (q.ocrSearchMode ?? "exact") : undefined,
+          asr_search_mode: q.keywords?.length ? (q.asrSearchMode ?? "exact") : undefined,
+          keyword_field_mode: q.keywords?.length ? (q.keywordFieldMode ?? "or") : undefined,
+          topk: q.topK ?? 1500,
+          enhance: q.enhance ?? false,
         }));
         const data = await multiBoxSearch({
           box_queries: boxQueries,

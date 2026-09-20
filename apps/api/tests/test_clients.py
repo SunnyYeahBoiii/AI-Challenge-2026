@@ -137,14 +137,38 @@ def test_or_mode_requires_one_keyword():
     assert ocr_group["minimum_should_match"] == 1
 
 
+def _phrase_terms(clause: dict) -> dict:
+    """Flatten one exact-mode keyword clause to {field: query}.
+
+    An exact keyword is a nested bool: the boosted diacritic-preserving phrase
+    plus its `.folded` twin. Tests assert on the terms, not on that shape.
+    """
+    return {
+        field: params["query"] if isinstance(params, dict) else params
+        for phrase in clause["bool"]["should"]
+        for field, params in phrase["match_phrase"].items()
+    }
+
+
 def test_ocr_keywords_search_ocr_field_only():
-    """OCR text is a scrambled, undiacritized bag of words: match, not match_phrase."""
+    """OCR defaults to the exact phrase; only `ocr_search_mode="fuzzy"` loosens it."""
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
     must = _must(client)
     assert len(must) == 1
-    group = must[0]
-    clause = group["bool"]["should"][0]
+    assert _phrase_terms(must[0]["bool"]["should"][0]) == {
+        "ocr_text": "hd",
+        "ocr_text.folded": "hd",
+    }
+
+
+def test_ocr_fuzzy_mode_uses_the_unordered_bag_of_words_match():
+    """OCR text can be a scrambled, undiacritized bag of words — `fuzzy` matches it."""
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["hd"], ocr_search_mode="fuzzy"
+    )
+    clause = _must(client)[0]["bool"]["should"][0]
     assert clause == {
         "match": {
             "ocr_text": {
@@ -164,7 +188,9 @@ def test_ocr_digit_keyword_skips_fuzziness():
     pulls in unrelated matches — "51F" measured 223 fuzzy hits against 3 strict.
     """
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["063127"])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["063127"], ocr_search_mode="fuzzy"
+    )
     clause = _must(client)[0]["bool"]["should"][0]
     assert clause == {
         "match": {"ocr_text": {"query": "063127", "minimum_should_match": "2<75%"}}
@@ -173,7 +199,9 @@ def test_ocr_digit_keyword_skips_fuzziness():
 
 def test_ocr_alphanumeric_keyword_skips_fuzziness():
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["51F"])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["51F"], ocr_search_mode="fuzzy"
+    )
     clause = _must(client)[0]["bool"]["should"][0]
     assert "fuzziness" not in clause["match"]["ocr_text"]
 
@@ -223,6 +251,29 @@ def test_ocr_and_asr_groups_are_anded():
     assert fields == {"ocr_text", "asr_text"}
 
 
+def test_ocr_and_asr_groups_can_be_ored():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)],
+        ocr_keywords=["1172"],
+        asr_keywords=["chao mung"],
+        keyword_field_mode="or",
+    )
+    must = _must(client)
+    assert len(must) == 1
+    field_group = must[0]["bool"]
+    assert field_group["minimum_should_match"] == 1
+    assert len(field_group["should"]) == 2
+    assert _phrase_terms(field_group["should"][0]["bool"]["should"][0]) == {
+        "ocr_text": "1172",
+        "ocr_text.folded": "1172",
+    }
+    assert _phrase_terms(field_group["should"][1]["bool"]["should"][0]) == {
+        "asr_text": "chao mung",
+        "asr_text.folded": "chao mung",
+    }
+
+
 def test_ocr_mode_and_asr_mode_are_independent():
     """or on OCR, and on ASR: each group keeps its own minimum_should_match."""
     client = _client([])
@@ -250,21 +301,30 @@ def test_ocr_mode_and_asr_mode_fall_back_to_mode():
     assert ocr_group["minimum_should_match"] == 1
 
 
+def test_query_keywords_are_passed_to_elasticsearch_unchanged():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], asr_keywords=["Chào Mừng!"])
+    assert _phrase_terms(_must(client)[0]["bool"]["should"][0]) == {
+        "asr_text": "Chào Mừng!",
+        "asr_text.folded": "Chào Mừng!",
+    }
+
+
+def test_ocr_query_is_passed_to_elasticsearch_unchanged():
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["ĐỒNG, Vietnan!"])
+    assert _phrase_terms(_must(client)[0]["bool"]["should"][0]) == {
+        "ocr_text": "ĐỒNG, Vietnan!",
+        "ocr_text.folded": "ĐỒNG, Vietnan!",
+    }
+
+
 def test_legacy_source_ocr_maps_to_ocr_field():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
-    group = _must(client)[0]
-    clause = group["bool"]["should"][0]
-    assert clause == {
-        "match": {
-            "ocr_text": {
-                "query": "a",
-                "minimum_should_match": "2<75%",
-                "fuzziness": "AUTO",
-                "prefix_length": 2,
-                "max_expansions": 20,
-            }
-        }
+    assert _phrase_terms(_must(client)[0]["bool"]["should"][0]) == {
+        "ocr_text": "a",
+        "ocr_text.folded": "a",
     }
 
 
@@ -338,6 +398,48 @@ def test_collapse_shots_keeps_highest_scoring_frame_per_shot():
     assert [s["frame_index"] for s in collapsed[0]["shot_siblings"]] == [2]
 
 
+def test_global_keyword_search_uses_field_or_group_when_requested():
+    client = _client([])
+    list(
+        client.iter_keyword_frame_hits(
+            ocr_keywords=["tên vận động viên"],
+            asr_keywords=["chào mừng"],
+            keyword_field_mode="or",
+        )
+    )
+    must = _must(client)
+    assert len(must) == 1
+    assert must[0]["bool"]["minimum_should_match"] == 1
+    assert len(must[0]["bool"]["should"]) == 2
+
+
+def test_global_keyword_search_restricts_allowed_videos():
+    client = _client([])
+    list(client.iter_keyword_frame_hits(asr_keywords=["hồ Long Ẩn"], allowed_video_ids=["V2"]))
+    filters = client.es.body["query"]["bool"]["filter"]
+    assert {"terms": {"video_id": ["V2"]}} in filters
+
+
 def test_collapse_shots_keeps_frames_without_shot_idx():
     frames = [{"video_id": "V1", "frame_index": 1, "score": 0.9}]
     assert _collapse_shots(frames) == frames
+
+
+def _phrase_fields(clause: dict) -> set[str]:
+    """Flatten one exact-mode keyword clause to its match_phrase field names."""
+    return {
+        field
+        for phrase in clause["bool"]["should"]
+        for field in phrase["match_phrase"]
+    }
+
+
+def test_asr_phrase_stays_strictly_adjacent():
+    """Exact-mode ASR phrase matching never carries a slop parameter."""
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], asr_keywords=["xin chao"])
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert _phrase_fields(clause) == {"asr_text", "asr_text.folded"}
+    for phrase in clause["bool"]["should"]:
+        for params in phrase["match_phrase"].values():
+            assert "slop" not in params

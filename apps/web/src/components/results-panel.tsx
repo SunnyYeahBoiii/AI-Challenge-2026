@@ -1,19 +1,47 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
-import { classifyDresSubmit, submitFrameToDres } from "@/lib/api";
-import type { FrameResult, TemporalSearchResponse } from "@/lib/api";
+import { classifyDresSubmit, fetchRepeatFrameDetails, submitFrameToDres } from "@/lib/api";
+import { pinKey } from "@/lib/pin-types";
+import type { FrameResult, RepeatFrameDetails, TemporalSearchResponse } from "@/lib/api";
+import {
+  canonicalRepeatRequestKey,
+  frameRepeatKey,
+  repeatHoverItems,
+  repeatHoverPlacement,
+} from "@/lib/repeat-detection";
 import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 const FRAME_PAGE_SIZE = 48;
 const VIDEO_PAGE_SIZE = 12;
+/** Mirrors RepeatFramesRequest.frames max_length on the API. */
+const REPEAT_FRAME_BATCH_SIZE = 1500;
+
+function uniqueRepeatFrames(frames: FrameResult[]): FrameResult[] {
+  const unique = new Map<string, FrameResult>();
+  for (const frame of frames) {
+    unique.set(frameRepeatKey(frame), frame);
+  }
+  return [...unique.values()];
+}
+
+/** Repeats are relative to the displayed set, so each batch is scored as a whole. */
+function splitRepeatBatches(frames: FrameResult[]): FrameResult[][] {
+  const unique = uniqueRepeatFrames(frames);
+  const batches: FrameResult[][] = [];
+  for (let index = 0; index < unique.length; index += REPEAT_FRAME_BATCH_SIZE) {
+    batches.push(unique.slice(index, index + REPEAT_FRAME_BATCH_SIZE));
+  }
+  return batches;
+}
 
 /** How long a result indicator stays on the card before reverting to idle. */
 const QUICK_SUBMIT_RESULT_MS = 2500;
 
 type QuickSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
+type RepeatHoverState = { key: string; placement: "left" | "right" };
 
 const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }> = {
   loading: { bg: "bg-black/50", icon: "send" },
@@ -32,13 +60,14 @@ interface ResultsPanelProps {
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
+  /** `pinKey(videoId, frameIndex)` of every frame on the shared wall. */
+  pinnedKeys: Set<string>;
+  onTogglePin: (frame: FrameResult) => void;
   dresEvaluationId: string | null;
   gridCols?: number;
   hasSearched?: boolean;
   trakeFocusedLabel?: string;
   onAddToTrake?: (frame: FrameResult) => void;
-  submitMode?: "dres" | "cloud";
-  onCloudQuickSubmit?: (frame: FrameResult) => void;
 }
 
 export function ResultsPanel({
@@ -50,13 +79,13 @@ export function ResultsPanel({
   isLoading,
   submissionType,
   dresSessionId,
+  pinnedKeys,
+  onTogglePin,
   dresEvaluationId,
   gridCols = 6,
   hasSearched = false,
   trakeFocusedLabel,
   onAddToTrake,
-  submitMode = "dres",
-  onCloudQuickSubmit,
 }: ResultsPanelProps) {
   const [visibleUnitCount, setVisibleUnitCount] = useState(VIDEO_PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -64,8 +93,19 @@ export function ResultsPanel({
   const [quickSubmit, setQuickSubmit] = useState<
     Record<string, { status: QuickSubmitStatus; message?: string }>
   >({});
+  const repeatAbortRef = useRef<AbortController | null>(null);
+  const repeatCacheRef = useRef<Map<string, Record<string, RepeatFrameDetails>>>(new Map());
+  const [repeatFrameDetails, setRepeatFrameDetails] = useState<Record<string, RepeatFrameDetails>>({});
+  const [repeatHover, setRepeatHover] = useState<RepeatHoverState | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLElement | null>(null);
+
+  const openRepeatHover = useCallback((target: HTMLElement, key: string) => {
+    setRepeatHover({
+      key,
+      placement: repeatHoverPlacement(target.getBoundingClientRect(), window.innerWidth),
+    });
+  }, []);
 
   const clearQuickSubmit = (key: string) => {
     setQuickSubmit((s) => {
@@ -146,6 +186,59 @@ export function ResultsPanel({
   const visibleVideoCount = new Set(
     displayGroups.flatMap((group) => group.frames.map((frame) => frame.video_id))
   ).size;
+
+  const repeatBatches = useMemo(() => {
+    const batches = splitRepeatBatches(displayGroups.flatMap((group) => group.frames));
+    return [
+      ...new Map(batches.map((frames) => [canonicalRepeatRequestKey(frames), frames])).values(),
+    ];
+  }, [displayGroups]);
+
+  useEffect(() => {
+    repeatAbortRef.current?.abort();
+    repeatCacheRef.current.clear();
+    setRepeatFrameDetails({});
+    setRepeatHover(null);
+  }, [result]);
+
+  useEffect(() => {
+    const missing = repeatBatches.filter(
+      (frames) => !repeatCacheRef.current.has(canonicalRepeatRequestKey(frames))
+    );
+    if (missing.length === 0) return;
+
+    repeatAbortRef.current?.abort();
+    const controller = new AbortController();
+    repeatAbortRef.current = controller;
+    Promise.all(
+      missing.map(async (frames) => ({
+        key: canonicalRepeatRequestKey(frames),
+        details: await fetchRepeatFrameDetails(
+          frames.map(({ video_id, frame_index, timestamp }) => ({
+            video_id,
+            frame_index,
+            timestamp,
+          })),
+          controller.signal
+        ),
+      }))
+    )
+      .then((responses) => {
+        if (controller.signal.aborted) return;
+        const additions: Record<string, RepeatFrameDetails> = {};
+        for (const { key, details } of responses) {
+          repeatCacheRef.current.set(key, details);
+          Object.assign(additions, details);
+        }
+        setRepeatFrameDetails((current) => ({ ...current, ...additions }));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          console.warn("Repeat detection unavailable:", error);
+        }
+      });
+    return () => controller.abort();
+  }, [repeatBatches]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -245,9 +338,23 @@ export function ResultsPanel({
               {group.frames.map((frame) => {
                 const key = `${frame.video_id}-${frame.frame_index}`;
                 const isLastOpened = lastOpenedKey === key;
+                const repeatKey = frameRepeatKey(frame);
+                const repeatItems = repeatFrameDetails[repeatKey]
+                  ? repeatHoverItems(repeatFrameDetails[repeatKey])
+                  : [];
+                const isRepeat = repeatItems.length > 0;
                 return (
                 <div
                   key={key}
+                  className="relative"
+                  onMouseEnter={(e) => {
+                    if (isRepeat) openRepeatHover(e.currentTarget, repeatKey);
+                  }}
+                  onMouseLeave={() => {
+                    setRepeatHover((current) => (current?.key === repeatKey ? null : current));
+                  }}
+                >
+                <div
                   draggable={submissionType === "track"}
                   onDragStart={(e) => {
                     if (submissionType !== "track") return;
@@ -275,6 +382,20 @@ export function ResultsPanel({
                     loading="lazy"
                   />
                   <div className="absolute top-1 left-8 flex gap-1">
+                    {isRepeat && (
+                      <span
+                        className="rounded bg-red-600 px-1.5 py-0.5 text-label-xs font-bold text-white shadow"
+                        onMouseEnter={(e) => openRepeatHover(e.currentTarget, repeatKey)}
+                        onFocus={(e) => openRepeatHover(e.currentTarget, repeatKey)}
+                        onClick={(e) => e.stopPropagation()}
+                        tabIndex={0}
+                        aria-describedby={
+                          repeatHover?.key === repeatKey ? `repeat-details-${key}` : undefined
+                        }
+                      >
+                        REPEAT
+                      </span>
+                    )}
                     {(frame.matches?.map((match) => match.query_index) ??
                       (frame.query_index !== undefined ? [frame.query_index] : [])).map((queryIndex) => (
                       <span
@@ -298,6 +419,27 @@ export function ResultsPanel({
                   >
                     <Icon name="zoom_in" size={16} />
                   </button>
+                  {(() => {
+                    const pinned = pinnedKeys.has(pinKey(frame.video_id, frame.frame_index));
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTogglePin(frame);
+                        }}
+                        title={pinned ? "Unpin for everyone" : "Pin for the team"}
+                        aria-label={pinned ? "Unpin keyframe" : "Pin keyframe"}
+                        aria-pressed={pinned}
+                        className={`absolute top-9 right-1 p-1 rounded text-white transition-opacity ${
+                          pinned
+                            ? "opacity-100 bg-primary hover:bg-primary/90"
+                            : "opacity-0 group-hover:opacity-100 bg-black/50 hover:bg-primary-container"
+                        }`}
+                      >
+                        <Icon name="keep" size={16} filled={pinned} />
+                      </button>
+                    );
+                  })()}
                   {onAddToTrake && (
                     <button
                       onClick={(e) => {
@@ -326,11 +468,7 @@ export function ResultsPanel({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (submitMode === "cloud") {
-                            onCloudQuickSubmit?.(frame);
-                          } else {
-                            handleQuickSubmit(frame);
-                          }
+                          handleQuickSubmit(frame);
                         }}
                         disabled={status === "loading"}
                         title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}
@@ -357,6 +495,35 @@ export function ResultsPanel({
                       </span>
                     )}
                   </div>
+                </div>
+                {isRepeat && repeatHover?.key === repeatKey && (
+                  <div
+                    id={`repeat-details-${key}`}
+                    role="tooltip"
+                    className={`absolute top-0 z-40 flex w-56 flex-col gap-3 rounded-lg border-2 border-red-500/70 bg-surface-container-high p-3 shadow-xl ${
+                      repeatHover.placement === "right" ? "left-full ml-3" : "right-full mr-3"
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {repeatItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className="overflow-hidden rounded-md border border-outline-variant bg-surface-container"
+                      >
+                        <img
+                          src={item.thumbnailUrl}
+                          alt={`${item.label}: ${item.identity}`}
+                          className="aspect-video w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="px-2 py-1.5 text-label-sm leading-snug">
+                          <div className="font-bold text-red-400">{item.label}</div>
+                          <div className="break-words text-on-surface-variant">{item.identity}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 </div>
                 );
               })}

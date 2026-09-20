@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
@@ -8,6 +8,15 @@ import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
 import { MatchModeToggle } from "./match-mode-toggle";
 import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
+import {
+  VOICE_LANGUAGES,
+  collectRecognitionText,
+  configureSpeechRecognition,
+  getSpeechRecognitionConstructor,
+  speechRecognitionErrorMessage,
+  type BrowserSpeechRecognition,
+  type VoiceLanguage,
+} from "@/lib/web-speech";
 
 export interface BoxQuery {
   id: string;
@@ -16,10 +25,12 @@ export interface BoxQuery {
   enabled: boolean;
   tags?: string[];
   tagMatchMode?: "and" | "or";
-  ocrKeywords?: string[];
+  keywords?: string[];
+  keywordFieldMode?: "asr" | "ocr" | "or" | "and";
   ocrMatchMode?: "and" | "or";
-  asrKeywords?: string[];
+  ocrSearchMode?: "fuzzy" | "exact";
   asrMatchMode?: "and" | "or";
+  asrSearchMode?: "fuzzy" | "exact";
   topK?: number;
   enhance?: boolean;
 }
@@ -33,6 +44,87 @@ interface QueryBoxProps {
 }
 
 type SortableBindings = ReturnType<typeof useSortable> | null;
+const MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024;
+function KeywordSearchModeToggle({
+  label,
+  mode,
+  onChange,
+  disabled = false,
+}: {
+  label: "OCR" | "ASR";
+  mode: "fuzzy" | "exact";
+  onChange: (mode: "fuzzy" | "exact") => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      className="flex overflow-hidden rounded border border-outline-variant"
+      aria-label={`${label} search mode`}
+    >
+      {(["fuzzy", "exact"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          disabled={disabled}
+          title={
+            option === "fuzzy"
+              ? "Unordered terms with automatic spelling tolerance"
+              : "Adjacent words in the entered order"
+          }
+          className={`px-2 py-0.5 text-label-xs capitalize transition-colors ${
+            mode === option
+              ? "bg-primary text-on-primary"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          } disabled:cursor-not-allowed disabled:opacity-45`}
+          aria-pressed={mode === option}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function KeywordFieldModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: "asr" | "ocr" | "or" | "and";
+  onChange: (mode: "asr" | "ocr" | "or" | "and") => void;
+}) {
+  return (
+    <div className="flex items-center gap-2" aria-label="Keyword field mode">
+      <span className="text-label-sm text-on-surface-variant">MODE</span>
+      <div className="flex overflow-hidden rounded border border-outline-variant">
+        {(["asr", "ocr", "or", "and"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            title={
+              option === "asr"
+                ? "Match ASR text only"
+                : option === "ocr"
+                  ? "Match OCR text only"
+                  : option === "or"
+                    ? "Match OCR or ASR text"
+                    : "Match both OCR and ASR text"
+            }
+            className={`px-2 py-1 text-label-xs uppercase transition-colors ${
+              mode === option
+                ? "bg-primary text-on-primary"
+                : "text-on-surface-variant hover:bg-surface-container-high"
+            }`}
+            aria-pressed={mode === option}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Static box for SSR / pre-hydrate — same markup, no dnd-kit IDs. */
 export function QueryBoxStatic(props: QueryBoxProps) {
@@ -62,8 +154,72 @@ function QueryBoxInner({
     : undefined;
   const [showTags, setShowTags] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
+  const [isFileDragging, setIsFileDragging] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>(VOICE_LANGUAGES.vietnamese);
+  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "finishing">("idle");
+  const [voicePreview, setVoicePreview] = useState("");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileDragDepthRef = useRef(0);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const finalTranscriptRef = useRef("");
   const hasVectorQuery = Boolean(query.content.trim());
+  const keywordFieldMode = query.keywordFieldMode ?? "or";
+  const keywordCount = query.keywords?.length ?? 0;
+  const ocrDisabled = keywordFieldMode === "asr";
+  const asrDisabled = keywordFieldMode === "ocr";
+
+  useEffect(() => () => recognitionRef.current?.abort(), []);
+
+  const stopVoiceRecognition = () => {
+    if (!recognitionRef.current) return;
+    setVoiceState("finishing");
+    recognitionRef.current.stop();
+  };
+
+  const startVoiceRecognition = () => {
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setVoiceError("Voice input is available in Google Chrome.");
+      return;
+    }
+    setVoiceError(null);
+    setVoicePreview("");
+    finalTranscriptRef.current = "";
+    const recognition = new Recognition();
+    recognitionRef.current = recognition;
+    configureSpeechRecognition(recognition, voiceLanguage);
+    recognition.onstart = () => setVoiceState("listening");
+    recognition.onresult = (event) => {
+      const { finalText, interimText } = collectRecognitionText(event);
+      if (finalText) {
+        finalTranscriptRef.current = [finalTranscriptRef.current, finalText]
+          .filter(Boolean)
+          .join(" ");
+      }
+      setVoicePreview([finalTranscriptRef.current, interimText].filter(Boolean).join(" "));
+    };
+    recognition.onspeechend = () => stopVoiceRecognition();
+    recognition.onerror = (event) => {
+      setVoiceError(speechRecognitionErrorMessage(event.error));
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setVoiceState("idle");
+      const transcript = finalTranscriptRef.current.trim();
+      if (transcript) onUpdate({ content: transcript, type: "text" });
+      setVoicePreview("");
+    };
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setVoiceState("idle");
+      setVoiceError("Could not start voice recognition. Try again.");
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,7 +253,43 @@ function QueryBoxInner({
           label={`Query ${index + 1} enabled`}
         />
         {/* Actions */}
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          {query.type === "text" && (
+            <>
+              <div className="flex overflow-hidden rounded border border-outline-variant" aria-label="Voice language">
+                {([
+                  [VOICE_LANGUAGES.vietnamese, "VI"],
+                  [VOICE_LANGUAGES.english, "EN"],
+                ] as const).map(([language, label]) => (
+                  <button
+                    key={language}
+                    type="button"
+                    onClick={() => setVoiceLanguage(language)}
+                    aria-pressed={voiceLanguage === language}
+                    title={`Recognize ${language === VOICE_LANGUAGES.vietnamese ? "Vietnamese" : "English"}`}
+                    className={`px-1.5 py-0.5 text-label-xs transition-colors ${
+                      voiceLanguage === language
+                        ? "bg-primary text-on-primary"
+                        : "text-outline hover:bg-surface-container-high"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => voiceState === "idle" ? startVoiceRecognition() : stopVoiceRecognition()}
+                aria-label={voiceState === "idle" ? "Start voice input" : "Stop voice input"}
+                title={voiceState === "idle" ? "Start voice input" : "Stop voice input"}
+                className={`p-1 transition-colors ${
+                  voiceState === "listening" ? "text-error animate-pulse" : "text-outline hover:text-on-surface"
+                }`}
+              >
+                <Icon name={voiceState === "idle" ? "mic" : "stop_circle"} size={16} />
+              </button>
+            </>
+          )}
           <button
             aria-label="Drag to reorder"
             className="text-outline hover:text-on-surface transition-colors p-1 cursor-grab active:cursor-grabbing"
@@ -174,6 +366,34 @@ function QueryBoxInner({
             />
           </div>
         )}
+        {isFileDragging && (
+          <div className="mt-2 text-center text-label-xs font-semibold text-red-600">
+            Drop to use this image
+          </div>
+        )}
+        {imageError && (
+          <div className="mt-2 text-label-xs text-error" role="alert">
+            {imageError}
+          </div>
+        )}
+        {query.type === "text" && voiceState !== "idle" && (
+          <div className="mt-2 text-label-xs text-primary" role="status">
+            {voiceState === "listening" ? "Listening…" : "Finishing transcription…"}
+            {voicePreview ? ` ${voicePreview}` : ""}
+          </div>
+        )}
+        {query.type === "text" && voiceError && (
+          <div className="mt-2 text-label-xs text-error" role="alert">
+            {voiceError}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageUpload}
+        />
       </div>
 
       {/* Top K & local translation */}
@@ -184,16 +404,16 @@ function QueryBoxInner({
             className="w-16 bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-mono-sm outline-none focus:border-primary text-right"
             type="number"
             min={1}
-            max={5000}
+            max={10000}
             aria-label={hasVectorQuery ? "Raw Milvus Top K candidates" : "Maximum filter matches"}
             title={
               hasVectorQuery
-                ? "Raw Milvus candidates before object and OCR/ASR post-filters (1–5000)"
-                : "Maximum matching frames returned by this filter-only box (1–5000)"
+                ? "Raw Milvus candidates before object and OCR/ASR post-filters (1–10000)"
+                : "Maximum matching frames returned by this filter-only box (1–10000)"
             }
             value={query.topK ?? 1000}
             onChange={(e) =>
-              onUpdate({ topK: Math.min(5000, Math.max(1, Number(e.target.value) || 1)) })
+              onUpdate({ topK: Math.min(10000, Math.max(1, Number(e.target.value) || 1)) })
             }
           />
         </div>
@@ -246,8 +466,7 @@ function QueryBoxInner({
           <Icon name="key" size={14} className="text-outline" />
           <span className="text-label-sm text-on-surface-variant">
             Keywords
-            {((query.ocrKeywords?.length ?? 0) + (query.asrKeywords?.length ?? 0)) > 0 &&
-              ` (${(query.ocrKeywords?.length ?? 0) + (query.asrKeywords?.length ?? 0)})`}
+            {keywordCount > 0 && ` (${keywordCount})`}
           </span>
           <Icon
             name={showKeywords ? "expand_less" : "expand_more"}
@@ -257,31 +476,46 @@ function QueryBoxInner({
         </button>
         {showKeywords && (
           <div className="p-3 space-y-3">
+            <KeywordFieldModeToggle
+              mode={keywordFieldMode}
+              onChange={(keywordFieldMode) => onUpdate({ keywordFieldMode })}
+            />
             <div>
-              <span className="text-label-sm text-on-surface-variant">OCR</span>
               <TagInput
-                tags={query.ocrKeywords || []}
-                onChange={(ocrKeywords) => onUpdate({ ocrKeywords })}
-                placeholder="Add OCR keyword..."
+                tags={query.keywords || []}
+                onChange={(keywords) => onUpdate({ keywords })}
+                placeholder="Add keyword..."
               />
-              <MatchModeToggle
-                label="Match OCR"
-                mode={query.ocrMatchMode ?? "and"}
-                onChange={(ocrMatchMode) => onUpdate({ ocrMatchMode })}
-              />
-            </div>
-            <div>
-              <span className="text-label-sm text-on-surface-variant">ASR</span>
-              <TagInput
-                tags={query.asrKeywords || []}
-                onChange={(asrKeywords) => onUpdate({ asrKeywords })}
-                placeholder="Add ASR keyword..."
-              />
-              <MatchModeToggle
-                label="Match ASR"
-                mode={query.asrMatchMode ?? "and"}
-                onChange={(asrMatchMode) => onUpdate({ asrMatchMode })}
-              />
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <MatchModeToggle
+                  label="Match OCR"
+                  mode={query.ocrMatchMode ?? "and"}
+                  onChange={(ocrMatchMode) => onUpdate({ ocrMatchMode })}
+                  className=""
+                  disabled={ocrDisabled}
+                />
+                <KeywordSearchModeToggle
+                  label="OCR"
+                  mode={query.ocrSearchMode ?? "exact"}
+                  onChange={(ocrSearchMode) => onUpdate({ ocrSearchMode })}
+                  disabled={ocrDisabled}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <MatchModeToggle
+                  label="Match ASR"
+                  mode={query.asrMatchMode ?? "and"}
+                  onChange={(asrMatchMode) => onUpdate({ asrMatchMode })}
+                  className=""
+                  disabled={asrDisabled}
+                />
+                <KeywordSearchModeToggle
+                  label="ASR"
+                  mode={query.asrSearchMode ?? "exact"}
+                  onChange={(asrSearchMode) => onUpdate({ asrSearchMode })}
+                  disabled={asrDisabled}
+                />
+              </div>
             </div>
           </div>
         )}

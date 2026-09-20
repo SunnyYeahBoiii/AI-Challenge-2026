@@ -123,17 +123,18 @@ def test_parallel_batches_four_box_topks_into_two_range_calls(stub):
     assert [len(results) for results in per_box] == [150, 300, 700, 900]
 
 
-def test_parallel_uses_at_most_three_bucket_calls(stub):
+def test_parallel_uses_at_most_four_bucket_calls(stub):
     fake, _ = stub
     boxes = [
         {"text": "a", "topk": 500},
         {"text": "b", "topk": 501},
         {"text": "c", "topk": 1501},
         {"text": "d", "topk": 5000},
+        {"text": "e", "topk": 10000},
     ]
     hs._parallel_retrieve(boxes, [[1.0] * 4 for _ in boxes])
-    assert sorted(int(call["topk"]) for call in fake.calls) == [500, 501, 5000]
-    assert len(fake.calls) == 3
+    assert sorted(int(call["topk"]) for call in fake.calls) == [500, 501, 5000, 10000]
+    assert len(fake.calls) == 4
 
 
 def test_parallel_tags_do_not_split_milvus_batch(stub):

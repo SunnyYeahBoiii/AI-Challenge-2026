@@ -14,7 +14,7 @@ Box = dict[str, Any]
 FrameKey = tuple[Any, Any]
 Vector = list[float] | None
 
-TOPK_BUCKET_MAXIMA = (500, 1500, 5000)
+TOPK_BUCKET_MAXIMA = (500, 1500, 5000, 10000)
 FILTER_FETCH_CHUNK = 500
 
 
@@ -72,6 +72,9 @@ def _filter_by_keywords(
     source: str = "all",
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
+    ocr_search_mode: str = "exact",
+    asr_search_mode: str = "exact",
+    keyword_field_mode: str = "and",
 ) -> list[Frame]:
     """Drop frames whose OCR/ASR text does not match, in one ES round-trip.
 
@@ -91,6 +94,9 @@ def _filter_by_keywords(
         asr_keywords=asr_keywords,
         ocr_mode=ocr_mode,
         asr_mode=asr_mode,
+        ocr_search_mode=ocr_search_mode,
+        asr_search_mode=asr_search_mode,
+        keyword_field_mode=keyword_field_mode,
     )
     survivors: list[Frame] = []
     for frame in frames:

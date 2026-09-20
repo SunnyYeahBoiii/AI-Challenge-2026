@@ -65,35 +65,16 @@ model Selection {
   @@map("selections")
 }
 
-model Query {
-  id        String @id @default(uuid())
-  name      String
-  content   String @default("")
-  queryType String @map("query_type") @default("kis")
-  createdAt String @map("created_at")
-  updatedAt String @map("updated_at")
+model Pin {
+  id           String @id
+  videoId      String @map("video_id")
+  frameIndex   Int    @map("frame_index")
+  timestamp    Float
+  fps          Float  @default(0)
+  thumbnailUrl String @default("") @map("thumbnail_url")
+  createdAt    String @map("created_at")
 
-  @@map("queries")
-}
-
-model Submission {
-  id          String   @id @default(uuid())
-  queryName   String   @map("query_name")
-  queryType   String   @map("query_type")
-  videoId     String   @map("video_id")
-  frameIds    String   @map("frame_ids")
-  answer      String   @default("")
-  status      String   @default("pending")
-  sortOrder   Int      @default(0) @map("sort_order")
-  version     Int      @default(0)
-  submittedBy String   @default("") @map("submitted_by")
-  reviewedBy  String   @default("") @map("reviewed_by")
-  reviewNotes String   @default("") @map("review_notes")
-  createdAt   String   @map("created_at")
-  updatedAt   String   @map("updated_at")
-
-  @@index([queryName], map: "idx_submissions_query")
-  @@index([status], map: "idx_submissions_status")
-  @@index([status, sortOrder], map: "idx_submissions_status_sort")
-  @@map("submissions")
+  @@unique([videoId, frameIndex], map: "uq_pins_video_frame")
+  @@index([createdAt], map: "idx_pins_created")
+  @@map("pins")
 }

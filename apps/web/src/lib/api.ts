@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { prepareSearchText } from "@/lib/local-translation";
+import { frameRepeatKey } from "./repeat-detection";
 
 const api = axios.create({ baseURL: "/api" });
 
@@ -84,6 +84,24 @@ export interface HealthStatus {
   elasticsearch: string;
 }
 
+export interface RepeatFrameKey {
+  video_id: string;
+  frame_index: number;
+}
+
+export interface RepeatFrameCandidate extends RepeatFrameKey {
+  timestamp: number;
+}
+
+export type RepeatFrameReference = RepeatFrameKey;
+
+/** Selected evidence for one red REPEAT badge. */
+export interface RepeatFrameDetails extends RepeatFrameKey {
+  in_video_highest_duplicate?: RepeatFrameReference;
+  in_video_furthest_duplicate?: RepeatFrameReference;
+  out_video_highest_duplicate?: RepeatFrameReference;
+}
+
 // ====== Request types ======
 
 export interface MultiBoxQuery {
@@ -95,6 +113,9 @@ export interface MultiBoxQuery {
   asr_keywords?: string[];
   ocr_match_mode?: "and" | "or";
   asr_match_mode?: "and" | "or";
+  ocr_search_mode?: "fuzzy" | "exact";
+  asr_search_mode?: "fuzzy" | "exact";
+  keyword_field_mode?: "asr" | "ocr" | "or" | "and";
   keywords?: string[];
   key_match_mode?: "and" | "or";
   keyword_source?: "all" | "ocr" | "asr";
@@ -123,37 +144,24 @@ export async function searchVideoFrames(
   return data;
 }
 
-export async function searchText(
-  text: string,
-  topk: number,
-): Promise<{ results: FrameResult[]; total: number }> {
-  const prepared = await prepareSearchText(text, true);
-  const { data } = await api.post("/search", {
-    text: prepared.text,
-    topk,
-    enhance: prepared.enhance,
-  });
-  return data;
-}
-
 export async function multiBoxSearch(
   req: MultiBoxRequest
 ): Promise<TemporalSearchResponse> {
-  const boxQueries = await Promise.all(
-    req.box_queries.map(async (box) => {
-      const shouldEnhance = box.enhance ?? req.enhance ?? true;
-      if (!box.text || !shouldEnhance) return box;
-
-      const prepared = await prepareSearchText(box.text, true);
-      return {
-        ...box,
-        text: prepared.text,
-        enhance: prepared.enhance,
-      };
-    }),
-  );
-  const { data } = await api.post("/frames", { ...req, box_queries: boxQueries });
+  const { data } = await api.post("/frames", req);
   return data;
+}
+
+/** Fetch red repeat-badge evidence without exposing stored embedding vectors. */
+export async function fetchRepeatFrameDetails(
+  frames: RepeatFrameCandidate[],
+  signal?: AbortSignal
+): Promise<Record<string, RepeatFrameDetails>> {
+  const { data } = await api.post<{ repeat_frames: RepeatFrameDetails[] }>(
+    "/frames/repeats",
+    { frames },
+    { signal }
+  );
+  return Object.fromEntries(data.repeat_frames.map((frame) => [frameRepeatKey(frame), frame]));
 }
 
 // ====== Videos API ======

@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { Icon } from "./icon";
 import type { FrameResult } from "@/lib/api";
 
+const NAVIGATOR_FRAME_COUNT = 5;
+
 interface FrameNavigatorProps {
   frames: FrameResult[];
   currentArrayIndex: number;
@@ -13,7 +15,7 @@ interface FrameNavigatorProps {
 
 export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFullscreen }: FrameNavigatorProps) {
   const { visibleFrames, currentOffset } = useMemo(() => {
-    const windowSize = Math.min(3, frames.length);
+    const windowSize = Math.min(NAVIGATOR_FRAME_COUNT, frames.length);
     let start = currentArrayIndex - Math.floor(windowSize / 2);
     if (start < 0) start = 0;
     if (start + windowSize > frames.length) start = frames.length - windowSize;
@@ -27,15 +29,6 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFul
 
   return (
     <div className="flex items-center justify-center gap-2 bg-neutral-900 py-3 px-4">
-      <button
-        onClick={() => onFrameSelect(frames[currentArrayIndex - 1])}
-        disabled={currentArrayIndex <= 0}
-        className="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        aria-label="Previous frame"
-      >
-        <Icon name="chevron_left" size={24} className="text-white" />
-      </button>
-
       <div className="flex items-center gap-2">
         {visibleFrames.map((frame, i) => {
           const isCurrent = i === currentOffset;
@@ -73,15 +66,6 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFul
           );
         })}
       </div>
-
-      <button
-        onClick={() => onFrameSelect(frames[currentArrayIndex + 1])}
-        disabled={currentArrayIndex >= frames.length - 1}
-        className="bg-neutral-800 hover:bg-neutral-700 rounded-full p-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        aria-label="Next frame"
-      >
-        <Icon name="chevron_right" size={24} className="text-white" />
-      </button>
     </div>
   );
 }

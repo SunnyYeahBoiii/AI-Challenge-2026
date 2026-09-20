@@ -15,8 +15,14 @@ class SearchRequest(BaseModel):
     keywords: list[str] = []
     keyword_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
-    topk: int = Field(default=20, ge=1, le=5000)
-    enhance: bool = True
+    keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
+    # Query-time strategy per field: `exact` is the ordered adjacent phrase,
+    # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
+    # because burned-in captions are read verbatim; ASR likewise.
+    ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    asr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    topk: int = Field(default=1500, ge=1, le=10000)
+    enhance: bool = False
 
     @model_validator(mode="after")
     def validate_search_content(self) -> "SearchRequest":
@@ -33,15 +39,28 @@ class SearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def expand_legacy_keywords(self) -> "SearchRequest":
-        """Map legacy keywords+keyword_source into ocr/asr lists when unset."""
-        if self.ocr_keywords or self.asr_keywords or not self.keywords:
+        """Expand shared or legacy keywords into field-specific groups."""
+        field_mode_explicit = "keyword_field_mode" in self.model_fields_set
+        if self.ocr_keywords or self.asr_keywords:
+            if not field_mode_explicit:
+                self.keyword_field_mode = "and"
             return self
-        if self.keyword_source == "ocr":
-            self.ocr_keywords = list(self.keywords)
+        if not self.keywords:
+            return self
+        if field_mode_explicit:
+            field_mode = self.keyword_field_mode
+        elif self.keyword_source == "ocr":
+            field_mode = "ocr"
         elif self.keyword_source == "asr":
+            field_mode = "asr"
+        else:
+            field_mode = "and"
+        self.keyword_field_mode = field_mode
+        if field_mode == "ocr":
+            self.ocr_keywords = list(self.keywords)
+        elif field_mode == "asr":
             self.asr_keywords = list(self.keywords)
         else:
-            # source=all: same keywords on both fields (AND across sources).
             self.ocr_keywords = list(self.keywords)
             self.asr_keywords = list(self.keywords)
         return self
@@ -59,8 +78,14 @@ class BoxQuery(BaseModel):
     keywords: list[str] = []
     key_match_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
-    enhance: bool | None = None
-    topk: int = Field(default=500, ge=1, le=5000)
+    keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
+    # Query-time strategy per field: `exact` is the ordered adjacent phrase,
+    # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
+    # because burned-in captions are read verbatim; ASR likewise.
+    ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    asr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    enhance: bool | None = False
+    topk: int = Field(default=1500, ge=1, le=10000)
 
     @model_validator(mode="after")
     def validate_search_content(self) -> "BoxQuery":
@@ -78,12 +103,26 @@ class BoxQuery(BaseModel):
 
     @model_validator(mode="after")
     def expand_legacy_keywords(self) -> "BoxQuery":
-        """Map legacy keywords+keyword_source into ocr/asr lists when unset."""
-        if self.ocr_keywords or self.asr_keywords or not self.keywords:
+        """Expand shared or legacy keywords into field-specific groups."""
+        field_mode_explicit = "keyword_field_mode" in self.model_fields_set
+        if self.ocr_keywords or self.asr_keywords:
+            if not field_mode_explicit:
+                self.keyword_field_mode = "and"
             return self
-        if self.keyword_source == "ocr":
-            self.ocr_keywords = list(self.keywords)
+        if not self.keywords:
+            return self
+        if field_mode_explicit:
+            field_mode = self.keyword_field_mode
+        elif self.keyword_source == "ocr":
+            field_mode = "ocr"
         elif self.keyword_source == "asr":
+            field_mode = "asr"
+        else:
+            field_mode = "and"
+        self.keyword_field_mode = field_mode
+        if field_mode == "ocr":
+            self.ocr_keywords = list(self.keywords)
+        elif field_mode == "asr":
             self.asr_keywords = list(self.keywords)
         else:
             self.ocr_keywords = list(self.keywords)
@@ -98,10 +137,24 @@ class MultiBoxRequest(BaseModel):
     mode: Literal["parallel", "sequential"] = "parallel"
 
 
+class RepeatFrameRequest(BaseModel):
+    """One displayed frame eligible for visual repeat detection."""
+
+    video_id: str = Field(min_length=1)
+    frame_index: int = Field(ge=0)
+    timestamp: float = Field(allow_inf_nan=False)
+
+
+class RepeatFramesRequest(BaseModel):
+    """Bounded displayed-frame batch for exact local cosine comparisons."""
+
+    frames: list[RepeatFrameRequest] = Field(min_length=1, max_length=1500)
+
+
 class SimilarFramesRequest(BaseModel):
     video_id: str
     frame_index: int
-    topk: int = Field(default=12, ge=1, le=5000)
+    topk: int = Field(default=12, ge=1, le=10000)
 
 
 class VideoIdRequest(BaseModel):
