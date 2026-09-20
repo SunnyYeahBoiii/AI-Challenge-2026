@@ -43,21 +43,13 @@ def _field_group(clauses: list[dict[str, Any]], mode: str) -> dict[str, Any] | N
     }
 
 
-def resolve_asr_phrase_slop(slop: int | None) -> int:
-    """Fall back to the deployment default when the request leaves slop unset."""
-    return Config.ES_ASR_PHRASE_SLOP if slop is None else max(0, slop)
-
-
-def _phrase_clause(keyword: str, field: str, slop: int = 0) -> dict[str, Any]:
-    """Phrase-match one keyword against `field`, allowing `slop` words of drift."""
-    params: dict[str, Any] = {"query": keyword}
-    if slop:
-        params["slop"] = slop
-    return {"match_phrase": {field: params}}
+def _phrase_clause(keyword: str, field: str) -> dict[str, Any]:
+    """Phrase-match one keyword against `field`, requiring strict adjacency."""
+    return {"match_phrase": {field: {"query": keyword}}}
 
 
 def _phrase_field_group(
-    keywords: Sequence[str], field: str, mode: str, slop: int = 0
+    keywords: Sequence[str], field: str, mode: str
 ) -> dict[str, Any] | None:
     """Build an ordered, adjacent phrase group over `field` and its folded twin.
 
@@ -66,20 +58,16 @@ def _phrase_field_group(
     keyword tries the diacritic-preserving field first (boosted, so an exactly
     typed query wins) and falls back to the folded subfield, which is the only
     way a query typed without diacritics matches at all. Both clauses stay
-    phrases: this loosens *spelling*, never word order.
-
-    `slop` is how many positions the transcript may drift from the typed phrase
-    — 0 demands strict adjacency, 2 tolerates a filler word between terms. It
-    never reorders: a phrase query stays a phrase query.
+    phrases and strictly adjacent.
     """
     original_keywords = _nonempty_keywords(keywords)
     clauses: list[dict[str, Any]] = []
     for keyword in original_keywords:
-        exact = _phrase_clause(keyword, field, slop)
+        exact = _phrase_clause(keyword, field)
         exact["match_phrase"][field]["boost"] = 3
         clauses.append({
             "bool": {
-                "should": [exact, _phrase_clause(keyword, f"{field}.folded", slop)],
+                "should": [exact, _phrase_clause(keyword, f"{field}.folded")],
                 "minimum_should_match": 1,
             }
         })
@@ -116,21 +104,18 @@ def _ocr_fuzzy_field_group(
 
 
 def _keyword_field_group(
-    keywords: Sequence[str], field: str, mode: str, search_mode: str, slop: int = 0
+    keywords: Sequence[str], field: str, mode: str, search_mode: str
 ) -> dict[str, Any] | None:
     """Build one field group using the requested query-time strategy.
 
     `fuzzy` is the unordered, typo-tolerant bag-of-words match; `exact` is the
     ordered, adjacent phrase. Either strategy applies to either field — OCR and
     ASR only differ in which one is the sensible default, not in what is legal.
-
-    `slop` only reaches the phrase strategy; a fuzzy bag of words has no order
-    to loosen.
     """
     if search_mode == "fuzzy":
         return _ocr_fuzzy_field_group(keywords, field, mode)
     if search_mode == "exact":
-        return _phrase_field_group(keywords, field, mode, slop)
+        return _phrase_field_group(keywords, field, mode)
     raise ValueError(f"Unsupported keyword search mode: {search_mode}")
 
 
@@ -215,7 +200,6 @@ class ESClient:
         ocr_search_mode: str = "exact",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
-        asr_phrase_slop: int | None = None,
     ) -> dict[FrameKey, float]:
         """Map each matching (video_id, frame_index) to its BM25 relevance score.
 
@@ -249,13 +233,7 @@ class ESClient:
 
         must = _combine_field_groups(
             _keyword_field_group(ocr, "ocr_text", ocr_mode or mode, ocr_search_mode),
-            _keyword_field_group(
-                asr,
-                "asr_text",
-                asr_mode or mode,
-                asr_search_mode,
-                resolve_asr_phrase_slop(asr_phrase_slop),
-            ),
+            _keyword_field_group(asr, "asr_text", asr_mode or mode, asr_search_mode),
             keyword_field_mode,
         )
         if not must:
@@ -307,7 +285,6 @@ class ESClient:
         ocr_search_mode: str = "exact",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
-        asr_phrase_slop: int | None = None,
     ) -> set[FrameKey]:
         """Return the subset of (video_id, frame_index) whose OCR/ASR text matches."""
         return set(
@@ -323,7 +300,6 @@ class ESClient:
                 ocr_search_mode=ocr_search_mode,
                 asr_search_mode=asr_search_mode,
                 keyword_field_mode=keyword_field_mode,
-                asr_phrase_slop=asr_phrase_slop,
             )
         )
 
@@ -340,7 +316,6 @@ class ESClient:
         ocr_search_mode: str = "exact",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
-        asr_phrase_slop: int | None = None,
         allowed_video_ids: Sequence[str] | None = None,
         page_size: int = 500,
     ) -> Iterable[tuple[str, int, float]]:
@@ -358,13 +333,7 @@ class ESClient:
 
         must = _combine_field_groups(
             _keyword_field_group(ocr, "ocr_text", ocr_mode or mode, ocr_search_mode),
-            _keyword_field_group(
-                asr,
-                "asr_text",
-                asr_mode or mode,
-                asr_search_mode,
-                resolve_asr_phrase_slop(asr_phrase_slop),
-            ),
+            _keyword_field_group(asr, "asr_text", asr_mode or mode, asr_search_mode),
             keyword_field_mode,
         )
         if not must:

@@ -115,7 +115,6 @@ export interface MultiBoxQuery {
   asr_match_mode?: "and" | "or";
   ocr_search_mode?: "fuzzy" | "exact";
   asr_search_mode?: "fuzzy" | "exact";
-  asr_phrase_slop?: number;
   keyword_field_mode?: "asr" | "ocr" | "or" | "and";
   keywords?: string[];
   key_match_mode?: "and" | "or";

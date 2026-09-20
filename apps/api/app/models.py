@@ -18,12 +18,9 @@ class SearchRequest(BaseModel):
     keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
     # Query-time strategy per field: `exact` is the ordered adjacent phrase,
     # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
-    # because burned-in captions are read verbatim; ASR likewise, with slop.
+    # because burned-in captions are read verbatim; ASR likewise.
     ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
     asr_search_mode: Literal["fuzzy", "exact"] = "exact"
-    # How far the transcript may drift from the typed ASR phrase. Unset means
-    # the deployment default (ES_ASR_PHRASE_SLOP); it never loosens word order.
-    asr_phrase_slop: int | None = Field(default=None, ge=0, le=10)
     topk: int = Field(default=1500, ge=1, le=10000)
     enhance: bool = False
 
@@ -84,12 +81,9 @@ class BoxQuery(BaseModel):
     keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
     # Query-time strategy per field: `exact` is the ordered adjacent phrase,
     # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
-    # because burned-in captions are read verbatim; ASR likewise, with slop.
+    # because burned-in captions are read verbatim; ASR likewise.
     ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
     asr_search_mode: Literal["fuzzy", "exact"] = "exact"
-    # How far the transcript may drift from the typed ASR phrase. Unset means
-    # the deployment default (ES_ASR_PHRASE_SLOP); it never loosens word order.
-    asr_phrase_slop: int | None = Field(default=None, ge=0, le=10)
     enhance: bool | None = False
     topk: int = Field(default=1500, ge=1, le=10000)
 

@@ -19,9 +19,6 @@ class Config:
     ES_USER = os.getenv("ES_USER", "")
     ES_PASS = os.getenv("ES_PASS", "")
     ES_MAX_KEYWORD_HITS = int(os.getenv("ES_MAX_KEYWORD_HITS", "10000"))
-    # ASR keywords phrase-match: 0 keeps order and adjacency exact. Raise it only
-    # if transcript filler words start swallowing otherwise-correct phrases.
-    ES_ASR_PHRASE_SLOP = int(os.getenv("ES_ASR_PHRASE_SLOP", "0"))
     # Reciprocal Rank Fusion: score = w / (RRF_K + rank), summed per source.
     RRF_K = int(os.getenv("RRF_K", "60"))
     RRF_VECTOR_WEIGHT = float(os.getenv("RRF_VECTOR_WEIGHT", "1.0"))

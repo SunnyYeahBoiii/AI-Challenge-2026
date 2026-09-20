@@ -13,7 +13,7 @@ Trước đây cả OCR lẫn ASR dùng chung `match_phrase` (khớp cụm từ,
 
 - **ASR**: giữ `match_phrase` (transcript có thứ tự tuần tự nên phrase match hợp lý), nhưng:
   - Field chính giữ nguyên dấu (không fold) + subfield `.folded` để fallback khi query gõ không dấu — field chính boost x3 để ưu tiên khớp đúng dấu.
-  - Slop cấu hình qua `ES_ASR_PHRASE_SLOP` (mặc định 0 = khớp liền kề đúng thứ tự).
+  - Khớp liền kề đúng thứ tự, không slop.
 
 ## 2. Trả BM25 score thay vì boolean
 
@@ -57,14 +57,13 @@ ASR transcribe theo rolling window nên các keyframe liền kề cùng shot có
 
 ## 8. Test coverage mới
 
-`tests/test_clients.py`, `tests/test_hybrid_search.py`: cover fuzzy OCR match, phrase ASR + slop, filter theo `frame_key`, BM25 score trả về, RRF fusion, dedupe theo shot.
+`tests/test_clients.py`, `tests/test_hybrid_search.py`: cover fuzzy OCR match, phrase ASR, filter theo `frame_key`, BM25 score trả về, RRF fusion, dedupe theo shot.
 
 ## Tóm tắt config mới (`app/config.py`)
 
 | Env var | Mặc định | Ý nghĩa |
 |---|---|---|
 | `ES_MAX_KEYWORD_HITS` | 10000 | Trần số hit trả về khi filter keyword |
-| `ES_ASR_PHRASE_SLOP` | 0 | Độ "lỏng" thứ tự/khoảng cách từ khi phrase-match ASR |
 | `RRF_K` | 60 | Hằng số k trong công thức RRF |
 | `RRF_VECTOR_WEIGHT` | 1.0 | Trọng số nhánh vector khi fuse |
 | `RRF_TEXT_WEIGHT` | 1.0 | Trọng số nhánh BM25 khi fuse |
