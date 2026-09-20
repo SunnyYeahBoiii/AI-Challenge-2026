@@ -64,8 +64,6 @@ interface ResultsPanelProps {
   hasSearched?: boolean;
   trakeFocusedLabel?: string;
   onAddToTrake?: (frame: FrameResult) => void;
-  submitMode?: "dres" | "cloud";
-  onCloudQuickSubmit?: (frame: FrameResult) => void;
 }
 
 export function ResultsPanel({
@@ -82,8 +80,6 @@ export function ResultsPanel({
   hasSearched = false,
   trakeFocusedLabel,
   onAddToTrake,
-  submitMode = "dres",
-  onCloudQuickSubmit,
 }: ResultsPanelProps) {
   const [visibleUnitCount, setVisibleUnitCount] = useState(VIDEO_PAGE_SIZE);
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
@@ -445,11 +441,7 @@ export function ResultsPanel({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (submitMode === "cloud") {
-                            onCloudQuickSubmit?.(frame);
-                          } else {
-                            handleQuickSubmit(frame);
-                          }
+                          handleQuickSubmit(frame);
                         }}
                         disabled={status === "loading"}
                         title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}

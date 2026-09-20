@@ -6,26 +6,25 @@ import { ResultsPanel } from "@/components/results-panel";
 import { FrameDetailDialog } from "@/components/frame-detail-dialog";
 import { DresSettingsDialog } from "@/components/dres-settings-dialog";
 import { ModelSettingsDialog } from "@/components/model-settings-dialog";
-import { SubmissionConfirmationDialog } from "@/components/submission-confirmation-dialog";
 import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { TrakeSingleSearch } from "@/components/trake-single-search";
 import { TrakeChainList, type ChainEditTarget } from "@/components/trake-chain-list";
 import { Icon } from "@/components/icon";
-import { SubmissionsDashboard } from "@/components/submissions-dashboard";
 import type { FrameResult } from "@/lib/api";
 import { useDresSession } from "@/hooks/use-dres-session";
 import { useSessionStorageState } from "@/hooks/use-session-storage";
 import { useTemporalSearch } from "@/hooks/use-temporal-search";
 import { useTheme } from "@/hooks/use-theme";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
+import { useDresSubmit } from "@/hooks/use-dres-submit";
+import { SubmitStatusBadge } from "@/components/submit-status";
 import type { FrameToTrake } from "@/lib/trake-types";
-import { listQueries, listSubmissions, sortQueriesByQuestionId, type Query, type Submission } from "@/lib/submissions";
-import { getNearestKeyframes, type KeyframeInfo } from "@/lib/api";
-import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 
 type SubmissionType = "track" | "trake" | "qa" | "kis";
-type SubmitMode = "dres" | "cloud";
-type View = "search" | "submissions";
+
+/** One submit button each, so one verdict slot each. */
+const FRAME_DETAIL_SUBMIT_KEY = "frame-detail";
+const TRAKE_BOARD_SUBMIT_KEY = "trake-board";
 
 export default function Home() {
   const { searchResult, queryCount, hasSearched, isLoading, searchError, setSearchError, handleSearch, clearSearch } =
@@ -36,29 +35,12 @@ export default function Home() {
   const [selectedFrame, setSelectedFrame] = useState<FrameResult | null>(null);
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
   const [gridCols, setGridCols] = useState(6);
-  const [queries, setQueries] = useState<Query[]>([]);
   const [submissionType, setSubmissionType] = useSessionStorageState<SubmissionType>(
     "submissionType",
     "kis",
   );
-  const [submitMode, setSubmitMode] = useSessionStorageState<SubmitMode>("submitMode", "dres");
-  const [selectedQueryId, setSelectedQueryId] = useSessionStorageState<string | null>(
-    "selectedQueryId",
-    null,
-  );
-  const [view, setView] = useSessionStorageState<View>("view", "search");
-  const [showQueryDetail, setShowQueryDetail] = useState(false);
-  const [querySubmissions, setQuerySubmissions] = useState<Submission[]>([]);
-  const [queryKeyframes, setQueryKeyframes] = useState<Record<string, KeyframeInfo | null>>({});
-  const [queryVideoDialog, setQueryVideoDialog] = useState<{
-    submission: Submission;
-    keyframe: KeyframeInfo;
-    submittedFrameIndex: number;
-  } | null>(null);
-  const queryVideoRef = useRef<VideoPlayerHandle>(null);
 
   // Submission state
   const [frameId, setFrameId] = useState("");
@@ -68,34 +50,7 @@ export default function Home() {
   const [trakeFrameIds, setTrakeFrameIds] = useState<number[] | null>(null);
 
   const trake = useTrakeBoard(submissionType === "track");
-
-  const selectedQuery = queries.find((q) => q.id === selectedQueryId);
-
-  const handleViewQueryDetail = useCallback(async () => {
-    if (!selectedQuery) return;
-    setShowQueryDetail(true);
-    try {
-      const subs = await listSubmissions();
-      const filtered = subs.filter((s) => s.queryName === selectedQuery.name);
-      setQuerySubmissions(filtered);
-
-      const items = filtered.flatMap((sub) =>
-        sub.frameIds.map((fi) => ({ video_id: sub.videoId, frame_index: fi, key: `${sub.videoId}-${fi}` }))
-      );
-      const kf = await getNearestKeyframes(items);
-      setQueryKeyframes(kf);
-    } catch {
-      // ignore
-    }
-  }, [selectedQuery]);
-
-  // Tasks can be added from the dashboard; refresh the topbar dropdown each
-  // time the search view becomes active again.
-  useEffect(() => {
-    if (view === "search") {
-      listQueries().then(setQueries).catch(() => {});
-    }
-  }, [view]);
+  const dresSubmit = useDresSubmit(dres.sessionId, dres.evaluationId);
 
   const addFrameToEvent = useCallback(
     (eventId: string, frame: FrameToTrake) => {
@@ -183,26 +138,24 @@ export default function Home() {
     [editingChain],
   );
 
-  const handleChainSubmit = useCallback((chainVideoId: string, frameIds: number[]) => {
-    setVideoId(chainVideoId);
-    setTrakeFrameIds(frameIds);
-    setFrameId(String(frameIds[0] ?? ""));
-    setTimeSec("0");
-    setShowSubmitConfirm(true);
-  }, []);
+  const handleChainSubmit = useCallback(
+    (chainVideoId: string, frameIds: number[], sequenceId: string) => {
+      setVideoId(chainVideoId);
+      setTrakeFrameIds(frameIds);
+      setFrameId(String(frameIds[0] ?? ""));
+      setTimeSec("0");
+      void dresSubmit.submit(`chain:${sequenceId}`, {
+        kind: "trake",
+        videoId: chainVideoId,
+        frameIds,
+      });
+    },
+    [dresSubmit],
+  );
 
   const handleFrameDetail = useCallback((frame: FrameResult) => {
     setSelectedFrame(frame);
   }, []);
-
-  const canSubmit =
-    submissionType === "track" || submissionType === "trake"
-      ? Boolean(trakeFrameIds?.length && videoId.trim())
-      : frameId.trim().length > 0 && videoId.trim().length > 0;
-
-  if (view === "submissions") {
-    return <SubmissionsDashboard onBack={() => setView("search")} />;
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -286,97 +239,42 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Submit Mode Toggle */}
-            <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
-              <span className="text-label-sm text-on-surface-variant px-2">Submit:</span>
-              <label className="flex items-center gap-1 px-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="submit_mode"
-                  checked={submitMode === "dres"}
-                  onChange={() => setSubmitMode("dres")}
-                  className="text-primary focus:ring-primary h-3 w-3"
-                />
-                <span className="text-label-sm text-on-surface-variant">DRES</span>
-              </label>
-              <label className="flex items-center gap-1 px-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="submit_mode"
-                  checked={submitMode === "cloud"}
-                  onChange={() => setSubmitMode("cloud")}
-                  className="text-primary focus:ring-primary h-3 w-3"
-                />
-                <span className="text-label-sm text-on-surface-variant">Cloud</span>
-              </label>
-            </div>
-
-            {/* Task Dropdown */}
-            {submitMode === "cloud" && (
-              <>
-                <select
-                  className="rounded border border-outline-variant bg-surface-container-low px-3 py-1.5 text-label-sm text-on-surface"
-                  value={selectedQueryId ?? ""}
-                  onChange={(e) => setSelectedQueryId(e.target.value || null)}
-                >
-                  <option value="">Select task...</option>
-                  {sortQueriesByQuestionId(queries).map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.name} ({q.queryType.toUpperCase()})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleViewQueryDetail}
-                  disabled={!selectedQuery}
-                  title="View question detail"
-                  className="flex items-center justify-center w-8 h-8 rounded border border-outline-variant bg-surface-container-low hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-on-surface-variant"
-                >
-                  <Icon name="visibility" size={18} />
-                </button>
-              </>
-            )}
-
           </div>
 
           <div className="flex items-center gap-3 shrink-0 whitespace-nowrap ml-auto">
-            {submitMode === "dres" && (
-              <>
-                {dres.sessionId && dres.username ? (
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      title="Logged in to DRES"
-                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
-                    >
-                      <Icon name="groups" size={18} />
-                      {dres.username}
-                    </span>
-                    <button
-                      onClick={() => setShowDresSettings(true)}
-                      title="Change DRES evaluation"
-                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-                    >
-                      <Icon name="tune" size={18} />
-                    </button>
-                    <button
-                      onClick={dres.logout}
-                      title="Log out of DRES"
-                      className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-                    >
-                      <Icon name="logout" size={18} />
-                      Logout
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowDresSettings(true)}
-                    className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-                  >
-                    <Icon name="settings" size={18} />
-                    DRES Settings
-                  </button>
-                )}
-              </>
+            {dres.sessionId && dres.username ? (
+              <div className="flex items-center gap-1.5">
+                <span
+                  title="Logged in to DRES"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest text-label-md text-on-surface-variant"
+                >
+                  <Icon name="groups" size={18} />
+                  {dres.username}
+                </span>
+                <button
+                  onClick={() => setShowDresSettings(true)}
+                  title="Change DRES evaluation"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                >
+                  <Icon name="tune" size={18} />
+                </button>
+                <button
+                  onClick={dres.logout}
+                  title="Log out of DRES"
+                  className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+                >
+                  <Icon name="logout" size={18} />
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDresSettings(true)}
+                className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
+              >
+                <Icon name="settings" size={18} />
+                DRES Settings
+              </button>
             )}
             <button
               onClick={() => setShowModelSettings(true)}
@@ -385,15 +283,6 @@ export default function Home() {
               <Icon name="model_training" size={18} />
               Model Settings
             </button>
-            {submitMode === "cloud" && (
-              <button
-                onClick={() => setView("submissions")}
-                className="flex items-center gap-1.5 border border-outline-variant px-3 py-1.5 rounded bg-surface-container-lowest hover:bg-surface-container-low transition-colors text-label-md text-on-surface-variant"
-              >
-                <Icon name="list_alt" size={18} />
-                Submissions
-              </button>
-            )}
             <button
               onClick={toggleTheme}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
@@ -430,6 +319,7 @@ export default function Home() {
             hasSearched={hasSearched}
             edits={chainEdits}
             onSubmitChain={handleChainSubmit}
+            submitStates={dresSubmit.states}
             onEditFrame={handleChainFrameEdit}
           />
         ) : (
@@ -451,15 +341,6 @@ export default function Home() {
               ? (frame) => addFrameToFocusedEvent(frame)
               : undefined
           }
-          submitMode={submitMode}
-          onCloudQuickSubmit={(frame) => {
-            setFrameId(String(frame.frame_idx));
-            setVideoId(frame.video_id);
-            setTimeSec(frame.timestamp.toFixed(1));
-            setQaAnswer("");
-            setTrakeFrameIds(null);
-            setShowSubmitConfirm(true);
-          }}
         />
         )}
       </div>
@@ -467,12 +348,17 @@ export default function Home() {
       {submissionType === "track" && (
         <TrakeBoardPanel
           trake={trake}
+          submitState={dresSubmit.states[TRAKE_BOARD_SUBMIT_KEY]}
           onSubmitTrake={({ videoId: v, frameIds }) => {
             setVideoId(v);
             setTrakeFrameIds(frameIds);
             setFrameId(String(frameIds[0] ?? ""));
             setTimeSec("0");
-            setShowSubmitConfirm(true);
+            void dresSubmit.submit(TRAKE_BOARD_SUBMIT_KEY, {
+              kind: "trake",
+              videoId: v,
+              frameIds,
+            });
           }}
         />
       )}
@@ -513,14 +399,21 @@ export default function Home() {
                 }
               : undefined
           }
+          submitState={dresSubmit.states[FRAME_DETAIL_SUBMIT_KEY]}
           onSubmit={(submission) => {
             setFrameId(submission.frameId);
             setVideoId(submission.videoId);
             setTimeSec(submission.timeSec);
             setQaAnswer(submission.answer ?? "");
             setTrakeFrameIds(null);
-            setSelectedFrame(null);
-            setShowSubmitConfirm(true);
+            void dresSubmit.submit(FRAME_DETAIL_SUBMIT_KEY, {
+              kind: "frame",
+              frameId: submission.frameId,
+              videoId: submission.videoId,
+              timestamp: Number.parseFloat(submission.timeSec) || 0,
+              submissionType: submissionType === "trake" ? "kis" : submissionType,
+              answer: submission.answer,
+            });
           }}
         />
       )}
@@ -540,180 +433,6 @@ export default function Home() {
         <ModelSettingsDialog onClose={() => setShowModelSettings(false)} />
       )}
 
-      {showSubmitConfirm && canSubmit && (
-        <SubmissionConfirmationDialog
-          frameId={frameId.trim()}
-          videoId={videoId.trim()}
-          timestamp={Number.parseFloat(timeSec) || 0}
-          submissionType={submissionType}
-          sessionId={dres.sessionId}
-          evaluationId={dres.evaluationId}
-          answer={qaAnswer}
-          trakeFrameIds={trakeFrameIds ?? undefined}
-          submitMode={submitMode}
-          queries={queries}
-          selectedQueryId={selectedQueryId}
-          onClose={() => {
-            setShowSubmitConfirm(false);
-            setTrakeFrameIds(null);
-          }}
-        />
-      )}
-
-      {/* Query Detail Dialog */}
-      {showQueryDetail && selectedQuery && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/80 backdrop-blur-sm">
-          <div className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-outline-variant">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-label-sm font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">
-                  {selectedQuery.queryType.toUpperCase()}
-                </span>
-                <span className="text-headline-sm font-bold">{selectedQuery.name}</span>
-              </div>
-              <button
-                onClick={() => {
-                  setShowQueryDetail(false);
-                  setQuerySubmissions([]);
-                  setQueryKeyframes({});
-                }}
-                className="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors"
-              >
-                <Icon name="close" size={20} />
-              </button>
-            </div>
-
-            {/* Question - always visible */}
-            {selectedQuery.content && (
-              <div className="px-6 pt-4 shrink-0">
-                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant">
-                  <div className="text-label-sm font-bold text-on-surface-variant mb-1">Question</div>
-                  <div className="text-body-md text-on-surface whitespace-pre-wrap leading-relaxed">
-                    {selectedQuery.content}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Submissions - scrollable */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              <div className="text-label-md font-bold text-on-surface-variant mb-2">
-                Submissions ({querySubmissions.length})
-              </div>
-              {querySubmissions.length === 0 ? (
-                <div className="text-center py-8 text-on-surface-variant text-body-md">
-                  No submissions for this query yet.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {querySubmissions
-                    .sort((a, b) => {
-                      const order: Record<string, number> = { confirmed: 0, review: 1, pending: 2 };
-                      return (order[a.status] ?? 2) - (order[b.status] ?? 2) || a.sortOrder - b.sortOrder;
-                    })
-                    .map((sub) => (
-                      <div
-                        key={sub.id}
-                        className="rounded-lg bg-surface-container-low border border-outline-variant px-4 py-3"
-                      >
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className={`w-3 h-3 rounded-full shrink-0 ${
-                              sub.status === "confirmed"
-                                ? "bg-green-500"
-                                : sub.status === "review"
-                                  ? "bg-yellow-500"
-                                  : "bg-gray-400"
-                            }`}
-                          />
-                          <span className="text-body-md font-mono">{sub.videoId}</span>
-                          <span className="text-body-sm text-on-surface-variant">
-                            Frame {sub.frameIds.join(", ")}
-                          </span>
-                          {sub.submittedBy && (
-                            <span className="text-body-sm text-on-surface-variant">
-                              · by {sub.submittedBy}
-                            </span>
-                          )}
-                        </div>
-                        {sub.answer && (
-                          <div className="text-body-sm text-on-surface-variant mt-1">
-                            <span className="font-bold">Answer:</span> {sub.answer}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {sub.frameIds.map((fi) => {
-                            const kf = queryKeyframes[`${sub.videoId}-${fi}`];
-                            if (!kf?.thumbnail_url) return null;
-                            return (
-                              <button
-                                key={fi}
-                                onClick={() => setQueryVideoDialog({ submission: sub, keyframe: kf, submittedFrameIndex: fi })}
-                                className="relative shrink-0 group"
-                                title="View in video player"
-                              >
-                                <img
-                                  src={kf.thumbnail_url}
-                                  alt={`Frame ${fi}`}
-                                  className="w-20 h-12 object-cover rounded border border-outline-variant group-hover:opacity-80 group-hover:ring-2 group-hover:ring-primary transition"
-                                  loading="lazy"
-                                />
-                                {!kf.is_exact && (
-                                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-label-xs px-1 rounded">
-                                    ~{kf.frame_index}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Video Player Dialog for Query Detail */}
-      {queryVideoDialog && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm">
-          <div className="relative w-full max-w-6xl h-[80vh] bg-black rounded-lg overflow-hidden">
-            <button
-              onClick={() => setQueryVideoDialog(null)}
-              className="absolute top-4 right-4 z-10 text-white hover:bg-white/10 rounded-full p-2 transition-colors"
-            >
-              <Icon name="close" size={24} />
-            </button>
-
-            <div className="absolute top-4 left-4 z-10 bg-black/70 rounded px-3 py-2 text-white">
-              <div className="text-label-sm font-bold">{queryVideoDialog.submission.queryName}</div>
-              <div className="text-body-xs text-gray-300">
-                {queryVideoDialog.submission.videoId} · Frame {queryVideoDialog.submittedFrameIndex}
-                {!queryVideoDialog.keyframe.is_exact && (
-                  <span className="text-yellow-400 ml-2">(nearest: {queryVideoDialog.keyframe.frame_index})</span>
-                )}
-              </div>
-              {queryVideoDialog.submission.answer && (
-                <div className="text-body-xs text-gray-300 mt-1">Answer: {queryVideoDialog.submission.answer}</div>
-              )}
-            </div>
-
-            <VideoPlayer
-              ref={queryVideoRef}
-              src={queryVideoDialog.keyframe.video_url}
-              poster={queryVideoDialog.keyframe.thumbnail_url}
-              initialTime={
-                queryVideoDialog.submission.queryType === "trake" && queryVideoDialog.keyframe.fps
-                  ? queryVideoDialog.submittedFrameIndex / queryVideoDialog.keyframe.fps
-                  : queryVideoDialog.keyframe.timestamp
-              }
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

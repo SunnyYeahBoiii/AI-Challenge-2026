@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
+import { SubmitStatusBadge } from "./submit-status";
+import type { DresSubmitState } from "@/hooks/use-dres-submit";
 import { searchVideoFrames } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
 import { VideoPlayer } from "./video-player";
@@ -30,6 +32,8 @@ interface FrameDetailDialogProps {
   submissionType: "track" | "qa" | "kis";
   onClose: () => void;
   onSubmit: (submission: FrameSubmission) => void;
+  /** Verdict of the last submit from this dialog; the confirm dialog is gone. */
+  submitState?: DresSubmitState;
   /** TRACK: Events available to add into (E1, E2, …). */
   trakeEvents?: TrakeEventOption[];
   /** Default Event id when opening the dialog (focused Event on the board). */
@@ -53,6 +57,7 @@ export function FrameDetailDialog({
   submissionType,
   onClose,
   onSubmit,
+  submitState,
   trakeEvents = [],
   trakeFocusedEventId,
   onAddToTrake,
@@ -444,6 +449,8 @@ export function FrameDetailDialog({
                     {`Save ${chainEventLabel ?? "frame"} #${computedFrameId}`}
                   </button>
                 ) : (
+                <div className="ml-auto flex items-center gap-2">
+                <SubmitStatusBadge state={submitState} />
                 <button
                   onClick={() => {
                     if (submissionType === "track" && onAddToTrake) {
@@ -472,12 +479,13 @@ export function FrameDetailDialog({
                     (submissionType === "track" &&
                       (!onAddToTrake || !trakeTargetEventId))
                   }
-                  className="ml-auto flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-shrink-0 bg-primary-container hover:bg-primary-fixed hover:shadow-lg text-on-primary-container px-8 py-2.5 rounded text-label-md font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submissionType === "track"
                     ? `Add to ${trakeTargetLabel}`
                     : `Submit Frame ${computedFrameId}`}
                 </button>
+                </div>
                 )}
               </div>
 

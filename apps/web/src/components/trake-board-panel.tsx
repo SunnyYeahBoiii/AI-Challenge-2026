@@ -30,6 +30,8 @@ import {
   type KeyframeInfo,
 } from "@/lib/api";
 import { VideoPlayer } from "./video-player";
+import { SubmitStatusBadge } from "./submit-status";
+import type { DresSubmitState } from "@/hooks/use-dres-submit";
 
 interface TrakeBoardPanelProps {
   trake: TrakeBoardApi;
@@ -38,6 +40,8 @@ interface TrakeBoardPanelProps {
     frameIds: number[];
     previewText: string;
   }) => void;
+  /** Verdict of the last board submit; the confirm dialog is gone. */
+  submitState?: DresSubmitState;
 }
 
 function SortableEventCard({
@@ -223,7 +227,7 @@ function SortableEventCard({
   );
 }
 
-export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) {
+export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoardPanelProps) {
   const [joinId, setJoinId] = useState("");
   const [nameDraft, setNameDraft] = useState(trake.displayName);
   useEffect(() => setNameDraft(trake.displayName), [trake.displayName]);
@@ -424,6 +428,11 @@ export function TrakeBoardPanel({ trake, onSubmitTrake }: TrakeBoardPanelProps) 
         >
           Submit TRAKE
         </button>
+        {submitState && (
+          <div className="flex justify-center">
+            <SubmitStatusBadge state={submitState} />
+          </div>
+        )}
         {readyPayload && (
           <p className="text-mono-sm text-on-surface-variant break-all">
             {readyPayload.previewText}
