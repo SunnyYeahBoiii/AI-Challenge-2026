@@ -10,6 +10,7 @@ import { TrakeBoardPanel } from "@/components/trake-board-panel";
 import { TrakeSingleSearch } from "@/components/trake-single-search";
 import { TrakeChainList, type ChainEditTarget } from "@/components/trake-chain-list";
 import { Icon } from "@/components/icon";
+import { searchVideoFrames } from "@/lib/api";
 import type { FrameResult } from "@/lib/api";
 import { useDresSession } from "@/hooks/use-dres-session";
 import { useSessionStorageState } from "@/hooks/use-session-storage";
@@ -18,6 +19,9 @@ import { useTheme } from "@/hooks/use-theme";
 import { useTrakeBoard } from "@/hooks/use-trake-board";
 import { useDresSubmit } from "@/hooks/use-dres-submit";
 import { SubmitStatusBadge } from "@/components/submit-status";
+import { usePins } from "@/hooks/use-pins";
+import { PinPanel } from "@/components/pin-panel";
+import { pinKey } from "@/lib/pin-types";
 import type { FrameToTrake } from "@/lib/trake-types";
 
 type SubmissionType = "track" | "trake" | "qa" | "kis";
@@ -51,6 +55,7 @@ export default function Home() {
 
   const trake = useTrakeBoard(submissionType === "track");
   const dresSubmit = useDresSubmit(dres.sessionId, dres.evaluationId);
+  const pins = usePins();
 
   const addFrameToEvent = useCallback(
     (eventId: string, frame: FrameToTrake) => {
@@ -156,6 +161,22 @@ export default function Home() {
   const handleFrameDetail = useCallback((frame: FrameResult) => {
     setSelectedFrame(frame);
   }, []);
+
+  // Pins carry only frame-level fields; fetch the real FrameResult (with
+  // video_url, ocr/asr text, etc.) so the pin can open the same detail dialog.
+  const handleOpenPin = useCallback(async (pin: { videoId: string; frameIndex: number }) => {
+    try {
+      const res = await searchVideoFrames(pin.videoId, pin.frameIndex, 1);
+      const match =
+        res.results.find((f) => f.frame_index === pin.frameIndex) ?? res.results[0];
+      if (match) {
+        setSelectedFrame(match);
+        handleFrameSelect(match);
+      }
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Failed to open pinned frame");
+    }
+  }, [handleFrameSelect, setSearchError]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -341,6 +362,16 @@ export default function Home() {
               ? (frame) => addFrameToFocusedEvent(frame)
               : undefined
           }
+          pinnedKeys={pins.pinnedKeys}
+          onTogglePin={(frame) =>
+            pins.toggle({
+              videoId: frame.video_id,
+              frameIndex: frame.frame_index,
+              timestamp: frame.timestamp,
+              fps: frame.fps,
+              thumbnailUrl: frame.thumbnail_url,
+            })
+          }
         />
         )}
       </div>
@@ -400,6 +431,16 @@ export default function Home() {
               : undefined
           }
           submitState={dresSubmit.states[FRAME_DETAIL_SUBMIT_KEY]}
+          pinned={pins.pinnedKeys.has(pinKey(selectedFrame.video_id, selectedFrame.frame_index))}
+          onTogglePin={() =>
+            pins.toggle({
+              videoId: selectedFrame.video_id,
+              frameIndex: selectedFrame.frame_index,
+              timestamp: selectedFrame.timestamp,
+              fps: selectedFrame.fps,
+              thumbnailUrl: selectedFrame.thumbnail_url,
+            })
+          }
           onSubmit={(submission) => {
             setFrameId(submission.frameId);
             setVideoId(submission.videoId);
@@ -433,6 +474,7 @@ export default function Home() {
         <ModelSettingsDialog onClose={() => setShowModelSettings(false)} />
       )}
 
+      <PinPanel pins={pins} onOpenPin={handleOpenPin} />
     </div>
   );
 }

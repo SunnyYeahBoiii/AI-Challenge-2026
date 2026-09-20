@@ -64,3 +64,17 @@ model Selection {
 
   @@map("selections")
 }
+
+model Pin {
+  id           String @id
+  videoId      String @map("video_id")
+  frameIndex   Int    @map("frame_index")
+  timestamp    Float
+  fps          Float  @default(0)
+  thumbnailUrl String @default("") @map("thumbnail_url")
+  createdAt    String @map("created_at")
+
+  @@unique([videoId, frameIndex], map: "uq_pins_video_frame")
+  @@index([createdAt], map: "idx_pins_created")
+  @@map("pins")
+}

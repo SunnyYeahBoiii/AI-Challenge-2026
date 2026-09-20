@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { classifyDresSubmit, fetchRepeatFrameDetails, submitFrameToDres } from "@/lib/api";
+import { pinKey } from "@/lib/pin-types";
 import type { FrameResult, RepeatFrameDetails, TemporalSearchResponse } from "@/lib/api";
 import {
   canonicalRepeatRequestKey,
@@ -59,6 +60,9 @@ interface ResultsPanelProps {
   isLoading?: boolean;
   submissionType: "track" | "qa" | "kis";
   dresSessionId: string | null;
+  /** `pinKey(videoId, frameIndex)` of every frame on the shared wall. */
+  pinnedKeys: Set<string>;
+  onTogglePin: (frame: FrameResult) => void;
   dresEvaluationId: string | null;
   gridCols?: number;
   hasSearched?: boolean;
@@ -75,6 +79,8 @@ export function ResultsPanel({
   isLoading,
   submissionType,
   dresSessionId,
+  pinnedKeys,
+  onTogglePin,
   dresEvaluationId,
   gridCols = 6,
   hasSearched = false,
@@ -413,6 +419,27 @@ export function ResultsPanel({
                   >
                     <Icon name="zoom_in" size={16} />
                   </button>
+                  {(() => {
+                    const pinned = pinnedKeys.has(pinKey(frame.video_id, frame.frame_index));
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTogglePin(frame);
+                        }}
+                        title={pinned ? "Unpin for everyone" : "Pin for the team"}
+                        aria-label={pinned ? "Unpin keyframe" : "Pin keyframe"}
+                        aria-pressed={pinned}
+                        className={`absolute top-9 right-1 p-1 rounded text-white transition-opacity ${
+                          pinned
+                            ? "opacity-100 bg-primary hover:bg-primary/90"
+                            : "opacity-0 group-hover:opacity-100 bg-black/50 hover:bg-primary-container"
+                        }`}
+                      >
+                        <Icon name="keep" size={16} filled={pinned} />
+                      </button>
+                    );
+                  })()}
                   {onAddToTrake && (
                     <button
                       onClick={(e) => {

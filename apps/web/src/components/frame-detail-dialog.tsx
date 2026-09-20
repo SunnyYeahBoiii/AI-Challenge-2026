@@ -34,6 +34,10 @@ interface FrameDetailDialogProps {
   onSubmit: (submission: FrameSubmission) => void;
   /** Verdict of the last submit from this dialog; the confirm dialog is gone. */
   submitState?: DresSubmitState;
+  /** true if this frame is on the shared pin wall. */
+  pinned?: boolean;
+  /** Pin/unpin this frame for the team. */
+  onTogglePin?: () => void;
   /** TRACK: Events available to add into (E1, E2, …). */
   trakeEvents?: TrakeEventOption[];
   /** Default Event id when opening the dialog (focused Event on the board). */
@@ -58,6 +62,8 @@ export function FrameDetailDialog({
   onClose,
   onSubmit,
   submitState,
+  pinned = false,
+  onTogglePin,
   trakeEvents = [],
   trakeFocusedEventId,
   onAddToTrake,
@@ -266,6 +272,20 @@ export function FrameDetailDialog({
         >
           <Icon name="close" size={20} />
         </button>
+
+        {onTogglePin && (
+          <button
+            onClick={onTogglePin}
+            aria-label={pinned ? "Unpin keyframe" : "Pin keyframe"}
+            aria-pressed={pinned}
+            title={pinned ? "Unpin for everyone" : "Pin for the team"}
+            className={`absolute top-4 right-14 z-50 rounded-full p-1 transition-colors ${
+              pinned ? "text-primary bg-primary-container/20" : "text-white hover:bg-white/10"
+            }`}
+          >
+            <Icon name="keep" size={20} filled={pinned} />
+          </button>
+        )}
 
         <div className="grid grid-cols-[minmax(0,1fr)_22rem] flex-1 min-h-0">
           {/* Left: Video + Navigator + Submission */}
