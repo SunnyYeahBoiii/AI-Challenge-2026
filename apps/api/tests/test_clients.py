@@ -423,3 +423,54 @@ def test_global_keyword_search_restricts_allowed_videos():
 def test_collapse_shots_keeps_frames_without_shot_idx():
     frames = [{"video_id": "V1", "frame_index": 1, "score": 0.9}]
     assert _collapse_shots(frames) == frames
+
+
+def _phrase_slops(clause: dict) -> dict:
+    """Flatten one exact-mode keyword clause to {field: slop or None}."""
+    return {
+        field: params.get("slop")
+        for phrase in clause["bool"]["should"]
+        for field, params in phrase["match_phrase"].items()
+    }
+
+
+def test_asr_phrase_slop_reaches_both_the_original_and_folded_phrase():
+    """Slop must loosen adjacency on the folded twin too, or the fallback is stricter."""
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], asr_keywords=["xin chao"], asr_phrase_slop=2
+    )
+    assert _phrase_slops(_must(client)[0]["bool"]["should"][0]) == {
+        "asr_text": 2,
+        "asr_text.folded": 2,
+    }
+
+
+def test_asr_phrase_slop_defaults_to_strict_adjacency():
+    """Unset slop falls back to ES_ASR_PHRASE_SLOP, which ships as 0."""
+    client = _client([])
+    client.match_frames_by_keywords([("V1", 1)], asr_keywords=["xin chao"])
+    assert _phrase_slops(_must(client)[0]["bool"]["should"][0]) == {
+        "asr_text": None,
+        "asr_text.folded": None,
+    }
+
+
+def test_asr_phrase_slop_leaves_the_ocr_phrase_adjacent():
+    """Slop is an ASR knob: an exact OCR phrase stays strictly adjacent."""
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)],
+        ocr_keywords=["bien so"],
+        asr_keywords=["xin chao"],
+        asr_phrase_slop=3,
+    )
+    ocr_group, asr_group = _must(client)
+    assert _phrase_slops(ocr_group["bool"]["should"][0]) == {
+        "ocr_text": None,
+        "ocr_text.folded": None,
+    }
+    assert _phrase_slops(asr_group["bool"]["should"][0]) == {
+        "asr_text": 3,
+        "asr_text.folded": 3,
+    }

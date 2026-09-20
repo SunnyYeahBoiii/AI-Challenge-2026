@@ -55,6 +55,7 @@ def api_search():
             ocr_search_mode=data.ocr_search_mode,
             asr_search_mode=data.asr_search_mode,
             keyword_field_mode=data.keyword_field_mode,
+            asr_phrase_slop=data.asr_phrase_slop,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
@@ -91,6 +92,7 @@ def api_search_image():
     ocr_search_mode = request.form.get("ocr_search_mode", "exact")
     asr_search_mode = request.form.get("asr_search_mode", "exact")
     keyword_field_mode = request.form.get("keyword_field_mode", "and")
+    raw_slop = request.form.get("asr_phrase_slop")
     if ocr_search_mode not in {"fuzzy", "exact"}:
         return error_response("VALIDATION_ERROR", "ocr_search_mode must be fuzzy or exact", 400)
     if asr_search_mode not in {"fuzzy", "exact"}:
@@ -99,6 +101,14 @@ def api_search_image():
         return error_response(
             "VALIDATION_ERROR", "keyword_field_mode must be one of: asr, ocr, or, and", 400
         )
+    asr_phrase_slop: int | None = None
+    if raw_slop not in (None, ""):
+        try:
+            asr_phrase_slop = int(raw_slop)  # type: ignore[arg-type]
+        except ValueError:
+            return error_response("VALIDATION_ERROR", "asr_phrase_slop must be an integer", 400)
+        if not 0 <= asr_phrase_slop <= 10:
+            return error_response("VALIDATION_ERROR", "asr_phrase_slop must be between 0 and 10", 400)
     image_bytes = file.read()
     try:
         results = search_image(
@@ -116,6 +126,7 @@ def api_search_image():
             ocr_search_mode=ocr_search_mode,
             asr_search_mode=asr_search_mode,
             keyword_field_mode=keyword_field_mode,
+            asr_phrase_slop=asr_phrase_slop,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)

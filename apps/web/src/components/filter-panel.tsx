@@ -38,6 +38,7 @@ function createDefaultQuery(id: string): BoxQuery {
     asrMatchMode: "and",
     ocrSearchMode: "exact",
     asrSearchMode: "exact",
+    asrPhraseSlop: 0,
   };
 }
 

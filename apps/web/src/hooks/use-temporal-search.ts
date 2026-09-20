@@ -52,6 +52,12 @@ export function useTemporalSearch() {
           asr_match_mode: q.asrKeywords?.length ? (q.asrMatchMode ?? "and") : undefined,
           ocr_search_mode: q.ocrKeywords?.length ? (q.ocrSearchMode ?? "exact") : undefined,
           asr_search_mode: q.asrKeywords?.length ? (q.asrSearchMode ?? "exact") : undefined,
+          // Slop only means anything to the phrase strategy; omitting it lets
+          // the server fall back to ES_ASR_PHRASE_SLOP.
+          asr_phrase_slop:
+            q.asrKeywords?.length && (q.asrSearchMode ?? "exact") === "exact"
+              ? (q.asrPhraseSlop ?? 0)
+              : undefined,
           keyword_field_mode:
             q.ocrKeywords?.length || q.asrKeywords?.length
               ? (q.keywordFieldMode ?? "or")

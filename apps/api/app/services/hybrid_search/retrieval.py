@@ -48,6 +48,7 @@ def search_text(
     ocr_search_mode: str = "exact",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
+    asr_phrase_slop: int | None = None,
 ) -> list[Frame]:
     """Search by a vector query, filters, or both."""
     if enhance and query:
@@ -70,6 +71,7 @@ def search_text(
             ocr_search_mode=ocr_search_mode,
             asr_search_mode=asr_search_mode,
             keyword_field_mode=keyword_field_mode,
+            asr_phrase_slop=asr_phrase_slop,
         )
     else:
         frames = _filter_only_candidates({
@@ -85,6 +87,7 @@ def search_text(
             "ocr_search_mode": ocr_search_mode,
             "asr_search_mode": asr_search_mode,
             "keyword_field_mode": keyword_field_mode,
+            "asr_phrase_slop": asr_phrase_slop,
             "topk": topk,
         })
     frames = _enrich_frames(frames)
@@ -107,6 +110,7 @@ def search_image(
     ocr_search_mode: str = "exact",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
+    asr_phrase_slop: int | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = manager.embed_image(image_bytes).tolist()
@@ -126,6 +130,7 @@ def search_image(
         ocr_search_mode=ocr_search_mode,
         asr_search_mode=asr_search_mode,
         keyword_field_mode=keyword_field_mode,
+        asr_phrase_slop=asr_phrase_slop,
     )
     frames = _enrich_frames(frames)
     frames = _collapse_shots(_fuse_scores(frames))
@@ -252,6 +257,7 @@ def _apply_box_keywords(
             ocr_search_mode=box.get("ocr_search_mode", "exact"),
             asr_search_mode=box.get("asr_search_mode", "exact"),
             keyword_field_mode=box.get("keyword_field_mode", "and"),
+            asr_phrase_slop=box.get("asr_phrase_slop"),
         )
     return per_box
 
@@ -300,6 +306,7 @@ def _filter_only_candidates(
                 ocr_search_mode=box.get("ocr_search_mode", "exact"),
                 asr_search_mode=box.get("asr_search_mode", "exact"),
                 keyword_field_mode=box.get("keyword_field_mode", "and"),
+                asr_phrase_slop=box.get("asr_phrase_slop"),
                 allowed_video_ids=sorted(allowed_video_ids) if allowed_video_ids is not None else None,
                 page_size=FILTER_FETCH_CHUNK,
             ):

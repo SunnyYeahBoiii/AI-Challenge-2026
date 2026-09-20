@@ -75,6 +75,7 @@ def _filter_by_keywords(
     ocr_search_mode: str = "exact",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
+    asr_phrase_slop: int | None = None,
 ) -> list[Frame]:
     """Drop frames whose OCR/ASR text does not match, in one ES round-trip.
 
@@ -97,6 +98,7 @@ def _filter_by_keywords(
         ocr_search_mode=ocr_search_mode,
         asr_search_mode=asr_search_mode,
         keyword_field_mode=keyword_field_mode,
+        asr_phrase_slop=asr_phrase_slop,
     )
     survivors: list[Frame] = []
     for frame in frames:

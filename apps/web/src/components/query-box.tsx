@@ -32,6 +32,8 @@ export interface BoxQuery {
   asrKeywords?: string[];
   asrMatchMode?: "and" | "or";
   asrSearchMode?: "fuzzy" | "exact";
+  /** Words the transcript may drift from the typed ASR phrase; exact mode only. */
+  asrPhraseSlop?: number;
   topK?: number;
   enhance?: boolean;
 }
@@ -526,6 +528,35 @@ function QueryBoxInner({
                   disabled={asrDisabled}
                 />
               </div>
+              {(query.asrSearchMode ?? "exact") === "exact" && (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <label
+                    htmlFor={`asr-slop-${query.id}`}
+                    className="text-label-xs text-on-surface-variant"
+                    title="Words the transcript may drift from the phrase. Order is never loosened."
+                  >
+                    Phrase slop
+                  </label>
+                  <input
+                    id={`asr-slop-${query.id}`}
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={1}
+                    value={query.asrPhraseSlop ?? 0}
+                    disabled={asrDisabled}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      onUpdate({
+                        asrPhraseSlop: Number.isNaN(parsed)
+                          ? 0
+                          : Math.max(0, Math.min(10, parsed)),
+                      });
+                    }}
+                    className="w-16 rounded border border-outline-variant bg-surface-container px-2 py-0.5 text-right font-mono text-label-xs text-on-surface disabled:cursor-not-allowed disabled:opacity-45"
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
