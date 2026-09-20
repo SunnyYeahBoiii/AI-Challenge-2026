@@ -112,8 +112,7 @@ export function FilterPanel({
     q.enabled && (
       q.content.trim() ||
       q.tags?.length ||
-      q.ocrKeywords?.length ||
-      q.asrKeywords?.length
+      q.keywords?.length
     )
   );
 

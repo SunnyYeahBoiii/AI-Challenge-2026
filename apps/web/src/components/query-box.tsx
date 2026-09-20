@@ -25,11 +25,10 @@ export interface BoxQuery {
   enabled: boolean;
   tags?: string[];
   tagMatchMode?: "and" | "or";
+  keywords?: string[];
   keywordFieldMode?: "asr" | "ocr" | "or" | "and";
-  ocrKeywords?: string[];
   ocrMatchMode?: "and" | "or";
   ocrSearchMode?: "fuzzy" | "exact";
-  asrKeywords?: string[];
   asrMatchMode?: "and" | "or";
   asrSearchMode?: "fuzzy" | "exact";
   topK?: number;
@@ -167,7 +166,7 @@ function QueryBoxInner({
   const finalTranscriptRef = useRef("");
   const hasVectorQuery = Boolean(query.content.trim());
   const keywordFieldMode = query.keywordFieldMode ?? "or";
-  const keywordCount = (query.ocrKeywords?.length ?? 0) + (query.asrKeywords?.length ?? 0);
+  const keywordCount = query.keywords?.length ?? 0;
   const ocrDisabled = keywordFieldMode === "asr";
   const asrDisabled = keywordFieldMode === "ocr";
 
@@ -482,11 +481,10 @@ function QueryBoxInner({
               onChange={(keywordFieldMode) => onUpdate({ keywordFieldMode })}
             />
             <div>
-              <span className="text-label-sm text-on-surface-variant">OCR</span>
               <TagInput
-                tags={query.ocrKeywords || []}
-                onChange={(ocrKeywords) => onUpdate({ ocrKeywords })}
-                placeholder="Add OCR keyword..."
+                tags={query.keywords || []}
+                onChange={(keywords) => onUpdate({ keywords })}
+                placeholder="Add keyword..."
               />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <MatchModeToggle
@@ -503,14 +501,6 @@ function QueryBoxInner({
                   disabled={ocrDisabled}
                 />
               </div>
-            </div>
-            <div>
-              <span className="text-label-sm text-on-surface-variant">ASR</span>
-              <TagInput
-                tags={query.asrKeywords || []}
-                onChange={(asrKeywords) => onUpdate({ asrKeywords })}
-                placeholder="Add ASR keyword..."
-              />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <MatchModeToggle
                   label="Match ASR"
