@@ -38,6 +38,12 @@ class Config:
     SIGLIP2_REVISION = os.getenv(
         "SIGLIP2_REVISION", "e8e487298228002f3d8a82e0cd5c8ea9c567f57f"
     )
+    SIGLIP2_REPEAT_GRAPH = Path(
+        os.getenv(
+            "SIGLIP2_REPEAT_GRAPH",
+            str(PROJECT_DIR / "data" / "repeat_graphs" / "siglip2-repeat-graph.npz"),
+        )
+    )
     DEFAULT_TOP_K = 20
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     OBJECT_DETECTIONS_PATH = os.getenv("OBJECT_DETECTIONS_PATH", str(DEFAULT_OBJECT_DETECTIONS_PATH))

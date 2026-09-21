@@ -93,7 +93,10 @@ export interface RepeatFrameCandidate extends RepeatFrameKey {
   timestamp: number;
 }
 
-export type RepeatFrameReference = RepeatFrameKey;
+export interface RepeatFrameReference extends RepeatFrameKey {
+  /** SigLIP2 cosine stored in the precomputed repeat graph. */
+  cosine: number;
+}
 
 /** Selected evidence for one red REPEAT badge. */
 export interface RepeatFrameDetails extends RepeatFrameKey {
@@ -154,11 +157,12 @@ export async function multiBoxSearch(
 /** Fetch red repeat-badge evidence without exposing stored embedding vectors. */
 export async function fetchRepeatFrameDetails(
   frames: RepeatFrameCandidate[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  excludeFrame?: RepeatFrameKey,
 ): Promise<Record<string, RepeatFrameDetails>> {
   const { data } = await api.post<{ repeat_frames: RepeatFrameDetails[] }>(
     "/frames/repeats",
-    { frames },
+    { frames, ...(excludeFrame ? { exclude_frame: excludeFrame } : {}) },
     { signal }
   );
   return Object.fromEntries(data.repeat_frames.map((frame) => [frameRepeatKey(frame), frame]));

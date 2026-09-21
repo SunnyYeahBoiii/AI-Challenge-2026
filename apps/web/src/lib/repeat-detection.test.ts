@@ -26,9 +26,9 @@ describe("repeat detection client helpers", () => {
     expect(repeatHoverItems({
       video_id: "L21_V015",
       frame_index: 6191,
-      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 6200 },
-      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000 },
-      out_video_highest_duplicate: { video_id: "L21_V026", frame_index: 5852 },
+      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 6200, cosine: 0.98 },
+      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000, cosine: 0.95 },
+      out_video_highest_duplicate: { video_id: "L21_V026", frame_index: 5852, cosine: 0.97 },
     })).toEqual([
       expect.objectContaining({
         label: "IN-video Highest",
@@ -52,8 +52,8 @@ describe("repeat detection client helpers", () => {
     expect(repeatHoverItems({
       video_id: "L21_V015",
       frame_index: 6191,
-      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 7000 },
-      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000 },
+      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 7000, cosine: 0.98 },
+      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000, cosine: 0.98 },
     })).toEqual([
       expect.objectContaining({
         label: "IN-video Highest + Furthest",
@@ -66,9 +66,9 @@ describe("repeat detection client helpers", () => {
     const items = repeatHoverItems({
       video_id: "L21_V015",
       frame_index: 6191,
-      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 7000 },
-      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000 },
-      out_video_highest_duplicate: { video_id: "L21_V026", frame_index: 5852 },
+      in_video_highest_duplicate: { video_id: "L21_V015", frame_index: 7000, cosine: 0.98 },
+      in_video_furthest_duplicate: { video_id: "L21_V015", frame_index: 7000, cosine: 0.98 },
+      out_video_highest_duplicate: { video_id: "L21_V026", frame_index: 5852, cosine: 0.97 },
     });
 
     expect(items).toHaveLength(2);

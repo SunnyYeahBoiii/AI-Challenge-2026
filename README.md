@@ -202,6 +202,22 @@ Copy `apps/api/.env.example` to `apps/api/.env` and fill in:
 | `OPENAI_API_KEY` | OpenAI API key (for query enhancement) | OpenAI dashboard |
 | `SECRET_KEY` | Flask secret key | Generate any random string |
 
+### Optional REPEAT graph
+
+The REPEAT badge uses a precomputed SigLIP2 graph and does not require the
+active retrieval model to be SigLIP2. It is intentionally distributed outside
+Git. Copy both matching artifacts beside the shared metadata before starting
+the API:
+
+```text
+data/repeat_graphs/siglip2-repeat-graph.npz
+data/repeat_graphs/siglip2-repeat-graph.manifest.json
+```
+
+The API validates the manifest and metadata checksum. If either file is absent
+or belongs to different metadata, REPEAT is disabled while normal search stays
+available.
+
 **Web Container**:
 
 | Variable | Description | Default | Notes |

@@ -145,10 +145,18 @@ class RepeatFrameRequest(BaseModel):
     timestamp: float = Field(allow_inf_nan=False)
 
 
+class RepeatFrameKeyRequest(BaseModel):
+    """Stored identity excluded while showing a repeat frame's own evidence."""
+
+    video_id: str = Field(min_length=1)
+    frame_index: int = Field(ge=0)
+
+
 class RepeatFramesRequest(BaseModel):
-    """Bounded displayed-frame batch for exact local cosine comparisons."""
+    """Bounded displayed-frame batch for precomputed graph lookups."""
 
     frames: list[RepeatFrameRequest] = Field(min_length=1, max_length=1500)
+    exclude_frame: RepeatFrameKeyRequest | None = None
 
 
 class SimilarFramesRequest(BaseModel):

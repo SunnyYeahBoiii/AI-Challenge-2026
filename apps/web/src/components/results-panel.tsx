@@ -1,17 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { isAxiosError } from "axios";
 import { Icon } from "./icon";
-import { classifyDresSubmit, fetchRepeatFrameDetails, submitFrameToDres } from "@/lib/api";
+import { classifyDresSubmit, fetchRepeatFrameDetails, searchVideoFrames, submitFrameToDres } from "@/lib/api";
 import { pinKey } from "@/lib/pin-types";
 import type { FrameResult, RepeatFrameDetails, TemporalSearchResponse } from "@/lib/api";
 import {
   canonicalRepeatRequestKey,
   frameRepeatKey,
   repeatHoverItems,
-  repeatHoverPlacement,
+  nestedRepeatRequestKey,
+  repeatPopoverPosition,
+  SIGLIP2_DUPLICATE_COSINE_LABEL,
 } from "@/lib/repeat-detection";
+import type { RepeatHoverItem } from "@/lib/repeat-detection";
+import { nextInfinitePaginationState } from "@/lib/infinite-pagination";
 import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 const FRAME_PAGE_SIZE = 48;
@@ -41,7 +46,7 @@ function splitRepeatBatches(frames: FrameResult[]): FrameResult[][] {
 const QUICK_SUBMIT_RESULT_MS = 2500;
 
 type QuickSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
-type RepeatHoverState = { key: string; placement: "left" | "right" };
+type RepeatHoverState = { key: string; anchor: { top: number; left: number; right: number } };
 
 const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }> = {
   loading: { bg: "bg-black/50", icon: "send" },
@@ -97,14 +102,97 @@ export function ResultsPanel({
   const repeatCacheRef = useRef<Map<string, Record<string, RepeatFrameDetails>>>(new Map());
   const [repeatFrameDetails, setRepeatFrameDetails] = useState<Record<string, RepeatFrameDetails>>({});
   const [repeatHover, setRepeatHover] = useState<RepeatHoverState | null>(null);
+  const [repeatPopoverHeight, setRepeatPopoverHeight] = useState<{ key: string; value: number } | null>(null);
+  const [repeatOpeningKey, setRepeatOpeningKey] = useState<string | null>(null);
+  const [repeatOpenError, setRepeatOpenError] = useState<{ key: string; message: string } | null>(null);
+  const nestedRepeatCacheRef = useRef<Map<string, RepeatFrameDetails | null>>(new Map());
+  const nestedRepeatLoadingRef = useRef(new Set<string>());
+  const [nestedRepeatDetails, setNestedRepeatDetails] = useState<Record<string, RepeatFrameDetails | null>>({});
+  const repeatPopoverRef = useRef<HTMLDivElement | null>(null);
+  const repeatHoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paginationObserverArmedRef = useRef(true);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLElement | null>(null);
 
+  const clearRepeatHoverClose = useCallback(() => {
+    if (repeatHoverCloseTimerRef.current !== null) {
+      clearTimeout(repeatHoverCloseTimerRef.current);
+      repeatHoverCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRepeatHoverClose = useCallback(() => {
+    clearRepeatHoverClose();
+    repeatHoverCloseTimerRef.current = setTimeout(() => {
+      setRepeatHover(null);
+      repeatHoverCloseTimerRef.current = null;
+    }, 100);
+  }, [clearRepeatHoverClose]);
+
   const openRepeatHover = useCallback((target: HTMLElement, key: string) => {
-    setRepeatHover({
+    clearRepeatHoverClose();
+    const { top, left, right } = target.getBoundingClientRect();
+    setRepeatHover((current) => ({
       key,
-      placement: repeatHoverPlacement(target.getBoundingClientRect(), window.innerWidth),
-    });
+      anchor: current?.key === key ? current.anchor : { top, left, right },
+    }));
+  }, [clearRepeatHoverClose]);
+
+  useEffect(() => () => clearRepeatHoverClose(), [clearRepeatHoverClose]);
+
+  useLayoutEffect(() => {
+    if (!repeatHover || !repeatPopoverRef.current) return;
+    const height = repeatPopoverRef.current.getBoundingClientRect().height;
+    setRepeatPopoverHeight((current) => (
+      current?.key === repeatHover.key && Math.abs(current.value - height) < 1
+        ? current : { key: repeatHover.key, value: height }
+    ));
+  }, [nestedRepeatDetails, repeatHover]);
+
+  const openRepeatFrame = useCallback(async (item: RepeatHoverItem) => {
+    if (repeatOpeningKey === item.key) return;
+    setRepeatOpeningKey(item.key);
+    setRepeatOpenError(null);
+    try {
+      const response = await searchVideoFrames(item.videoId, item.frameIndex, 1);
+      const exact = response.results.find(
+        (frame) => frame.video_id === item.videoId && frame.frame_index === item.frameIndex,
+      );
+      if (!exact) throw new Error("The stored repeat frame is no longer available");
+      setRepeatHover(null);
+      onFrameSelect(exact);
+      onFrameDetail(exact);
+    } catch (error) {
+      setRepeatOpenError({
+        key: item.key,
+        message: error instanceof Error ? error.message : "Could not open repeat frame",
+      });
+    } finally {
+      setRepeatOpeningKey((current) => current === item.key ? null : current);
+    }
+  }, [onFrameDetail, onFrameSelect, repeatOpeningKey]);
+
+  const loadNestedRepeat = useCallback(async (item: RepeatHoverItem, source: FrameResult) => {
+    const key = nestedRepeatRequestKey(
+      { video_id: item.videoId, frame_index: item.frameIndex }, source,
+    );
+    if (nestedRepeatCacheRef.current.has(key) || nestedRepeatLoadingRef.current.has(key)) return;
+    nestedRepeatLoadingRef.current.add(key);
+    try {
+      const details = await fetchRepeatFrameDetails(
+        [{ video_id: item.videoId, frame_index: item.frameIndex, timestamp: 0 }],
+        undefined,
+        { video_id: source.video_id, frame_index: source.frame_index },
+      );
+      const nested = details[frameRepeatKey({ video_id: item.videoId, frame_index: item.frameIndex })] ?? null;
+      nestedRepeatCacheRef.current.set(key, nested);
+      setNestedRepeatDetails((current) => ({ ...current, [key]: nested }));
+    } catch {
+      nestedRepeatCacheRef.current.set(key, null);
+      setNestedRepeatDetails((current) => ({ ...current, [key]: null }));
+    } finally {
+      nestedRepeatLoadingRef.current.delete(key);
+    }
   }, []);
 
   const clearQuickSubmit = (key: string) => {
@@ -148,6 +236,7 @@ export function ResultsPanel({
   };
 
   useEffect(() => {
+    paginationObserverArmedRef.current = true;
     setVisibleUnitCount(viewMode === "continuous" && queryCount <= 1 ? FRAME_PAGE_SIZE : VIDEO_PAGE_SIZE);
   }, [result, viewMode, queryCount]);
 
@@ -199,6 +288,12 @@ export function ResultsPanel({
     repeatCacheRef.current.clear();
     setRepeatFrameDetails({});
     setRepeatHover(null);
+    setRepeatPopoverHeight(null);
+    setRepeatOpeningKey(null);
+    setRepeatOpenError(null);
+    nestedRepeatCacheRef.current.clear();
+    nestedRepeatLoadingRef.current.clear();
+    setNestedRepeatDetails({});
   }, [result]);
 
   useEffect(() => {
@@ -247,7 +342,12 @@ export function ResultsPanel({
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
+        const decision = nextInfinitePaginationState({
+          armed: paginationObserverArmedRef.current,
+          isIntersecting: entries.some((entry) => entry.isIntersecting),
+        });
+        paginationObserverArmedRef.current = decision.armed;
+        if (decision.shouldLoad) {
           setVisibleUnitCount((count) => Math.min(count + pageSize, totalUnits));
         }
       },
@@ -350,9 +450,7 @@ export function ResultsPanel({
                   onMouseEnter={(e) => {
                     if (isRepeat) openRepeatHover(e.currentTarget, repeatKey);
                   }}
-                  onMouseLeave={() => {
-                    setRepeatHover((current) => (current?.key === repeatKey ? null : current));
-                  }}
+                  onMouseLeave={scheduleRepeatHoverClose}
                 >
                 <div
                   draggable={submissionType === "track"}
@@ -496,33 +594,67 @@ export function ResultsPanel({
                     )}
                   </div>
                 </div>
-                {isRepeat && repeatHover?.key === repeatKey && (
+                {isRepeat && repeatHover?.key === repeatKey && typeof document !== "undefined" && createPortal(
                   <div
-                    id={`repeat-details-${key}`}
-                    role="tooltip"
-                    className={`absolute top-0 z-40 flex w-56 flex-col gap-3 rounded-lg border-2 border-red-500/70 bg-surface-container-high p-3 shadow-xl ${
-                      repeatHover.placement === "right" ? "left-full ml-3" : "right-full mr-3"
-                    }`}
-                    onClick={(e) => e.stopPropagation()}
+                    ref={repeatPopoverRef}
+                    className="fixed z-40 max-h-[calc(100vh-1rem)] overflow-y-auto"
+                    style={repeatPopoverPosition(
+                      repeatHover.anchor,
+                      { width: window.innerWidth, height: window.innerHeight },
+                      repeatPopoverHeight?.key === repeatKey ? repeatPopoverHeight.value : 0,
+                    )}
+                    onMouseEnter={clearRepeatHoverClose}
+                    onMouseLeave={scheduleRepeatHoverClose}
                   >
-                    {repeatItems.map((item) => (
+                    <div
+                      id={`repeat-details-${key}`}
+                      role="dialog"
+                      className="flex w-56 flex-col gap-3 rounded-lg border-2 border-red-500/70 bg-surface-container-high p-3 shadow-xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                    {repeatItems.map((item) => {
+                      const nestedKey = nestedRepeatRequestKey(
+                        { video_id: item.videoId, frame_index: item.frameIndex }, frame,
+                      );
+                      const nestedItems = nestedRepeatDetails[nestedKey]
+                        ? repeatHoverItems(nestedRepeatDetails[nestedKey]!) : [];
+                      return (
                       <div
                         key={item.key}
-                        className="overflow-hidden rounded-md border border-outline-variant bg-surface-container"
+                        className="space-y-2"
+                        onMouseEnter={() => { void loadNestedRepeat(item, frame); }}
                       >
-                        <img
-                          src={item.thumbnailUrl}
-                          alt={`${item.label}: ${item.identity}`}
-                          className="aspect-video w-full object-cover"
-                          loading="lazy"
-                        />
-                        <div className="px-2 py-1.5 text-label-sm leading-snug">
-                          <div className="font-bold text-red-400">{item.label}</div>
-                          <div className="break-words text-on-surface-variant">{item.identity}</div>
-                        </div>
+                        <button
+                          type="button"
+                          disabled={repeatOpeningKey === item.key}
+                          className="w-full overflow-hidden rounded-md border border-outline-variant bg-surface-container text-left hover:border-primary disabled:cursor-wait disabled:opacity-60"
+                          onClick={(event) => { event.stopPropagation(); void openRepeatFrame(item); }}
+                        >
+                          <img src={item.thumbnailUrl} alt={`${item.label}: ${item.identity}`} className="aspect-video w-full object-cover" loading="lazy" />
+                          <div className="px-2 py-1.5 text-label-sm leading-snug">
+                            <div className="font-bold text-red-400">{item.label}</div>
+                            <div className="break-words text-on-surface-variant">{item.identity}</div>
+                            <div className="text-on-surface-variant">{SIGLIP2_DUPLICATE_COSINE_LABEL} {item.cosine.toFixed(3)}</div>
+                          </div>
+                        </button>
+                        {nestedItems.length > 0 && (
+                          <div className="space-y-1 rounded border border-red-500/70 bg-surface-container-high p-2">
+                            {nestedItems.map((nested) => (
+                              <button key={nested.key} type="button" className="w-full rounded border border-outline-variant p-1 text-left text-label-xs hover:border-primary" onClick={(event) => { event.stopPropagation(); void openRepeatFrame(nested); }}>
+                                <div className="font-bold text-red-400">{nested.label}</div>
+                                <div className="break-words text-on-surface-variant">{nested.identity}</div>
+                                <div className="text-on-surface-variant">{SIGLIP2_DUPLICATE_COSINE_LABEL} {nested.cosine.toFixed(3)}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
+                    {repeatOpenError?.key === repeatKey && <p role="alert" className="text-label-sm text-error">{repeatOpenError.message}</p>}
+                    </div>
                   </div>
+                  , document.body
                 )}
                 </div>
                 );

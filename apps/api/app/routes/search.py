@@ -199,7 +199,10 @@ def api_repeat_frames():
         return error_response("VALIDATION_ERROR", str(error), 400)
     try:
         repeat_details = find_repeat_frame_details(
-            [(frame.video_id, frame.frame_index, frame.timestamp) for frame in data.frames]
+            [(frame.video_id, frame.frame_index, frame.timestamp) for frame in data.frames],
+            exclude_frame=(data.exclude_frame.video_id, data.exclude_frame.frame_index)
+            if data.exclude_frame is not None
+            else None,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
