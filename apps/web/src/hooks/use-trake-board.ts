@@ -2,24 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import {
-  createTrakeBoard,
-  fetchTrakeBoard,
-  cloudApiHttpBase,
-} from "@/lib/cloud-api";
+import { cloudApiHttpBase } from "@/lib/cloud-api";
 import type {
   TrakeBoardSnapshot,
   TrakeCandidatePayload,
 } from "@/lib/trake-types";
-import {
-  TRAKE_BOARD_ID_KEY,
-  TRAKE_DISPLAY_NAME_KEY,
-} from "@/lib/trake-types";
+import { TRAKE_DISPLAY_NAME_KEY } from "@/lib/trake-types";
 
 export function useTrakeBoard(enabled: boolean) {
   const socketRef = useRef<Socket | null>(null);
   const [board, setBoard] = useState<TrakeBoardSnapshot | null>(null);
-  const [boardId, setBoardId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("teammate");
   const displayNameRef = useRef(displayName);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
@@ -33,105 +25,61 @@ export function useTrakeBoard(enabled: boolean) {
       typeof window !== "undefined"
         ? localStorage.getItem(TRAKE_DISPLAY_NAME_KEY)
         : null;
-    if (storedName) setDisplayName(storedName);
-    const storedBoard =
-      typeof window !== "undefined"
-        ? localStorage.getItem(TRAKE_BOARD_ID_KEY)
-        : null;
-    if (storedBoard) setBoardId(storedBoard);
+    if (storedName) {
+      setDisplayName(storedName);
+      displayNameRef.current = storedName;
+    }
   }, []);
 
   const applyBoard = useCallback((snapshot: TrakeBoardSnapshot) => {
     setBoard(snapshot);
-    setBoardId(snapshot.id);
-    localStorage.setItem(TRAKE_BOARD_ID_KEY, snapshot.id);
     setFocusedEventId((prev) => {
       if (prev && snapshot.events.some((e) => e.id === prev)) return prev;
       return snapshot.events[0]?.id ?? null;
     });
   }, []);
 
-  const connect = useCallback(
-    (id: string, name: string) => {
+  useEffect(() => {
+    if (!enabled) return;
+    const socket = io(cloudApiHttpBase(), {
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+    setStatus("connecting");
+    setError(null);
+    setBoard(null);
+    socket.on("connect", () => {
       setStatus("connecting");
+      socket.emit("board:join", { displayName: displayNameRef.current });
+    });
+    socket.on("board:state", (snapshot: TrakeBoardSnapshot) => {
+      applyBoard(snapshot);
+      setStatus("connected");
       setError(null);
-      socketRef.current?.disconnect();
-      const socket = io(cloudApiHttpBase(), {
-        transports: ["websocket", "polling"],
-        autoConnect: true,
-      });
-      socketRef.current = socket;
-      socket.on("connect", () => {
-        setStatus("connected");
-        socket.emit("board:join", { boardId: id, displayName: name });
-      });
-      socket.on("board:state", (snapshot: TrakeBoardSnapshot) => {
-        applyBoard(snapshot);
-      });
-      socket.on("connect_error", (err) => {
-        setStatus("error");
-        setError(err.message || "Failed to connect to cloud-api");
-      });
-      socket.on("disconnect", () => {
-        setStatus((s) => (s === "error" ? s : "idle"));
-      });
-    },
-    [applyBoard],
-  );
-
-  // Keep the connect effect off displayName's deps: renaming must not tear
-  // down the socket. board:rename carries the new name instead.
-  useEffect(() => {
-    displayNameRef.current = displayName;
-  }, [displayName]);
-
-  useEffect(() => {
-    if (!enabled || !boardId) return;
-    connect(boardId, displayNameRef.current);
+    });
+    socket.on("exception", (response: { message?: string }) => {
+      setStatus("error");
+      setError(response.message || "Board operation failed");
+    });
+    socket.on("connect_error", (err) => {
+      setStatus("error");
+      setError(err.message || "Failed to connect to cloud-api");
+      setBoard(null);
+    });
+    socket.on("disconnect", () => {
+      setStatus((s) => (s === "error" ? s : "idle"));
+      setBoard(null);
+    });
     return () => {
-      socketRef.current?.disconnect();
+      socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, boardId, connect]);
-
-  const createAndJoin = useCallback(async () => {
-    try {
-      const snapshot = await createTrakeBoard();
-      localStorage.setItem(TRAKE_BOARD_ID_KEY, snapshot.id);
-      localStorage.setItem(TRAKE_DISPLAY_NAME_KEY, displayName);
-      setBoardId(snapshot.id);
-      applyBoard(snapshot);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Create failed");
-      setStatus("error");
-    }
-  }, [applyBoard, displayName]);
-
-  const joinBoard = useCallback(
-    async (id: string) => {
-      const trimmed = id.trim().toUpperCase();
-      if (!/^[A-Z0-9]{6}$/.test(trimmed)) {
-        setError("Board id must be exactly 6 characters");
-        setStatus("error");
-        return;
-      }
-      try {
-        const snapshot = await fetchTrakeBoard(trimmed);
-        localStorage.setItem(TRAKE_BOARD_ID_KEY, snapshot.id);
-        localStorage.setItem(TRAKE_DISPLAY_NAME_KEY, displayName);
-        setBoardId(snapshot.id);
-        applyBoard(snapshot);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Join failed");
-        setStatus("error");
-      }
-    },
-    [applyBoard, displayName],
-  );
+  }, [enabled, applyBoard]);
 
   const saveDisplayName = useCallback((name: string) => {
     const n = name.trim() || "teammate";
     setDisplayName(n);
+    displayNameRef.current = n;
     localStorage.setItem(TRAKE_DISPLAY_NAME_KEY, n);
     socketRef.current?.emit("board:rename", { displayName: n });
   }, []);
@@ -142,54 +90,53 @@ export function useTrakeBoard(enabled: boolean) {
 
   const addEvent = useCallback(
     (labelText = "") => {
-      if (!boardId) return;
-      emit("event:add", { boardId, labelText });
+      if (!board) return;
+      emit("event:add", { labelText });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const removeEvent = useCallback(
     (eventId: string) => {
-      if (!boardId) return;
-      emit("event:remove", { boardId, eventId });
+      if (!board) return;
+      emit("event:remove", { eventId });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const reorderEvents = useCallback(
     (orderedEventIds: string[]) => {
-      if (!boardId) return;
-      emit("event:reorder", { boardId, orderedEventIds });
+      if (!board) return;
+      emit("event:reorder", { orderedEventIds });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const updateEventText = useCallback(
     (eventId: string, labelText: string) => {
-      if (!boardId) return;
-      emit("event:updateText", { boardId, eventId, labelText });
+      if (!board) return;
+      emit("event:updateText", { eventId, labelText });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const addCandidate = useCallback(
     (payload: TrakeCandidatePayload) => {
-      if (!boardId) return;
+      if (!board) return;
       emit("candidate:add", {
-        boardId,
         ...payload,
         addedBy: payload.addedBy ?? displayName,
       });
     },
-    [boardId, displayName, emit],
+    [board, displayName, emit],
   );
 
   const removeCandidate = useCallback(
     (candidateId: string) => {
-      if (!boardId) return;
-      emit("candidate:remove", { boardId, candidateId });
+      if (!board) return;
+      emit("candidate:remove", { candidateId });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const setSelection = useCallback(
@@ -201,22 +148,21 @@ export function useTrakeBoard(enabled: boolean) {
       fps: number;
       candidateId?: string | null;
     }) => {
-      if (!boardId) return;
+      if (!board) return;
       emit("selection:set", {
-        boardId,
         ...input,
         updatedBy: displayName,
       });
     },
-    [boardId, displayName, emit],
+    [board, displayName, emit],
   );
 
   const clearSelection = useCallback(
     (eventId: string) => {
-      if (!boardId) return;
-      emit("selection:clear", { boardId, eventId });
+      if (!board) return;
+      emit("selection:clear", { eventId });
     },
-    [boardId, emit],
+    [board, emit],
   );
 
   const focusedEvent =
@@ -224,7 +170,6 @@ export function useTrakeBoard(enabled: boolean) {
 
   return {
     board,
-    boardId,
     displayName,
     focusedEventId,
     focusedEvent,
@@ -232,8 +177,6 @@ export function useTrakeBoard(enabled: boolean) {
     error,
     setFocusedEventId,
     saveDisplayName,
-    createAndJoin,
-    joinBoard,
     addEvent,
     removeEvent,
     reorderEvents,

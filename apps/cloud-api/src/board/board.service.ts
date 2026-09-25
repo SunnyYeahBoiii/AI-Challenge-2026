@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { randomInt } from "node:crypto";
 import { v4 as uuid } from "uuid";
 import { PrismaService } from "../database/prisma.service";
 import type {
@@ -15,8 +14,7 @@ import type {
   SetSelectionInput,
 } from "./board.types";
 
-/** Ambiguity-safe alphabet for shareable 6-char board codes. */
-const BOARD_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const SHARED_BOARD_ID = "SHARED";
 
 @Injectable()
 export class BoardService {
@@ -25,45 +23,21 @@ export class BoardService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private async newBoardId(): Promise<string> {
-    for (let attempt = 0; attempt < 32; attempt++) {
-      let id = "";
-      for (let i = 0; i < 6; i++) {
-        id += BOARD_ID_ALPHABET[randomInt(BOARD_ID_ALPHABET.length)];
-      }
-      const existing = await this.prisma.board.findUnique({
-        where: { id },
-        select: { id: true },
-      });
-      if (!existing) return id;
-    }
-    throw new BadRequestException("Could not allocate a unique board id");
-  }
-
-  async createBoard(title = "TRAKE Board"): Promise<BoardSnapshot> {
+  /** Lazily create the team's single persistent TRAKE board. */
+  async getSharedBoard(): Promise<BoardSnapshot> {
     const now = new Date().toISOString();
-    const id = await this.newBoardId();
-    await this.prisma.board.create({
-      data: {
-        id,
-        title,
+    await this.prisma.board.upsert({
+      where: { id: SHARED_BOARD_ID },
+      create: {
+        id: SHARED_BOARD_ID,
+        title: "TRAKE Board",
         targetVideoId: null,
         createdAt: now,
         updatedAt: now,
       },
+      update: {},
     });
-    return this.getBoard(id);
-  }
-
-  async listBoards(): Promise<
-    Array<{ id: string; title: string; updatedAt: string }>
-  > {
-    const rows = await this.prisma.board.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-      select: { id: true, title: true, updatedAt: true },
-    });
-    return rows;
+    return this.getBoard(SHARED_BOARD_ID);
   }
 
   async getBoard(boardId: string): Promise<BoardSnapshot> {

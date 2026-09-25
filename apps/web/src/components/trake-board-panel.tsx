@@ -228,7 +228,6 @@ function SortableEventCard({
 }
 
 export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoardPanelProps) {
-  const [joinId, setJoinId] = useState("");
   const [nameDraft, setNameDraft] = useState(trake.displayName);
   useEffect(() => setNameDraft(trake.displayName), [trake.displayName]);
   const [videoCandidate, setVideoCandidate] = useState<TrakeCandidate | null>(
@@ -307,40 +306,6 @@ export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoar
           placeholder="Display name"
           aria-label="Display name"
         />
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => trake.createAndJoin()}
-            className="flex-1 rounded bg-primary-container text-on-primary-container text-label-sm py-1.5"
-          >
-            New board
-          </button>
-        </div>
-        <div className="flex gap-1">
-          <input
-            className="flex-1 min-w-0 rounded border border-outline-variant bg-surface px-2 py-1 text-mono-sm uppercase tracking-widest"
-            value={joinId}
-            maxLength={6}
-            onChange={(e) =>
-              setJoinId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))
-            }
-            placeholder="6-char id"
-            aria-label="Board id to join"
-          />
-          <button
-            type="button"
-            onClick={() => trake.joinBoard(joinId)}
-            disabled={joinId.length !== 6}
-            className="rounded border border-outline-variant px-2 text-label-sm disabled:opacity-40"
-          >
-            Join
-          </button>
-        </div>
-        {trake.boardId && (
-          <p className="text-mono-sm text-on-surface-variant tracking-widest">
-            Code: <span className="font-bold text-on-surface">{trake.boardId}</span>
-          </p>
-        )}
         {trake.error && (
           <p className="text-label-sm text-red-500">{trake.error}</p>
         )}
@@ -357,7 +322,9 @@ export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoar
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {!trake.board ? (
           <p className="text-label-sm text-on-surface-variant p-2">
-            Create or join a board to collaborate on TRAKE Events.
+            {trake.error
+              ? "Shared TRAKE board unavailable."
+              : "Connecting to the shared TRAKE board…"}
           </p>
         ) : (
           <DndContext
