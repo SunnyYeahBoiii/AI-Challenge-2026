@@ -5,6 +5,7 @@ from pymilvus.exceptions import MilvusException
 
 from app.errors import error_response
 from app.models import (
+    ALLOWED_VIDEO_PREFIXES,
     MultiBoxRequest,
     RepeatFramesRequest,
     SearchRequest,
@@ -55,6 +56,7 @@ def api_search():
             ocr_search_mode=data.ocr_search_mode,
             asr_search_mode=data.asr_search_mode,
             keyword_field_mode=data.keyword_field_mode,
+            video_prefixes=data.video_prefixes,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
@@ -91,6 +93,7 @@ def api_search_image():
     ocr_search_mode = request.form.get("ocr_search_mode", "exact")
     asr_search_mode = request.form.get("asr_search_mode", "exact")
     keyword_field_mode = request.form.get("keyword_field_mode", "and")
+    video_prefixes = request.form.getlist("video_prefixes")
     if ocr_search_mode not in {"fuzzy", "exact"}:
         return error_response("VALIDATION_ERROR", "ocr_search_mode must be fuzzy or exact", 400)
     if asr_search_mode not in {"fuzzy", "exact"}:
@@ -99,6 +102,8 @@ def api_search_image():
         return error_response(
             "VALIDATION_ERROR", "keyword_field_mode must be one of: asr, ocr, or, and", 400
         )
+    if any(prefix not in ALLOWED_VIDEO_PREFIXES for prefix in video_prefixes):
+        return error_response("VALIDATION_ERROR", "video_prefixes contains an unsupported video prefix", 400)
     image_bytes = file.read()
     try:
         results = search_image(
@@ -116,6 +121,7 @@ def api_search_image():
             ocr_search_mode=ocr_search_mode,
             asr_search_mode=asr_search_mode,
             keyword_field_mode=keyword_field_mode,
+            video_prefixes=video_prefixes,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)
@@ -180,6 +186,7 @@ def api_frames():
             temporal_window=data.temporal_window_seconds,
             enhance=data.enhance,
             mode=data.mode,
+            video_prefixes=data.video_prefixes,
         )
     except NoActiveModelError as error:
         return error_response("NO_ACTIVE_MODEL", str(error), 409)

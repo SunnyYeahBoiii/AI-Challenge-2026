@@ -58,7 +58,7 @@ The timestamp of a Frame within its Video, in **seconds** (float). Not milliseco
 _Avoid_: treating as ms, dividing by 1000
 
 **TrakeBoard**:
-The collaborative unit for one open TRAKE task. Holds an ordered set of Events, each Event’s Candidate list, and the Selections that will be submitted to DRES.
+The team's single persistent collaborative board for TRAKE. Everyone connected to cloud-api joins it automatically; no board code is needed. Holds an ordered set of Events, each Event’s Candidate list, and the Selections that will be submitted to DRES.
 _Avoid_: room, session, workspace, TRAKE board (spacing)
 
 **Event**:

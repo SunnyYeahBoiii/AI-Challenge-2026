@@ -29,6 +29,20 @@ def _video_expr(video_ids: Sequence[str]) -> str | None:
     return f"video_id in [{', '.join(_quote(v) for v in video_ids)}]"
 
 
+def _video_prefix_expr(prefixes: Sequence[str] | None) -> str | None:
+    """Build a Milvus expression that limits results to video ID prefixes."""
+    unique_prefixes = sorted(set(prefixes or []))
+    if not unique_prefixes:
+        return None
+    return " or ".join(f"video_id like {_quote(f'{prefix}%')}" for prefix in unique_prefixes)
+
+
+def _and_expr(*expressions: str | None) -> str | None:
+    """Combine optional Milvus predicates without changing their precedence."""
+    parts = [f"({expression})" for expression in expressions if expression]
+    return " and ".join(parts) if parts else None
+
+
 # ── Enrichment ──────────────────────────────────────────────────────────────
 def _frame_key(frame: Frame) -> FrameKey:
     return (frame.get("video_id"), frame.get("frame_index"))

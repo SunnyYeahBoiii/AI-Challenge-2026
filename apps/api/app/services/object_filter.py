@@ -139,6 +139,7 @@ def matching_frame_keys(
     tags: Sequence[str] | None,
     mode: str = "and",
     allowed_video_ids: set[str] | None = None,
+    video_prefixes: Sequence[str] | None = None,
 ) -> list[FrameKey]:
     """Return every matching detection key in deterministic video/frame order."""
     normalised_tags = _normalise_tags(tags)
@@ -151,6 +152,12 @@ def matching_frame_keys(
         lazy_db.filter(pl.col("class_name").str.to_lowercase().is_in(normalised_tags))
         .select("frame_id", "class_name")
     )
+    prefixes = sorted(set(video_prefixes or []))
+    if prefixes:
+        prefix_match = pl.col("frame_id").str.starts_with(prefixes[0])
+        for prefix in prefixes[1:]:
+            prefix_match = prefix_match | pl.col("frame_id").str.starts_with(prefix)
+        matches = matches.filter(prefix_match)
     if mode == "or":
         rows = matches.select("frame_id").unique().collect()
     else:

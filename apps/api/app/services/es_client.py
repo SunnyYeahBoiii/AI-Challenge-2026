@@ -317,6 +317,7 @@ class ESClient:
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
         allowed_video_ids: Sequence[str] | None = None,
+        video_prefixes: Sequence[str] | None = None,
         page_size: int = 500,
     ) -> Iterable[tuple[str, int, float]]:
         """Yield global keyword matches in stable Elasticsearch relevance order."""
@@ -345,6 +346,14 @@ class ESClient:
             if not video_ids:
                 return
             filters.append({"terms": {"video_id": video_ids}})
+        prefixes = sorted(set(video_prefixes or []))
+        if prefixes:
+            filters.append({
+                "bool": {
+                    "should": [{"prefix": {"video_id": prefix}} for prefix in prefixes],
+                    "minimum_should_match": 1,
+                }
+            })
 
         search_after: list[Any] | None = None
         size = max(1, min(int(page_size), MAX_KEYWORD_HITS))

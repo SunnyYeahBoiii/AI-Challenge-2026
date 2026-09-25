@@ -60,6 +60,5 @@ export interface TrakeCandidatePayload {
   addedBy?: string;
 }
 
-export const TRAKE_BOARD_ID_KEY = "trakeBoardId";
 export const TRAKE_DISPLAY_NAME_KEY = "trakeDisplayName";
 export const TRAKE_FRAME_MIME = "application/x-trake-frame";

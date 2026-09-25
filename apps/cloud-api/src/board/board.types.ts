@@ -56,13 +56,6 @@ export interface SetSelectionInput extends MomentRef {
   updatedBy?: string;
 }
 
-export class CreateBoardInput {
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  title?: string;
-}
-
 export class AddBoardEventInput {
   @IsOptional()
   @IsString()

@@ -1,6 +1,13 @@
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, model_validator
+
+VideoPrefix = Literal[
+    "L", "M", "N", "S",  # Existing broad filters remain valid for API clients.
+    "L21_V", "L22_V", "L23_V", "L24_V", "L25_V", "L26_V", "L27_V", "L28_V", "L29_V", "L30_V",
+    "S01_V",
+]
+ALLOWED_VIDEO_PREFIXES = set(get_args(VideoPrefix))
 
 
 class SearchRequest(BaseModel):
@@ -23,6 +30,7 @@ class SearchRequest(BaseModel):
     asr_search_mode: Literal["fuzzy", "exact"] = "exact"
     topk: int = Field(default=1500, ge=1, le=10000)
     enhance: bool = False
+    video_prefixes: list[VideoPrefix] = []
 
     @model_validator(mode="after")
     def validate_search_content(self) -> "SearchRequest":
@@ -135,6 +143,7 @@ class MultiBoxRequest(BaseModel):
     temporal_window_seconds: float = Field(default=90.0, gt=0)
     enhance: bool = True
     mode: Literal["parallel", "sequential"] = "parallel"
+    video_prefixes: list[VideoPrefix] = []
 
 
 class RepeatFrameRequest(BaseModel):

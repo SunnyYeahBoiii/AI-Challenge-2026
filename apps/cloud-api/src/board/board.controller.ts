@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put } from "@nestjs/common";
-import { BoardService } from "./board.service";
+import { Body, Controller, Get, Post, Put } from "@nestjs/common";
+import { BoardService, SHARED_BOARD_ID } from "./board.service";
 import {
   AddBoardEventInput,
-  CreateBoardInput,
   ReorderBoardEventsInput,
 } from "./board.types";
 
@@ -10,28 +9,18 @@ import {
 export class BoardController {
   constructor(private readonly boards: BoardService) {}
 
-  @Get()
-  async list() {
-    return { boards: await this.boards.listBoards() };
+  @Get("shared")
+  getShared() {
+    return this.boards.getSharedBoard();
   }
 
-  @Post()
-  create(@Body() body: CreateBoardInput) {
-    return this.boards.createBoard(body.title);
+  @Post("shared/events")
+  addEvent(@Body() body: AddBoardEventInput) {
+    return this.boards.addEvent(SHARED_BOARD_ID, body.labelText ?? "");
   }
 
-  @Get(":id")
-  get(@Param("id") id: string) {
-    return this.boards.getBoard(id);
-  }
-
-  @Post(":id/events")
-  addEvent(@Param("id") id: string, @Body() body: AddBoardEventInput) {
-    return this.boards.addEvent(id, body.labelText ?? "");
-  }
-
-  @Put(":id/events/reorder")
-  reorder(@Param("id") id: string, @Body() body: ReorderBoardEventsInput) {
-    return this.boards.reorderEvents(id, body.orderedEventIds);
+  @Put("shared/events/reorder")
+  reorder(@Body() body: ReorderBoardEventsInput) {
+    return this.boards.reorderEvents(SHARED_BOARD_ID, body.orderedEventIds);
   }
 }

@@ -157,6 +157,24 @@ def test_multi_box_temporal_window_defaults_to_90_seconds() -> None:
     assert request.temporal_window_seconds == 90.0
 
 
+def test_multi_box_accepts_video_prefixes() -> None:
+    request = MultiBoxRequest(box_queries=[BoxQuery(text="q")], video_prefixes=["L", "N"])
+    assert request.video_prefixes == ["L", "N"]
+
+
+def test_multi_box_accepts_specific_video_categories() -> None:
+    request = MultiBoxRequest(
+        box_queries=[BoxQuery(text="q")],
+        video_prefixes=["L21_V", "L22_V", "M", "S01_V"],
+    )
+    assert request.video_prefixes == ["L21_V", "L22_V", "M", "S01_V"]
+
+
+def test_multi_box_rejects_unknown_video_prefix() -> None:
+    with pytest.raises(ValidationError):
+        MultiBoxRequest(box_queries=[BoxQuery(text="q")], video_prefixes=["X"])
+
+
 def test_multi_box_rejects_non_positive_temporal_window() -> None:
     with pytest.raises(ValidationError):
         MultiBoxRequest(box_queries=[BoxQuery(text="q")], temporal_window_seconds=0)

@@ -15,6 +15,7 @@ from app.services.hybrid_search.common import (
     FrameKey,
     Vector,
     _collapse_shots,
+    _and_expr,
     _enrich_frames,
     _filter_by_keywords,
     _frame_key,
@@ -22,6 +23,7 @@ from app.services.hybrid_search.common import (
     _quote,
     _sorted_unique,
     _video_expr,
+    _video_prefix_expr,
 )
 from app.services.hybrid_search.temporal_paths import _forward_flags
 from app.services.milvus_client import clamp_milvus_topk, get_milvus_client
@@ -48,6 +50,7 @@ def search_text(
     ocr_search_mode: str = "exact",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
+    video_prefixes: Sequence[str] | None = None,
 ) -> list[Frame]:
     """Search by a vector query, filters, or both."""
     if enhance and query:
@@ -55,7 +58,9 @@ def search_text(
     if query:
         vec: list[float] = manager.embed_text([query])[0].tolist()
         frames = get_milvus_client(manager.active_collection_name()).search(
-            vec, topk=clamp_milvus_topk(topk * 2)
+            vec,
+            topk=clamp_milvus_topk(topk * 2),
+            expr=_video_prefix_expr(video_prefixes),
         )
         frames = filter_frames(frames, tags, tag_mode)
         frames = _filter_by_keywords(
@@ -86,6 +91,7 @@ def search_text(
             "asr_search_mode": asr_search_mode,
             "keyword_field_mode": keyword_field_mode,
             "topk": topk,
+            "video_prefixes": list(video_prefixes or []),
         })
     frames = _enrich_frames(frames)
     frames = _collapse_shots(_fuse_scores(frames))
@@ -107,11 +113,14 @@ def search_image(
     ocr_search_mode: str = "exact",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
+    video_prefixes: Sequence[str] | None = None,
 ) -> list[Frame]:
     """Image search: embed -> Milvus -> Polars tags -> ES keywords."""
     vec: list[float] = manager.embed_image(image_bytes).tolist()
     frames = get_milvus_client(manager.active_collection_name()).search(
-        vec, topk=clamp_milvus_topk(topk * 2)
+        vec,
+        topk=clamp_milvus_topk(topk * 2),
+        expr=_video_prefix_expr(video_prefixes),
     )
     frames = filter_frames(frames, tags, tag_mode)
     frames = _filter_by_keywords(
@@ -277,7 +286,9 @@ def _has_keywords(box: Box) -> bool:
 
 
 def _filter_only_candidates(
-    box: Box, allowed_video_ids: set[str] | None = None
+    box: Box,
+    allowed_video_ids: set[str] | None = None,
+    video_prefixes: Sequence[str] | None = None,
 ) -> list[Frame]:
     """Build a filter-ranked layer, then resolve metadata from active Milvus."""
     limit = _box_topk(box)
@@ -301,6 +312,7 @@ def _filter_only_candidates(
                 asr_search_mode=box.get("asr_search_mode", "exact"),
                 keyword_field_mode=box.get("keyword_field_mode", "and"),
                 allowed_video_ids=sorted(allowed_video_ids) if allowed_video_ids is not None else None,
+                video_prefixes=video_prefixes,
                 page_size=FILTER_FETCH_CHUNK,
             ):
                 key = (video_id, frame_index)
@@ -313,6 +325,7 @@ def _filter_only_candidates(
             tags,
             box.get("tag_match_mode", "and"),
             allowed_video_ids=allowed_video_ids,
+            video_prefixes=video_prefixes,
         )
 
     milvus = get_milvus_client(manager.active_collection_name())
@@ -356,7 +369,7 @@ def _filter_only_candidates(
 
 
 def _parallel_retrieve(
-    boxes: Sequence[Box], vectors: Sequence[Vector]
+    boxes: Sequence[Box], vectors: Sequence[Vector], video_prefixes: Sequence[str] | None = None
 ) -> list[list[Frame]]:
     """Retrieve independent boxes in at most three concurrent Milvus batches.
 
@@ -379,7 +392,9 @@ def _parallel_retrieve(
             assert vector is not None
             embeddings.append(vector)
         assert milvus is not None
-        return indices, milvus.search_batch(embeddings, topk=limit)
+        return indices, milvus.search_batch(
+            embeddings, topk=limit, expr=_video_prefix_expr(video_prefixes)
+        )
 
     if buckets:
         with ThreadPoolExecutor(max_workers=len(buckets)) as executor:
@@ -399,7 +414,9 @@ def _parallel_retrieve(
             per_box[index] = frames
     for index, vector in enumerate(vectors):
         if vector is None:
-            per_box[index] = _filter_only_candidates(boxes[index])
+            per_box[index] = _filter_only_candidates(
+                boxes[index], video_prefixes=video_prefixes
+            )
     return per_box
 
 
@@ -425,7 +442,8 @@ def _retain_forward_reachable(
 
 
 def _sequential_retrieve(
-    boxes: Sequence[Box], vectors: Sequence[Vector], window: float
+    boxes: Sequence[Box], vectors: Sequence[Vector], window: float,
+    video_prefixes: Sequence[str] | None = None,
 ) -> list[list[Frame]]:
     """Search each stage inside the videos surviving its predecessor stage."""
     per_box: list[list[Frame]] = [[] for _ in boxes]
@@ -435,16 +453,24 @@ def _sequential_retrieve(
     milvus = get_milvus_client(manager.active_collection_name())
     previous: list[Frame] = []
     for index, (box, vector) in enumerate(zip(boxes, vectors)):
-        expression = None
+        expression = _video_prefix_expr(video_prefixes)
         allowed_video_ids: set[str] | None = None
         if index:
             video_ids = sorted({str(frame.get("video_id")) for frame in previous if frame.get("video_id")})
-            expression = _video_expr(video_ids)
-            if expression is None:
+            video_expr = _video_expr(video_ids)
+            if video_expr is None:
                 return per_box
+            expression = _and_expr(expression, video_expr) if expression else video_expr
             allowed_video_ids = set(video_ids)
         if vector is None:
-            filtered = _filter_only_candidates(box, allowed_video_ids=allowed_video_ids)
+            if video_prefixes:
+                filtered = _filter_only_candidates(
+                    box,
+                    allowed_video_ids=allowed_video_ids,
+                    video_prefixes=video_prefixes,
+                )
+            else:
+                filtered = _filter_only_candidates(box, allowed_video_ids=allowed_video_ids)
         else:
             frames = milvus.search(vector, topk=_box_topk(box), expr=expression)
             filtered = _post_filter_boxes([box], [frames[:_box_topk(box)]])[0]
