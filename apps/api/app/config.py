@@ -56,3 +56,15 @@ class Config:
 
     # Keyframes are served from local disk instead of MinIO (videos stay on MinIO).
     KEYFRAMES_DIR = os.getenv("KEYFRAMES_DIR", str(DEFAULT_KEYFRAMES_DIR))
+
+    # Video delivery: "local" streams mp4/mov from VIDEOS_DIR over HTTP Range
+    # (/api/videos/<id>/stream); "minio" keeps the legacy HLS playlist URLs.
+    VIDEO_SOURCE = os.getenv("VIDEO_SOURCE", "local").lower()
+    VIDEOS_DIR = os.getenv("VIDEOS_DIR", str(DEFAULT_VIDEOS_DIR))
+    # Optional remuxed copies (moov atom first). Preferred over VIDEOS_DIR when present.
+    VIDEOS_FASTSTART_DIR = os.getenv("VIDEOS_FASTSTART_DIR", str(DEFAULT_VIDEOS_FASTSTART_DIR))
+    # Local HLS packages (<group>/<id>/index.m3u8) from scripts/package_hls.py. Preferred by video_url when present.
+    VIDEOS_HLS_DIR = os.getenv("VIDEOS_HLS_DIR", str(DEFAULT_VIDEOS_HLS_DIR))
+    # Prefix for video_url. Empty = same-origin relative URL (goes through the Next
+    # rewrite proxy). Set to e.g. http://localhost:5001 to let the browser hit Flask directly.
+    VIDEO_PUBLIC_BASE = os.getenv("VIDEO_PUBLIC_BASE", "").rstrip("/")

@@ -77,7 +77,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       videoEl.addEventListener("seeked", onTimeUpdateEvent);
       videoEl.addEventListener("ratechange", reportPlaybackRate);
 
-      if (Hls.isSupported()) {
+      if (!/\.m3u8(\?|$)/.test(src)) {
+        // Plain mp4/mov over HTTP Range: the browser fetches only the byte
+        // ranges it needs, so multi-GB files start and seek without a full
+        // download. Seek to initialTime once the moov atom is parsed.
+        videoEl.preload = "metadata";
+        videoEl.src = src;
+        if (initialTime !== undefined) {
+          videoEl.addEventListener(
+            "loadedmetadata",
+            () => {
+              videoEl.currentTime = initialTime;
+            },
+            { once: true },
+          );
+        }
+        videoEl.addEventListener("error", onError);
+      } else if (Hls.isSupported()) {
         // startPosition tells hls.js which fragment to request first, so it
         // never loads/appends fragment 0 when we actually want to start
         // elsewhere — unlike seeking after the fact, which races the

@@ -39,6 +39,9 @@ services:
       - ./data/objects:/app/data/objects:ro
       - ./data/media-info:/app/data/media-info:ro
       - ./data/keyframes:/app/data/keyframes:ro
+      - ./data/videos_grouped:/app/data/videos_grouped:ro
+      - ./data/videos_faststart:/app/data/videos_faststart:ro
+      - ./data/videos_hls:/app/data/videos_hls:ro
       - hf_cache:/root/.cache/huggingface
     develop:
       watch:
