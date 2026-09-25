@@ -87,7 +87,6 @@ jobs:
             cd /home/sunny/cloud-api
             TAG=${SHORT_TAG} docker compose pull
             TAG=${SHORT_TAG} docker compose up -d
-            sleep 5
-            curl -sf http://localhost:5002/boards > /dev/null
+            curl -fsS --retry 10 --retry-delay 2 --retry-all-errors http://localhost:5002/boards/shared > /dev/null
             docker image prune -f
           EOF
