@@ -59,6 +59,7 @@ export function useTemporalSearch() {
           box_queries: boxQueries,
           mode: filter.mode,
           temporal_window_seconds: filter.temporalWindowSeconds,
+          video_prefixes: filter.videoPrefixes,
         });
         if (currentSearchId !== searchIdRef.current) return;
         setSearchResult(data);

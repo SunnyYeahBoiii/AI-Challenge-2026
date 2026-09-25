@@ -8,9 +8,11 @@ import { Icon } from "./icon";
 import { QueryBox, QueryBoxStatic, type BoxQuery } from "./query-box";
 import { listVideos } from "@/lib/api";
 import type { VideoResult } from "@/lib/api";
+import { VIDEO_CATEGORIES, prefixesForVideoCategory, type VideoCategoryId, type VideoPrefix } from "@/lib/video-categories";
 
 export interface SearchFilter {
   videoId?: string;
+  videoPrefixes: VideoPrefix[];
   queries: BoxQuery[];
   mode: "parallel" | "sequential";
   temporalWindowSeconds: number;
@@ -50,6 +52,8 @@ export function FilterPanel({
   onGridColsChange,
 }: FilterPanelProps) {
   const [videoId, setVideoId] = useState("");
+  const [videoCategory, setVideoCategory] = useState<VideoCategoryId | "">("");
+  const [queriesVisible, setQueriesVisible] = useState(true);
   const [queries, setQueries] = useState<BoxQuery[]>([
     createDefaultQuery("1"),
   ]);
@@ -117,19 +121,20 @@ export function FilterPanel({
   );
 
   const canSearch = videoId.trim().length > 0 || queries.some(isSearchable);
+  const videoPrefixes = prefixesForVideoCategory(videoCategory);
 
   const handleSearch = useCallback(() => {
     if (videoId.trim()) {
-      onSearch({ videoId: videoId.trim(), queries: [], mode, temporalWindowSeconds });
+      onSearch({ videoId: videoId.trim(), videoPrefixes, queries: [], mode, temporalWindowSeconds });
       return;
     }
     const enabledQueries = queries.filter(isSearchable);
     if (enabledQueries.length > 0) {
-      onSearch({ queries: enabledQueries, mode, temporalWindowSeconds });
+      onSearch({ videoPrefixes, queries: enabledQueries, mode, temporalWindowSeconds });
     } else {
       onValidationError("Enter a Video ID or at least one enabled query with content");
     }
-  }, [videoId, queries, mode, temporalWindowSeconds, onSearch, onValidationError]);
+  }, [videoId, videoCategory, queries, mode, temporalWindowSeconds, onSearch, onValidationError]);
 
   // Ctrl+Enter / Cmd+Enter triggers search from anywhere on the page.
   useEffect(() => {
@@ -173,10 +178,11 @@ export function FilterPanel({
     setVideoId(video.video_id);
     setShowSuggestions(false);
     setSuggestions([]);
-    onSearch({ videoId: video.video_id, queries: [], mode, temporalWindowSeconds });
+    onSearch({ videoId: video.video_id, videoPrefixes, queries: [], mode, temporalWindowSeconds });
   };
 
   const addQuery = () => {
+    setQueriesVisible(true);
     setQueries((prev) => [
       ...prev,
       createDefaultQuery(Date.now().toString()),
@@ -193,6 +199,7 @@ export function FilterPanel({
 
   const handleClear = useCallback(() => {
     setVideoId("");
+    setVideoCategory("");
     setQueries([createDefaultQuery("1")]);
     setMode("parallel");
     setTemporalWindowSeconds(90);
@@ -231,6 +238,25 @@ export function FilterPanel({
               ))}
             </div>
           )}
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="video-category" className="text-label-md text-on-surface-variant flex items-center gap-1 mb-2">
+            <Icon name="filter_list" size={16} /> Loại video
+          </label>
+          <select
+            id="video-category"
+            value={videoCategory}
+            onChange={(event) => setVideoCategory(event.target.value as VideoCategoryId | "")}
+            className="w-full rounded border border-outline-variant bg-surface-container-lowest px-2 py-2 text-body-sm text-on-surface outline-none focus:border-primary"
+          >
+            <option value="">Tất cả loại video</option>
+            {VIDEO_CATEGORIES.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.label} ({category.description})
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Temporal Search */}
@@ -308,9 +334,18 @@ export function FilterPanel({
       </div>
 
       {/* Queries List */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low">
+      <div className={`${queriesVisible ? "flex-1 min-h-0 overflow-y-auto" : "shrink-0"} custom-scrollbar p-stack-gap flex flex-col gap-stack-gap bg-surface-container-low`}>
         <div className="flex justify-between items-center px-1 shrink-0">
-          <h3 className="text-label-md text-on-surface">Queries</h3>
+          <button
+            type="button"
+            onClick={() => setQueriesVisible((visible) => !visible)}
+            aria-expanded={queriesVisible}
+            aria-controls="query-input-area"
+            className="flex items-center gap-1 text-label-md text-on-surface hover:text-primary transition-colors"
+          >
+            <Icon name={queriesVisible ? "expand_less" : "expand_more"} size={18} />
+            Queries ({queries.length})
+          </button>
           <div className="flex items-center gap-1">
             <button
               onClick={handleClear}
@@ -329,18 +364,34 @@ export function FilterPanel({
             </button>
           </div>
         </div>
-        {dndReady ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis]}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+        <div id="query-input-area" className={queriesVisible ? "flex flex-col gap-stack-gap" : "hidden"}>
+            {dndReady ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={queries.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-stack-gap">
+                    {queries.map((query, index) => (
+                      <QueryBox
+                        key={query.id}
+                        query={query}
+                        index={index}
+                        onUpdate={(updates) => updateQuery(query.id, updates)}
+                        onRemove={() => removeQuery(query.id)}
+                        canRemove={queries.length > 1}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            ) : (
               <div className="flex flex-col gap-stack-gap">
                 {queries.map((query, index) => (
-                  <QueryBox
+                  <QueryBoxStatic
                     key={query.id}
                     query={query}
                     index={index}
@@ -350,22 +401,8 @@ export function FilterPanel({
                   />
                 ))}
               </div>
-            </SortableContext>
-          </DndContext>
-        ) : (
-          <div className="flex flex-col gap-stack-gap">
-            {queries.map((query, index) => (
-              <QueryBoxStatic
-                key={query.id}
-                query={query}
-                index={index}
-                onUpdate={(updates) => updateQuery(query.id, updates)}
-                onRemove={() => removeQuery(query.id)}
-                canRemove={queries.length > 1}
-              />
-            ))}
-          </div>
-        )}
+            )}
+        </div>
       </div>
 
       {/* Action Buttons */}

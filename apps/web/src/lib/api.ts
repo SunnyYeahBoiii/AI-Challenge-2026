@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { VideoPrefix } from "@/lib/video-categories";
 
 import { frameRepeatKey } from "./repeat-detection";
 
@@ -128,6 +129,7 @@ export interface MultiBoxRequest {
   temporal_window_seconds?: number;
   enhance?: boolean;
   mode?: "parallel" | "sequential";
+  video_prefixes?: VideoPrefix[];
 }
 
 // ====== Search API ======

@@ -241,6 +241,7 @@ def multi_box_search(
     temporal_window: float = 90.0,
     enhance: bool = True,
     mode: str = "parallel",
+    video_prefixes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Run temporal search with per-box retrieval and structured video results."""
     if not box_queries:
@@ -248,9 +249,11 @@ def multi_box_search(
 
     vectors = _box_vectors(box_queries, enhance)
     if len(box_queries) == 1 or mode == "parallel":
-        per_box = _parallel_retrieve(box_queries, vectors)
+        per_box = _parallel_retrieve(box_queries, vectors, video_prefixes=video_prefixes)
     else:
-        per_box = _sequential_retrieve(box_queries, vectors, temporal_window)
+        per_box = _sequential_retrieve(
+            box_queries, vectors, temporal_window, video_prefixes=video_prefixes
+        )
     response = build_temporal_response(per_box, temporal_window, mode)
     if manager.get_status()["model_id"] == "siglip2":
         text_query_indices = {

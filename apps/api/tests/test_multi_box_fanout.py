@@ -148,6 +148,22 @@ def test_parallel_tags_do_not_split_milvus_batch(stub):
     assert fake.calls[0]["expr"] is None
 
 
+def test_parallel_limits_milvus_search_to_selected_video_prefixes(stub):
+    fake, _ = stub
+    hs._parallel_retrieve([{"text": "a", "topk": 100}], [[1.0] * 4], video_prefixes=["L", "N"])
+    assert fake.calls[0]["expr"] == 'video_id like "L%" or video_id like "N%"'
+
+
+def test_parallel_limits_milvus_search_to_specific_video_categories(stub):
+    fake, _ = stub
+    hs._parallel_retrieve(
+        [{"text": "a", "topk": 100}], [[1.0] * 4], video_prefixes=["L21_V", "L22_V", "M"]
+    )
+    assert fake.calls[0]["expr"] == (
+        'video_id like "L21_V%" or video_id like "L22_V%" or video_id like "M%"'
+    )
+
+
 def test_filter_only_box_uses_scalar_metadata_query_not_ann(stub):
     fake, _ = stub
     results = hs._parallel_retrieve([{"tags": ["car"], "topk": 500}], [None])

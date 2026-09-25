@@ -109,6 +109,7 @@ export default function Home() {
       setChainEdits({});
       setEditingChain(null);
       handleSearch({
+        videoPrefixes: [],
         queries: lines.map((content, i) => ({
           id: `trake-${i}`,
           type: "text" as const,
