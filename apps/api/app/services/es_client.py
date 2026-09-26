@@ -103,15 +103,27 @@ def _ocr_fuzzy_field_group(
     return _field_group(clauses, mode)
 
 
+def _unordered_field_group(
+    keywords: Sequence[str], field: str, mode: str
+) -> dict[str, Any] | None:
+    """Require every analyzed term while allowing arbitrary order and distance."""
+    clauses = [
+        {"match": {field: {"query": keyword, "operator": "and"}}}
+        for keyword in _nonempty_keywords(keywords)
+    ]
+    return _field_group(clauses, mode)
+
+
 def _keyword_field_group(
     keywords: Sequence[str], field: str, mode: str, search_mode: str
 ) -> dict[str, Any] | None:
     """Build one field group using the requested query-time strategy.
 
-    `fuzzy` is the unordered, typo-tolerant bag-of-words match; `exact` is the
-    ordered, adjacent phrase. Either strategy applies to either field — OCR and
-    ASR only differ in which one is the sensible default, not in what is legal.
+    `unordered` requires all terms without trusting their order, `fuzzy` is the
+    typo-tolerant bag-of-words match, and `exact` is the ordered adjacent phrase.
     """
+    if search_mode == "unordered":
+        return _unordered_field_group(keywords, field, mode)
     if search_mode == "fuzzy":
         return _ocr_fuzzy_field_group(keywords, field, mode)
     if search_mode == "exact":
@@ -197,17 +209,16 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
-        ocr_search_mode: str = "exact",
+        ocr_search_mode: str = "unordered",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
     ) -> dict[FrameKey, float]:
         """Map each matching (video_id, frame_index) to its BM25 relevance score.
 
-        `ocr_search_mode`/`asr_search_mode` pick each field's strategy — fuzzy
-        unordered terms or an ordered, adjacent phrase. `keyword_field_mode`
-        decides whether the two field groups are AND-ed, OR-ed, or whether only
-        one of them is consulted. Within each group, `ocr_mode`/`asr_mode`
-        controls and/or, falling back to `mode` when unset.
+        `ocr_search_mode`/`asr_search_mode` pick each field's term strategy.
+        `keyword_field_mode` decides whether the two field groups are AND-ed,
+        OR-ed, or whether only one of them is consulted. Within each group,
+        `ocr_mode`/`asr_mode` controls and/or, falling back to `mode` when unset.
 
         The score matters because a boolean verdict cannot separate a keyword
         that identifies a frame from one that matches half the corpus — the
@@ -282,7 +293,7 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
-        ocr_search_mode: str = "exact",
+        ocr_search_mode: str = "unordered",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
     ) -> set[FrameKey]:
@@ -313,7 +324,7 @@ class ESClient:
         asr_keywords: Sequence[str] | None = None,
         ocr_mode: str | None = None,
         asr_mode: str | None = None,
-        ocr_search_mode: str = "exact",
+        ocr_search_mode: str = "unordered",
         asr_search_mode: str = "exact",
         keyword_field_mode: str = "and",
         allowed_video_ids: Sequence[str] | None = None,

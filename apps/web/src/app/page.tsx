@@ -40,6 +40,7 @@ export default function Home() {
   const [showDresSettings, setShowDresSettings] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
   const [viewMode, setViewMode] = useState<"grouped" | "continuous">("grouped");
+  const [limitGroupedRows, setLimitGroupedRows] = useState(false);
   const [gridCols, setGridCols] = useState(6);
   const [submissionType, setSubmissionType] = useSessionStorageState<SubmissionType>(
     "submissionType",
@@ -233,6 +234,20 @@ export default function Home() {
                 >
                   Continuous
                 </button>
+                {viewMode === "grouped" && (
+                  <button
+                    type="button"
+                    aria-pressed={limitGroupedRows}
+                    onClick={() => setLimitGroupedRows((limited) => !limited)}
+                    className={`px-3 py-1 rounded text-label-sm transition-colors ${
+                      limitGroupedRows
+                        ? "bg-primary-container text-on-primary-container"
+                        : "hover:bg-surface-variant text-on-surface-variant"
+                    }`}
+                  >
+                    {limitGroupedRows ? "Show all rows" : "Limit 3 rows"}
+                  </button>
+                )}
               </div>
             )}
 
@@ -349,6 +364,7 @@ export default function Home() {
           result={searchResult}
           queryCount={queryCount}
           viewMode={viewMode}
+          limitGroupedRows={limitGroupedRows}
           onFrameSelect={handleFrameSelect}
           onFrameDetail={handleFrameDetail}
           isLoading={isLoading}

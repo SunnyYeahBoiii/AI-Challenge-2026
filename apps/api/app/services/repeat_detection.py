@@ -1,35 +1,25 @@
-"""Exact visual repeat detection for bounded, already-displayed frame sets."""
+"""Visual repeat detection using a precomputed graph with a Milvus fallback."""
 
 from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Sequence
 import threading
-from typing import TypedDict
-
 import numpy as np
 
 from app.services.encoders import manager
 from app.services.milvus_client import get_milvus_client
+from app.services.repeat_graph import (
+    RepeatFrameDetails,
+    RepeatFrameReference,
+    get_repeat_graph,
+)
 
 
 FrameKey = tuple[str, int]
 RepeatCandidate = tuple[str, int, float]
 
 
-class RepeatFrameReference(TypedDict):
-    """A duplicate frame identity safe to return to the browser."""
-
-    video_id: str
-    frame_index: int
-
-
-class RepeatFrameDetails(TypedDict, total=False):
-    """The selected repeat witnesses for one displayed frame."""
-
-    in_video_highest_duplicate: RepeatFrameReference
-    in_video_furthest_duplicate: RepeatFrameReference
-    out_video_highest_duplicate: RepeatFrameReference
 REPEAT_SIMILARITY_THRESHOLD = 0.92
 L25_REPEAT_SIMILARITY_THRESHOLD = 0.97
 SAME_VIDEO_MIN_TIMESTAMP_GAP_SECONDS = 6.0
@@ -227,15 +217,29 @@ def _repeat_details_by_row(
 def find_repeat_frame_details(
     frames: Sequence[RepeatCandidate],
 ) -> dict[FrameKey, RepeatFrameDetails]:
-    """Find displayed frames and their selected visual near-duplicate witnesses."""
+    """Find requested frames and their selected visual near-duplicate witnesses."""
     candidates = _canonical_candidates(frames)
-    if len(candidates) < 2:
+    if not candidates:
         return {}
     if len(candidates) > MAX_REPEAT_FRAMES:
         raise ValueError(f"repeat detection supports at most {MAX_REPEAT_FRAMES} frames")
 
+    graph = get_repeat_graph()
+    if graph is not None:
+        cache_key = (graph.cache_key, candidates)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        graph_result = graph.find_repeat_frame_details(
+            [(video_id, frame_index) for video_id, frame_index, _timestamp in candidates]
+        )
+        _cache_put(cache_key, graph_result)
+        return _copy_repeat_details(graph_result)
+
+    if len(candidates) < 2:
+        return {}
     collection = manager.active_collection_name()
-    cache_key = (collection, candidates)
+    cache_key = (f"milvus:{collection}", candidates)
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached

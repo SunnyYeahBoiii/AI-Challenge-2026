@@ -7,7 +7,7 @@ import { Icon } from "./icon";
 import { TagInput } from "./tag-input";
 import { Toggle } from "./toggle";
 import { MatchModeToggle } from "./match-mode-toggle";
-import { COCO_CLASS_NAMES } from "@/lib/coco-classes";
+import { ImageQueryInput } from "./image-query-input";
 import {
   VOICE_LANGUAGES,
   collectRecognitionText,
@@ -23,12 +23,10 @@ export interface BoxQuery {
   type: "text" | "image";
   content: string;
   enabled: boolean;
-  tags?: string[];
-  tagMatchMode?: "and" | "or";
   keywords?: string[];
   keywordFieldMode?: "asr" | "ocr" | "or" | "and";
   ocrMatchMode?: "and" | "or";
-  ocrSearchMode?: "fuzzy" | "exact";
+  ocrSearchMode?: "unordered" | "fuzzy" | "exact";
   asrMatchMode?: "and" | "or";
   asrSearchMode?: "fuzzy" | "exact";
   topK?: number;
@@ -44,16 +42,21 @@ interface QueryBoxProps {
 }
 
 type SortableBindings = ReturnType<typeof useSortable> | null;
+type KeywordSearchMode = "unordered" | "fuzzy" | "exact";
+const OCR_SEARCH_MODES = ["fuzzy", "exact"] as const;
+const ASR_SEARCH_MODES = ["fuzzy", "exact"] as const;
 const MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024;
-function KeywordSearchModeToggle({
+function KeywordSearchModeToggle<T extends KeywordSearchMode>({
   label,
   mode,
+  options,
   onChange,
   disabled = false,
 }: {
   label: "OCR" | "ASR";
-  mode: "fuzzy" | "exact";
-  onChange: (mode: "fuzzy" | "exact") => void;
+  mode: T;
+  options: readonly T[];
+  onChange: (mode: T) => void;
   disabled?: boolean;
 }) {
   return (
@@ -61,16 +64,18 @@ function KeywordSearchModeToggle({
       className="flex overflow-hidden rounded border border-outline-variant"
       aria-label={`${label} search mode`}
     >
-      {(["fuzzy", "exact"] as const).map((option) => (
+      {options.map((option) => (
         <button
           key={option}
           type="button"
           onClick={() => onChange(option)}
           disabled={disabled}
           title={
-            option === "fuzzy"
-              ? "Unordered terms with automatic spelling tolerance"
-              : "Adjacent words in the entered order"
+            option === "unordered"
+              ? "Require every term in any order"
+              : option === "fuzzy"
+                ? "Unordered terms with automatic spelling tolerance"
+                : "Adjacent words in the entered order"
           }
           className={`px-2 py-0.5 text-label-xs capitalize transition-colors ${
             mode === option
@@ -152,7 +157,6 @@ function QueryBoxInner({
         opacity: sortable.isDragging ? 0.5 : 1,
       }
     : undefined;
-  const [showTags, setShowTags] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
   const [isFileDragging, setIsFileDragging] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -334,37 +338,10 @@ function QueryBoxInner({
             onChange={(e) => onUpdate({ content: e.target.value })}
           />
         ) : (
-          <div className="relative">
-            {query.content ? (
-              <div className="relative">
-                <img
-                  src={query.content}
-                  alt="Query"
-                  className="w-full h-20 object-cover rounded"
-                />
-                <button
-                  onClick={() => onUpdate({ content: "" })}
-                  className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5"
-                >
-                  <Icon name="close" size={14} className="text-white" />
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full h-20 border-2 border-dashed border-outline-variant rounded flex items-center justify-center cursor-pointer hover:bg-surface-container-high transition-colors"
-              >
-                <Icon name="image" size={24} className="text-outline" />
-              </div>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageUpload}
-            />
-          </div>
+          <ImageQueryInput
+            content={query.content}
+            onChange={(content) => onUpdate({ type: "image", content })}
+          />
         )}
         {isFileDragging && (
           <div className="mt-2 text-center text-label-xs font-semibold text-red-600">
@@ -418,47 +395,17 @@ function QueryBoxInner({
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-label-sm text-on-surface-variant">Dịch Việt → Anh</span>
+          <span className="text-label-sm text-on-surface-variant">AI-Enhance</span>
           <Toggle
             checked={query.enhance ?? true}
             onChange={(enhance) => onUpdate({ enhance })}
-            label="Dịch Việt → Anh"
+            label="AI-Enhance"
           />
         </div>
       </div>
 
-      {/* Footer - Expandable Tags/Keywords */}
+      {/* Footer - Expandable Keywords */}
       <div className="bg-surface-bright rounded-b-lg border-t border-surface-variant">
-        <button
-          onClick={() => setShowTags(!showTags)}
-          className="w-full px-3 py-2 flex items-center gap-2 border-b border-surface-variant cursor-pointer hover:bg-surface-container-high transition-colors"
-        >
-          <Icon name="sell" size={14} className="text-outline" />
-          <span className="text-label-sm text-on-surface-variant">
-            Tags {query.tags && query.tags.length > 0 && `(${query.tags.length})`}
-          </span>
-          <Icon
-            name={showTags ? "expand_less" : "expand_more"}
-            size={16}
-            className="text-outline ml-auto"
-          />
-        </button>
-        {showTags && (
-          <div className="p-3 border-b border-surface-variant">
-            <TagInput
-              tags={query.tags || []}
-              onChange={(tags) => onUpdate({ tags })}
-              placeholder="Search COCO class..."
-              suggestions={COCO_CLASS_NAMES}
-              allowCustomValues={false}
-            />
-            <MatchModeToggle
-              label="Match tags"
-              mode={query.tagMatchMode ?? "and"}
-              onChange={(tagMatchMode) => onUpdate({ tagMatchMode })}
-            />
-          </div>
-        )}
         <button
           onClick={() => setShowKeywords(!showKeywords)}
           className="w-full px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-surface-container-high transition-colors rounded-b-lg"
@@ -484,7 +431,7 @@ function QueryBoxInner({
               <TagInput
                 tags={query.keywords || []}
                 onChange={(keywords) => onUpdate({ keywords })}
-                placeholder="Add keyword..."
+                placeholder="Add keyword or phrase..."
               />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <MatchModeToggle
@@ -497,6 +444,7 @@ function QueryBoxInner({
                 <KeywordSearchModeToggle
                   label="OCR"
                   mode={query.ocrSearchMode ?? "exact"}
+                  options={OCR_SEARCH_MODES}
                   onChange={(ocrSearchMode) => onUpdate({ ocrSearchMode })}
                   disabled={ocrDisabled}
                 />
@@ -512,6 +460,7 @@ function QueryBoxInner({
                 <KeywordSearchModeToggle
                   label="ASR"
                   mode={query.asrSearchMode ?? "exact"}
+                  options={ASR_SEARCH_MODES}
                   onChange={(asrSearchMode) => onUpdate({ asrSearchMode })}
                   disabled={asrDisabled}
                 />

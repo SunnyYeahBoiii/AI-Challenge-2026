@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 VideoPrefix = Literal[
     "L", "M", "N", "S",  # Existing broad filters remain valid for API clients.
     "L21_V", "L22_V", "L23_V", "L24_V", "L25_V", "L26_V", "L27_V", "L28_V", "L29_V", "L30_V",
-    "S01_V",
+    "S01-", "S01_V",
 ]
 ALLOWED_VIDEO_PREFIXES = set(get_args(VideoPrefix))
 
@@ -23,10 +23,9 @@ class SearchRequest(BaseModel):
     keyword_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
     keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
-    # Query-time strategy per field: `exact` is the ordered adjacent phrase,
-    # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
-    # because burned-in captions are read verbatim; ASR likewise.
-    ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    # OCR defaults to all terms in any order because extracted tokens are often
+    # scrambled; ASR defaults to an ordered adjacent phrase.
+    ocr_search_mode: Literal["unordered", "fuzzy", "exact"] = "unordered"
     asr_search_mode: Literal["fuzzy", "exact"] = "exact"
     topk: int = Field(default=1500, ge=1, le=10000)
     enhance: bool = False
@@ -87,10 +86,9 @@ class BoxQuery(BaseModel):
     key_match_mode: Literal["and", "or"] = "and"
     keyword_source: Literal["all", "ocr", "asr"] = "all"
     keyword_field_mode: Literal["asr", "ocr", "or", "and"] = "or"
-    # Query-time strategy per field: `exact` is the ordered adjacent phrase,
-    # `fuzzy` the unordered typo-tolerant bag of words. OCR defaults to exact
-    # because burned-in captions are read verbatim; ASR likewise.
-    ocr_search_mode: Literal["fuzzy", "exact"] = "exact"
+    # OCR defaults to all terms in any order because extracted tokens are often
+    # scrambled; ASR defaults to an ordered adjacent phrase.
+    ocr_search_mode: Literal["unordered", "fuzzy", "exact"] = "unordered"
     asr_search_mode: Literal["fuzzy", "exact"] = "exact"
     enhance: bool | None = False
     topk: int = Field(default=1500, ge=1, le=10000)

@@ -3,32 +3,60 @@
 import { useMemo } from "react";
 import { Icon } from "./icon";
 import type { FrameResult } from "@/lib/api";
-
-const NAVIGATOR_FRAME_COUNT = 5;
+import { KEYFRAME_PAGE_SIZE, offsetInPage, pageBounds } from "@/lib/frame-pages";
 
 interface FrameNavigatorProps {
   frames: FrameResult[];
   currentArrayIndex: number;
+  /** Index into `frames` where the visible page starts. */
+  pageStartIndex: number;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
   onFrameSelect: (frame: FrameResult) => void;
   onFullscreen: (frame: FrameResult) => void;
 }
 
-export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFullscreen }: FrameNavigatorProps) {
+const NAV_BUTTON_CLASS =
+  "rounded px-1.5 py-0.5 text-lg leading-none text-white/80 hover:bg-white/20 " +
+  "hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+
+export function FrameNavigator({
+  frames,
+  currentArrayIndex,
+  pageStartIndex,
+  canGoPrevious,
+  canGoNext,
+  onPreviousPage,
+  onNextPage,
+  onFrameSelect,
+  onFullscreen,
+}: FrameNavigatorProps) {
   const { visibleFrames, currentOffset } = useMemo(() => {
-    const windowSize = Math.min(NAVIGATOR_FRAME_COUNT, frames.length);
-    let start = currentArrayIndex - Math.floor(windowSize / 2);
-    if (start < 0) start = 0;
-    if (start + windowSize > frames.length) start = frames.length - windowSize;
+    const { start, end } = pageBounds(pageStartIndex, frames.length, KEYFRAME_PAGE_SIZE);
     return {
-      visibleFrames: frames.slice(start, start + windowSize),
-      currentOffset: currentArrayIndex - start,
+      visibleFrames: frames.slice(start, end),
+      // -1 while the selected frame's thumbnail is on another page: the page
+      // simply shows no highlight until the user pages back or plays on.
+      currentOffset: offsetInPage(pageStartIndex, currentArrayIndex, KEYFRAME_PAGE_SIZE),
     };
-  }, [frames, currentArrayIndex]);
+  }, [frames, currentArrayIndex, pageStartIndex]);
 
   if (frames.length === 0) return null;
 
   return (
     <div className="flex items-center justify-center gap-2 bg-neutral-900 py-3 px-4">
+      <button
+        type="button"
+        onClick={onPreviousPage}
+        disabled={!canGoPrevious}
+        aria-label="Previous 5 keyframes"
+        title="Previous 5 keyframes (←)"
+        className={NAV_BUTTON_CLASS}
+      >
+        <Icon name="chevron_left" size={20} />
+      </button>
       <div className="flex items-center gap-2">
         {visibleFrames.map((frame, i) => {
           const isCurrent = i === currentOffset;
@@ -66,6 +94,16 @@ export function FrameNavigator({ frames, currentArrayIndex, onFrameSelect, onFul
           );
         })}
       </div>
+      <button
+        type="button"
+        onClick={onNextPage}
+        disabled={!canGoNext}
+        aria-label="Next 5 keyframes"
+        title="Next 5 keyframes (→)"
+        className={NAV_BUTTON_CLASS}
+      >
+        <Icon name="chevron_right" size={20} />
+      </button>
     </div>
   );
 }

@@ -9,12 +9,15 @@ RUN bun install --frozen-lockfile --ignore-scripts
 FROM oven/bun:1-alpine AS builder
 ARG API_BASE_URL=http://api:5000
 ARG NEXT_PUBLIC_CLOUD_API_URL=http://localhost:5002
+ARG NEXT_PUBLIC_DRES_SESSION_ID
+ARG NEXT_PUBLIC_DRES_USERNAME
 WORKDIR /app
 ENV API_BASE_URL=$API_BASE_URL
 ENV NEXT_PUBLIC_CLOUD_API_URL=$NEXT_PUBLIC_CLOUD_API_URL
+ENV NEXT_PUBLIC_DRES_SESSION_ID=$NEXT_PUBLIC_DRES_SESSION_ID
+ENV NEXT_PUBLIC_DRES_USERNAME=$NEXT_PUBLIC_DRES_USERNAME
 COPY package.json bun.lock turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web/ ./apps/web/
 COPY data/objects/classname.json ./data/objects/classname.json
 RUN bunx turbo build --filter=@repo/web

@@ -6,8 +6,9 @@ Branch `feat/es-ocr-asr-tuning`. Mục tiêu: search text trên OCR/ASR chính x
 
 Trước đây cả OCR lẫn ASR dùng chung `match_phrase` (khớp cụm từ, đúng thứ tự). Vấn đề: OCR trên dataset này là **bag of words xáo trộn, không dấu, không thứ tự ổn định** — `match_phrase` không bao giờ khớp keyword nhiều từ.
 
-- **OCR**: đổi sang `match` không thứ tự + fuzzy.
-  - `minimum_should_match = "2<75%"` — giữ chặt cho keyword ngắn (≤2 từ phải khớp hết), nới dần 75% cho keyword dài. (Threshold "75%" bo tròn xuống với 2 từ → coi như AND, nên phải tách riêng.)
+- **OCR**: mặc định dùng `unordered` — `match` với `operator: and`, bắt buộc đủ mọi từ
+  nhưng không phụ thuộc thứ tự hoặc khoảng cách. `fuzzy` vẫn là lựa chọn nới lỏng riêng.
+  - Fuzzy dùng `minimum_should_match = "2<75%"` — giữ chặt cho keyword ngắn (≤2 từ phải khớp hết), nới dần 75% cho keyword dài. (Threshold "75%" bo tròn xuống với 2 từ → coi như AND, nên phải tách riêng.)
   - `fuzziness: AUTO` + `prefix_length=2`, `max_expansions=20` — chịu lỗi gõ nhưng giới hạn số term expand (đo thực tế: "ajinomoto" 264ms fuzzy AUTO prefix mặc định → 4ms strict, chỉ đổi 1% recall; siết `prefix_length=2` đưa về <30ms).
   - Skip fuzziness nếu keyword chứa số (biển số, timecode, video id kiểu "51F", "L21_V001") — số này không có "hàng xóm" gần đúng edit-distance, đo được 3 hit strict vs 223 hit fuzzy (noise).
 

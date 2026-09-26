@@ -34,7 +34,7 @@ function createDefaultQuery(id: string): BoxQuery {
     content: "",
     enabled: true,
     topK: 1500,
-    enhance: false,
+    enhance: true,
     keywordFieldMode: "or",
     ocrMatchMode: "and",
     asrMatchMode: "and",
@@ -115,7 +115,6 @@ export function FilterPanel({
   const isSearchable = (q: BoxQuery) => Boolean(
     q.enabled && (
       q.content.trim() ||
-      q.tags?.length ||
       q.keywords?.length
     )
   );

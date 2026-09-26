@@ -1,0 +1,69 @@
+{
+  "archive_sha256": "fd2e1d2bbb27ac0b5f4383df2d7b5ac5308bae2e56be32552ae296a2a94cd29c",
+  "built_at_utc": "2026-09-10T11:35:36.870547+00:00",
+  "comparison_pools": [
+    {
+      "levels": [
+        "L23"
+      ],
+      "name": "L23",
+      "same_video_min_gap_seconds": 6.0,
+      "similarity_threshold": 0.95
+    },
+    {
+      "levels": [
+        "L24"
+      ],
+      "name": "L24",
+      "same_video_min_gap_seconds": 6.0,
+      "similarity_threshold": 0.96
+    },
+    {
+      "levels": [
+        "L25"
+      ],
+      "name": "L25",
+      "same_video_min_gap_seconds": 25.0,
+      "similarity_threshold": 0.97
+    },
+    {
+      "levels": [
+        "L26"
+      ],
+      "name": "L26",
+      "same_video_min_gap_seconds": 6.0,
+      "similarity_threshold": 0.94
+    },
+    {
+      "levels": [
+        "L27",
+        "L28",
+        "L29"
+      ],
+      "name": "L27-L29",
+      "same_video_min_gap_seconds": 6.0,
+      "similarity_threshold": 0.96
+    },
+    {
+      "levels": [
+        "L21",
+        "L22",
+        "L30"
+      ],
+      "name": "L21-L22-L30",
+      "same_video_min_gap_seconds": 6.0,
+      "similarity_threshold": 0.93
+    }
+  ],
+  "directed_edge_count": 8574712,
+  "duration_seconds": 79.400505,
+  "embedding_dim": 1152,
+  "embedding_model": "google/siglip2-so400m-patch14-384",
+  "embedding_revision": "main",
+  "format_version": 1,
+  "metadata_sha256": "5dd3100db94640bce9a799a242c341d076f2d08d2d0f8ed20a24f0f0b07d17bf",
+  "model_id": "siglip2",
+  "node_count": 145955,
+  "source_archive_name": "siglip2-so400m-batch1.zip",
+  "undirected_edge_count": 4287356
+}

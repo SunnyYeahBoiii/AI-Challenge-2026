@@ -86,7 +86,7 @@ def _filter_by_keywords(
     source: str = "all",
     ocr_mode: str | None = None,
     asr_mode: str | None = None,
-    ocr_search_mode: str = "exact",
+    ocr_search_mode: str = "unordered",
     asr_search_mode: str = "exact",
     keyword_field_mode: str = "and",
 ) -> list[Frame]:

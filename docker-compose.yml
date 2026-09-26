@@ -8,6 +8,8 @@ services:
         # Baked into the browser bundle — must be reachable from each user's
         # browser (host LAN/Tailscale IP), not a docker-internal hostname.
         NEXT_PUBLIC_CLOUD_API_URL: ${NEXT_PUBLIC_CLOUD_API_URL:-http://localhost:5002}
+        NEXT_PUBLIC_DRES_SESSION_ID: ${NEXT_PUBLIC_DRES_SESSION_ID:-}
+        NEXT_PUBLIC_DRES_USERNAME: ${NEXT_PUBLIC_DRES_USERNAME:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -15,6 +17,8 @@ services:
     environment:
       - API_BASE_URL=http://api:5000
       - NEXT_PUBLIC_CLOUD_API_URL=${NEXT_PUBLIC_CLOUD_API_URL:-http://localhost:5002}
+      - NEXT_PUBLIC_DRES_SESSION_ID=${NEXT_PUBLIC_DRES_SESSION_ID:-}
+      - NEXT_PUBLIC_DRES_USERNAME=${NEXT_PUBLIC_DRES_USERNAME:-}
 
   api:
     build:
@@ -66,8 +70,25 @@ services:
     ports:
       - "19530:19530"
       - "9091:9091"
+    # Milvus 2.4 derives its memory budget from the cgroup limit, so this is what
+    # actually stops it growing: without it, Milvus believes it owns the whole
+    # 11.67 GB Docker VM, fills it, and Docker balloons into swap until macOS
+    # cannot run the window server. Measured steady state is ~2.8 GB, so 4 GB
+    # leaves headroom. Exceeding it OOM-kills milvus, which is recoverable;
+    # freezing the host is not.
+    mem_limit: 4g
+    # memswap_limit == mem_limit is what disables swap. Docker's default is
+    # 2x mem_limit, which would let Milvus balloon into 4 GB of swap — the exact
+    # mechanism that made the host unresponsive. Hit the cap and the kernel
+    # OOM-kills Milvus instead.
+    memswap_limit: 4g
+    mem_reservation: 2g
+    restart: unless-stopped
     volumes:
       - milvus_data:/var/lib/milvus
+      - milvus_metadata:/milvus/default.etcd
+      # Sizes Milvus's own caches for the mem_limit budget above.
+      - ./data/milvus-user.yaml:/milvus/configs/user.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 10s
@@ -82,6 +103,13 @@ services:
     image: elasticsearch:8.12.0
     ports:
       - "9200:9200"
+    # Heap is pinned at 512 MB, but Lucene mmaps the index off-heap and that
+    # counts too. Cap the container so ES cannot creep up with segment count,
+    # and disable swap for the same reason as milvus.
+    mem_limit: 2g
+    memswap_limit: 2g
+    mem_reservation: 1g
+    restart: unless-stopped
     volumes:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
@@ -95,9 +123,17 @@ services:
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # Defaults to 10% of heap per shard; at ~350k docs the index has enough
+      # segments to hold the ceiling open, and the buffer is off-heap.
+      - indices.memory.index_buffer_size=10%
+      - indices.memory.max_index_buffer_size=64mb
 
+  # Debug tooling only. The app never calls these; together they cost ~670 MB,
+  # which is a third of the free memory on a 16 GB host. Start with:
+  #   docker compose --profile debug up -d kibana attu
   kibana:
     image: kibana:8.12.0
+    profiles: ["debug"]
     ports:
       - "5601:5601"
     depends_on:
@@ -106,8 +142,10 @@ services:
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
 
+  # Same rationale as kibana. Attu is the Milvus collection browser.
   attu:
     image: zilliz/attu:latest
+    profiles: ["debug"]
     ports:
       - "3001:3000"
     environment:
@@ -118,5 +156,6 @@ services:
 
 volumes:
   milvus_data:
+  milvus_metadata:
   es_data:
   hf_cache:

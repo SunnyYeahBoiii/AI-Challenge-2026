@@ -5,6 +5,11 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { classifyDresSubmit, fetchRepeatFrameDetails, submitFrameToDres } from "@/lib/api";
 import { pinKey } from "@/lib/pin-types";
+import {
+  SUBMIT_STATUS_STYLE,
+  submitStatusTitle,
+  type SubmitStatus,
+} from "@/lib/submit-verdict";
 import type { FrameResult, RepeatFrameDetails, TemporalSearchResponse } from "@/lib/api";
 import {
   canonicalRepeatRequestKey,
@@ -16,6 +21,7 @@ import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 
 const FRAME_PAGE_SIZE = 48;
 const VIDEO_PAGE_SIZE = 12;
+const GROUPED_ROW_LIMIT = 3;
 /** Mirrors RepeatFramesRequest.frames max_length on the API. */
 const REPEAT_FRAME_BATCH_SIZE = 1500;
 
@@ -40,21 +46,13 @@ function splitRepeatBatches(frames: FrameResult[]): FrameResult[][] {
 /** How long a result indicator stays on the card before reverting to idle. */
 const QUICK_SUBMIT_RESULT_MS = 2500;
 
-type QuickSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
 type RepeatHoverState = { key: string; placement: "left" | "right" };
-
-const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }> = {
-  loading: { bg: "bg-black/50", icon: "send" },
-  correct: { bg: "bg-green-600", icon: "check_circle" },
-  wrong: { bg: "bg-orange-600", icon: "cancel" },
-  duplicate: { bg: "bg-orange-600", icon: "content_copy" },
-  error: { bg: "bg-red-600", icon: "error" },
-};
 
 interface ResultsPanelProps {
   result: TemporalSearchResponse;
   queryCount: number;
   viewMode: "grouped" | "continuous";
+  limitGroupedRows?: boolean;
   onFrameSelect: (frame: FrameResult) => void;
   onFrameDetail: (frame: FrameResult) => void;
   isLoading?: boolean;
@@ -74,6 +72,7 @@ export function ResultsPanel({
   result,
   queryCount,
   viewMode,
+  limitGroupedRows = false,
   onFrameSelect,
   onFrameDetail,
   isLoading,
@@ -91,7 +90,7 @@ export function ResultsPanel({
   const [zoomFrame, setZoomFrame] = useState<FrameResult | null>(null);
   const [lastOpenedKey, setLastOpenedKey] = useState<string | null>(null);
   const [quickSubmit, setQuickSubmit] = useState<
-    Record<string, { status: QuickSubmitStatus; message?: string }>
+    Record<string, { status: SubmitStatus; message?: string }>
   >({});
   const repeatAbortRef = useRef<AbortController | null>(null);
   const repeatCacheRef = useRef<Map<string, Record<string, RepeatFrameDetails>>>(new Map());
@@ -177,10 +176,12 @@ export function ResultsPanel({
       video,
       frames:
         viewMode === "grouped"
-          ? video.valid_frames
+          ? limitGroupedRows
+            ? video.valid_frames.slice(0, GROUPED_ROW_LIMIT * gridCols)
+            : video.valid_frames
           : video.best_sequence.frames,
     }));
-  }, [continuousFrames, paginatesFrames, result.videos, viewMode, visibleUnitCount]);
+  }, [continuousFrames, gridCols, limitGroupedRows, paginatesFrames, result.videos, viewMode, visibleUnitCount]);
 
   const visibleFrameCount = displayGroups.reduce((total, group) => total + group.frames.length, 0);
   const visibleVideoCount = new Set(
@@ -456,14 +457,7 @@ export function ResultsPanel({
                   {submissionType !== "qa" && (() => {
                     const entry = quickSubmit[key];
                     const status = entry?.status;
-                    const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
-                    const titleByStatus: Record<QuickSubmitStatus, string> = {
-                      loading: "Submitting…",
-                      correct: "Correct",
-                      wrong: "Wrong",
-                      duplicate: "Already submitted",
-                      error: entry?.message ?? "Submission failed",
-                    };
+                    const style = SUBMIT_STATUS_STYLE[status ?? "loading"];
                     return (
                       <button
                         onClick={(e) => {
@@ -471,7 +465,11 @@ export function ResultsPanel({
                           handleQuickSubmit(frame);
                         }}
                         disabled={status === "loading"}
-                        title={status ? titleByStatus[status] : `Submit frame ${frame.frame_idx}`}
+                        title={
+                          status
+                            ? submitStatusTitle(status, entry?.message)
+                            : `Submit frame ${frame.frame_idx}`
+                        }
                         aria-label="Quick submit frame"
                         className={`absolute top-1 left-1 p-1 rounded text-white transition-opacity ${
                           status ? "opacity-100" : "opacity-0 group-hover:opacity-100"

@@ -2,6 +2,8 @@ import axios from "axios";
 import type { VideoPrefix } from "@/lib/video-categories";
 
 import { frameRepeatKey } from "./repeat-detection";
+import { prepareSearchText } from "./local-translation";
+import type { SubmitStatus } from "./submit-verdict";
 
 const api = axios.create({ baseURL: "/api" });
 
@@ -108,13 +110,11 @@ export interface RepeatFrameDetails extends RepeatFrameKey {
 export interface MultiBoxQuery {
   text?: string;
   image?: string;
-  tags?: string[];
-  tag_match_mode?: "and" | "or";
   ocr_keywords?: string[];
   asr_keywords?: string[];
   ocr_match_mode?: "and" | "or";
   asr_match_mode?: "and" | "or";
-  ocr_search_mode?: "fuzzy" | "exact";
+  ocr_search_mode?: "unordered" | "fuzzy" | "exact";
   asr_search_mode?: "fuzzy" | "exact";
   keyword_field_mode?: "asr" | "ocr" | "or" | "and";
   keywords?: string[];
@@ -130,6 +130,12 @@ export interface MultiBoxRequest {
   enhance?: boolean;
   mode?: "parallel" | "sequential";
   video_prefixes?: VideoPrefix[];
+}
+
+export interface RemoteImageData {
+  dataUrl: string;
+  mediaType: string;
+  size: number;
 }
 
 // ====== Search API ======
@@ -149,8 +155,28 @@ export async function searchVideoFrames(
 export async function multiBoxSearch(
   req: MultiBoxRequest
 ): Promise<TemporalSearchResponse> {
-  const { data } = await api.post("/frames", req);
+  const boxQueries = await Promise.all(
+    req.box_queries.map(async (box) => {
+      const shouldEnhance = box.enhance ?? req.enhance ?? true;
+      if (!box.text || !shouldEnhance) return box;
+      const prepared = await prepareSearchText(box.text, true);
+      return { ...box, text: prepared.text, enhance: prepared.enhance };
+    }),
+  );
+  const { data } = await api.post("/frames", { ...req, box_queries: boxQueries });
   return data;
+}
+
+/** Download and validate a public image URL through the backend. */
+export async function fetchRemoteImage(url: string): Promise<RemoteImageData> {
+  const { data } = await api.post<{
+    data: { data_url: string; media_type: string; size: number };
+  }>("/images/fetch", { url });
+  return {
+    dataUrl: data.data.data_url,
+    mediaType: data.data.media_type,
+    size: data.data.size,
+  };
 }
 
 /** Fetch red repeat-badge evidence without exposing stored embedding vectors. */
@@ -215,14 +241,33 @@ export async function getNearestKeyframes(
 // ====== DRES API ======
 
 export interface DresSubmitResult {
+  /** Stable verdict the API attaches; branch on this rather than on prose. */
+  code?: string;
   submission?: string;
   status?: boolean;
   [key: string]: unknown;
 }
 
-/** Shared DRES verdict classification (order matters: a WRONG verdict wins,
- * then the duplicate flag, then CORRECT). */
-export function classifyDresSubmit(data: DresSubmitResult): "correct" | "wrong" | "duplicate" | "error" {
+/**
+ * Shared DRES verdict classification. Prefers the `code` the API computes (a
+ * filter rejection and a duplicate share `status: false`, so the raw body
+ * alone cannot tell them apart) and falls back to the fields DRES returns.
+ */
+export function classifyDresSubmit(data: DresSubmitResult): SubmitStatus {
+  switch (data.code) {
+    case "DRES_CORRECT":
+      return "correct";
+    case "DRES_WRONG":
+      return "wrong";
+    case "DRES_REJECTED":
+      return "rejected";
+    case "DRES_DUPLICATE":
+      return "duplicate";
+    case "DRES_ERROR":
+      return "error";
+    default:
+      break;
+  }
   if (data.submission === "WRONG") return "wrong";
   if (data.status === false) return "duplicate";
   if (data.submission === "CORRECT") return "correct";

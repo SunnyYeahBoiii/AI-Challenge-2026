@@ -122,11 +122,15 @@ def test_topk_accepts_10000() -> None:
     assert SearchRequest(text="q", topk=10000).topk == 10000
 
 
-def test_keyword_search_modes_default_to_exact() -> None:
-    assert SearchRequest(text="q").ocr_search_mode == "exact"
+def test_keyword_search_modes_use_ocr_unordered_and_asr_exact_defaults() -> None:
+    assert SearchRequest(text="q").ocr_search_mode == "unordered"
     assert SearchRequest(text="q").asr_search_mode == "exact"
-    assert BoxQuery(text="q").ocr_search_mode == "exact"
+    assert BoxQuery(text="q").ocr_search_mode == "unordered"
     assert BoxQuery(text="q").asr_search_mode == "exact"
+
+
+def test_ocr_accepts_unordered_search_mode() -> None:
+    assert BoxQuery(text="q", ocr_search_mode="unordered").ocr_search_mode == "unordered"
 
 
 @pytest.mark.parametrize("field", ["ocr_search_mode", "asr_search_mode"])
@@ -165,9 +169,9 @@ def test_multi_box_accepts_video_prefixes() -> None:
 def test_multi_box_accepts_specific_video_categories() -> None:
     request = MultiBoxRequest(
         box_queries=[BoxQuery(text="q")],
-        video_prefixes=["L21_V", "L22_V", "M", "S01_V"],
+        video_prefixes=["L21_V", "L22_V", "M", "S01-", "S01_V"],
     )
-    assert request.video_prefixes == ["L21_V", "L22_V", "M", "S01_V"]
+    assert request.video_prefixes == ["L21_V", "L22_V", "M", "S01-", "S01_V"]
 
 
 def test_multi_box_rejects_unknown_video_prefix() -> None:

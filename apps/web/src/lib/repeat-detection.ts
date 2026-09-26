@@ -1,3 +1,5 @@
+import { levelOf } from "./video-id";
+
 /** Stable identity for a frame in repeat-detection results and caches. */
 export function frameRepeatKey(frame: {
   video_id: string;
@@ -47,7 +49,8 @@ function sameFrame(left: RepeatFrameReference, right: RepeatFrameReference): boo
 }
 
 function thumbnailUrl(reference: RepeatFrameReference): string {
-  return `/api/keyframes/${reference.video_id}/${reference.frame_index}`;
+  const level = levelOf(reference.video_id);
+  return `/api/keyframes/${level}/${reference.video_id}/${reference.frame_index}.webp`;
 }
 
 /**

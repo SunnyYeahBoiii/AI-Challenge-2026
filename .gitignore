@@ -27,3 +27,9 @@ data
 apps/api/scripts/.load_checkpoint.json
 apps/api/weights/
 scripts/logs/
+ASR/
+
+# Generated data artifacts. The three OCR files exceed GitHub's 100 MB
+# per-file limit, so committing them makes every push fail.
+/ocr-*.jsonl
+/siglip2-repeat-graph*.npz

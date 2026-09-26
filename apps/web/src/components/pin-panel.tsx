@@ -5,21 +5,16 @@ import { isAxiosError } from "axios";
 import { Icon } from "./icon";
 import { classifyDresSubmit, submitFrameToDres } from "@/lib/api";
 import { pinKey } from "@/lib/pin-types";
+import {
+  SUBMIT_STATUS_STYLE,
+  submitStatusTitle,
+  type SubmitStatus,
+} from "@/lib/submit-verdict";
 import type { PinsApi } from "@/hooks/use-pins";
 import type { PinSnapshot } from "@/lib/pin-types";
 
 /** How long a result indicator stays on the pin before reverting to idle. */
 const QUICK_SUBMIT_RESULT_MS = 2500;
-
-type QuickSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
-
-const QUICK_SUBMIT_STYLE: Record<QuickSubmitStatus, { bg: string; icon: string }> = {
-  loading: { bg: "bg-black/50", icon: "send" },
-  correct: { bg: "bg-green-600", icon: "check_circle" },
-  wrong: { bg: "bg-orange-600", icon: "cancel" },
-  duplicate: { bg: "bg-orange-600", icon: "content_copy" },
-  error: { bg: "bg-red-600", icon: "error" },
-};
 
 interface PinPanelProps {
   pins: PinsApi;
@@ -46,7 +41,7 @@ export function PinPanel({
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [quickSubmit, setQuickSubmit] = useState<
-    Record<string, { status: QuickSubmitStatus; message?: string }>
+    Record<string, { status: SubmitStatus; message?: string }>
   >({});
 
   const clearQuickSubmit = (key: string) => {
@@ -153,14 +148,7 @@ export function PinPanel({
                 const key = pinKey(pin.videoId, pin.frameIndex);
                 const entry = quickSubmit[key];
                 const status = entry?.status;
-                const style = QUICK_SUBMIT_STYLE[status ?? "loading"];
-                const titleByStatus: Record<QuickSubmitStatus, string> = {
-                  loading: "Submitting…",
-                  correct: "Correct",
-                  wrong: "Wrong",
-                  duplicate: "Already submitted",
-                  error: entry?.message ?? "Submission failed",
-                };
+                const style = SUBMIT_STATUS_STYLE[status ?? "loading"];
                 return (
                   <div key={pin.id} className="relative group">
                     <button
@@ -189,7 +177,11 @@ export function PinPanel({
                           void handleQuickSubmit(pin);
                         }}
                         disabled={status === "loading"}
-                        title={status ? titleByStatus[status] : `Submit frame ${pin.frameIndex}`}
+                        title={
+                          status
+                            ? submitStatusTitle(status, entry?.message)
+                            : `Submit frame ${pin.frameIndex}`
+                        }
                         aria-label="Quick submit pinned frame"
                         className={`absolute top-1 left-1 p-1 rounded text-white transition-opacity ${
                           status ? "opacity-100" : "opacity-0 group-hover:opacity-100"

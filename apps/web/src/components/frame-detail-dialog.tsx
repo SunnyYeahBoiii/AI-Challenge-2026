@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { SubmitStatusBadge } from "./submit-status";
 import type { DresSubmitState } from "@/hooks/use-dres-submit";
@@ -10,9 +10,20 @@ import { VideoPlayer } from "./video-player";
 import type { VideoPlayerHandle } from "./video-player";
 import { FrameNavigator } from "./frame-navigator";
 import { computeFrameId } from "@/lib/frame-id";
+import {
+  KEYFRAME_PAGE_SIZE,
+  hasFramesAfterWindow,
+  pageStartAfterFetch,
+  pageStartForIndex,
+  previousPageStart,
+  resolveNextPage,
+} from "@/lib/frame-pages";
 
 /** Speeds the ↑/↓ shortcut steps through; 4× helps skim long shots. */
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+
+/** Half-width of the keyframe window fetched around the current frame. */
+const KEYFRAME_WINDOW_RANGE = 5;
 
 export interface FrameSubmission {
   frameId: string;
@@ -73,6 +84,12 @@ export function FrameDetailDialog({
   const [allFrames, setAllFrames] = useState<FrameResult[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(frame.frame_index);
   const [fetchFrameIndex, setFetchFrameIndex] = useState(frame.frame_index);
+  /** Index into `allFrames` where the visible page of keyframes begins. */
+  const [pageStartIndex, setPageStartIndex] = useState(0);
+  /** False once a window came back clamped at the video's last frame. */
+  const [hasFramesAfter, setHasFramesAfter] = useState(true);
+  /** Arrow keys page the strip only once the viewer has been touched. */
+  const [isViewerActive, setIsViewerActive] = useState(false);
   const [allFramesLoading, setAllFramesLoading] = useState(false);
   const [allFramesError, setAllFramesError] = useState<string | null>(null);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
@@ -213,14 +230,98 @@ export function FrameDetailDialog({
     return idx >= 0 ? idx : 0;
   }, [allFrames, currentFrameIndex]);
 
+  const canGoPrevious = pageStartIndex > 0;
+  // Either a further page inside the loaded window, or frames known to exist
+  // past it — which the next-page handler fetches.
+  const canGoNext = pageStartIndex + KEYFRAME_PAGE_SIZE < allFrames.length || hasFramesAfter;
+
+  const markViewerActive = useCallback(() => setIsViewerActive(true), []);
+
+  /**
+   * Set by a page action that had to pull a new window, naming the frame the
+   * user paged away from so the fetch effect can continue past it.
+   */
+  const pendingPageAfterRef = useRef<number | null>(null);
+
+  /**
+   * Page the strip. Deliberately touches neither `currentFrameIndex` nor the
+   * video element: browsing the neighbourhood must not move the playhead.
+   */
+  const goToNextPage = useCallback(() => {
+    setIsViewerActive(true);
+    const decision = resolveNextPage(pageStartIndex, allFrames, hasFramesAfter, KEYFRAME_PAGE_SIZE);
+    if (decision.pageStart !== null) {
+      setPageStartIndex(decision.pageStart);
+      return;
+    }
+    // On the last page of the loaded window with video still ahead: pull a
+    // window around the last frame we hold, aimed to continue past it.
+    if (decision.fetchAfter !== null) {
+      pendingPageAfterRef.current = decision.fetchAfter;
+      setFetchFrameIndex(decision.fetchAfter);
+    }
+  }, [pageStartIndex, allFrames, hasFramesAfter]);
+
+  const goToPreviousPage = useCallback(() => {
+    setIsViewerActive(true);
+    setPageStartIndex(previousPageStart(pageStartIndex, KEYFRAME_PAGE_SIZE));
+  }, [pageStartIndex]);
+
+  // Playback still drives the strip: when the current frame leaves the page on
+  // screen, re-centre on it. Guarded on the index itself so paging, which
+  // never moves the playhead, is not undone.
+  const reconciledIndexRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (reconciledIndexRef.current === currentArrayIndex) return;
+    reconciledIndexRef.current = currentArrayIndex;
+    const outside =
+      currentArrayIndex < pageStartIndex ||
+      currentArrayIndex >= pageStartIndex + KEYFRAME_PAGE_SIZE;
+    if (outside) {
+      setPageStartIndex(
+        pageStartForIndex(currentArrayIndex, allFrames.length, KEYFRAME_PAGE_SIZE),
+      );
+    }
+  }, [currentArrayIndex, pageStartIndex, allFrames.length]);
+
+  // ←/→ page the strip, but only once the viewer has been touched and never
+  // while the user is typing in a field.
+  useEffect(() => {
+    const handlePageKeys = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!isViewerActive) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      if (event.key === "ArrowLeft") {
+        goToPreviousPage();
+      } else {
+        goToNextPage();
+      }
+    };
+    window.addEventListener("keydown", handlePageKeys);
+    return () => window.removeEventListener("keydown", handlePageKeys);
+  }, [isViewerActive, goToNextPage, goToPreviousPage]);
+
   useEffect(() => {
     let cancelled = false;
     setAllFramesLoading(true);
     setAllFramesError(null);
-    searchVideoFrames(frame.video_id, fetchFrameIndex, 5)
+    searchVideoFrames(frame.video_id, fetchFrameIndex, KEYFRAME_WINDOW_RANGE)
       .then((res) => {
         if (!cancelled) {
           setAllFrames(res.results);
+          setHasFramesAfter(
+            hasFramesAfterWindow(res.results, fetchFrameIndex, KEYFRAME_WINDOW_RANGE),
+          );
+          // A paged fetch lands just past the frame the user paged away from,
+          // so the new page continues forward instead of repeating what was
+          // already on screen.
+          const pendingAfter = pendingPageAfterRef.current;
+          pendingPageAfterRef.current = null;
+          setPageStartIndex(
+            pageStartAfterFetch(res.results, fetchFrameIndex, pendingAfter, KEYFRAME_PAGE_SIZE),
+          );
           setAllFramesLoading(false);
         }
       })
@@ -291,7 +392,10 @@ export function FrameDetailDialog({
           {/* Left: Video + Navigator + Submission */}
           <div className="flex flex-col min-h-0 min-w-0 bg-neutral-900 text-white overflow-y-auto">
             {/* Video — larger but capped so OCR/ASR column always stays visible */}
-            <div className="relative w-full h-[420px] overflow-hidden bg-black flex-shrink-0">
+            <div
+              className="relative w-full h-[420px] overflow-hidden bg-black flex-shrink-0"
+              onPointerDown={markViewerActive}
+            >
               <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded bg-black/70 px-1.5 py-1 text-white">
                 <button
                   type="button"
@@ -376,7 +480,13 @@ export function FrameDetailDialog({
               <FrameNavigator
                   frames={allFrames}
                   currentArrayIndex={currentArrayIndex}
+                  pageStartIndex={pageStartIndex}
+                  canGoPrevious={canGoPrevious}
+                  canGoNext={canGoNext}
+                  onPreviousPage={goToPreviousPage}
+                  onNextPage={goToNextPage}
                   onFrameSelect={(f) => {
+                    markViewerActive();
                     beginSeek(f.timestamp);
                     setCurrentFrameIndex(f.frame_index);
                     videoRef.current?.seekTo(f.timestamp);

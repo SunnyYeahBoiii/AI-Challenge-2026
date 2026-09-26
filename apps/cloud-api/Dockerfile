@@ -11,7 +11,6 @@ FROM oven/bun:1-alpine AS builder
 WORKDIR /app
 COPY package.json turbo.json ./
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/cloud-api/node_modules ./apps/cloud-api/node_modules
 COPY apps/cloud-api/ ./apps/cloud-api/
 RUN bunx turbo build --filter=@repo/cloud-api
 
@@ -19,7 +18,6 @@ FROM node:22-alpine AS runner
 WORKDIR /app/apps/cloud-api
 ENV NODE_ENV=production
 COPY --from=builder /app/node_modules /app/node_modules
-COPY --from=builder /app/apps/cloud-api/node_modules ./node_modules
 COPY --from=builder /app/apps/cloud-api/dist ./dist
 COPY --from=builder /app/apps/cloud-api/prisma ./prisma
 COPY --from=builder /app/apps/cloud-api/package.json ./package.json

@@ -33,17 +33,17 @@ describe("repeat detection client helpers", () => {
       expect.objectContaining({
         label: "IN-video Highest",
         identity: "frame_index 6200",
-        thumbnailUrl: "/api/keyframes/L21_V015/6200",
+        thumbnailUrl: "/api/keyframes/L21/L21_V015/6200.webp",
       }),
       expect.objectContaining({
         label: "IN-video Furthest",
         identity: "frame_index 7000",
-        thumbnailUrl: "/api/keyframes/L21_V015/7000",
+        thumbnailUrl: "/api/keyframes/L21/L21_V015/7000.webp",
       }),
       expect.objectContaining({
         label: "OUT-video Highest",
         identity: "L21_V026 / frame_index 5852",
-        thumbnailUrl: "/api/keyframes/L21_V026/5852",
+        thumbnailUrl: "/api/keyframes/L21/L21_V026/5852.webp",
       }),
     ]);
   });

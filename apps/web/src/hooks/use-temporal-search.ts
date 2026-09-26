@@ -13,6 +13,14 @@ import {
   type TemporalSearchResponse,
 } from "@/lib/api";
 
+function base64Payload(dataUrl: string): string {
+  const separator = ";base64,";
+  const separatorIndex = dataUrl.indexOf(separator);
+  return separatorIndex === -1
+    ? dataUrl
+    : dataUrl.slice(separatorIndex + separator.length);
+}
+
 /** Temporal search state and the (race-guarded) search/clear actions. */
 export function useTemporalSearch() {
   const [searchResult, setSearchResult] = useState<TemporalSearchResponse>(
@@ -38,14 +46,12 @@ export function useTemporalSearch() {
       } else {
         const enabledQueries = filter.queries.filter(
           (q) => q.enabled && Boolean(
-            q.content.trim() || q.tags?.length || q.keywords?.length
+            q.content.trim() || q.keywords?.length
           )
         );
         const boxQueries = enabledQueries.map((q) => ({
           text: q.type === "text" ? q.content : undefined,
-          image: q.type === "image" ? q.content : undefined,
-          tags: q.tags?.length ? q.tags : undefined,
-          tag_match_mode: q.tags?.length ? (q.tagMatchMode ?? "and") : undefined,
+          image: q.type === "image" ? base64Payload(q.content) : undefined,
           keywords: q.keywords?.length ? q.keywords : undefined,
           ocr_match_mode: q.keywords?.length ? (q.ocrMatchMode ?? "and") : undefined,
           asr_match_mode: q.keywords?.length ? (q.asrMatchMode ?? "and") : undefined,
@@ -53,7 +59,7 @@ export function useTemporalSearch() {
           asr_search_mode: q.keywords?.length ? (q.asrSearchMode ?? "exact") : undefined,
           keyword_field_mode: q.keywords?.length ? (q.keywordFieldMode ?? "or") : undefined,
           topk: q.topK ?? 1500,
-          enhance: q.enhance ?? false,
+          enhance: q.enhance ?? true,
         }));
         const data = await multiBoxSearch({
           box_queries: boxQueries,

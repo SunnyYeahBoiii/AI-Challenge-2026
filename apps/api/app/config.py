@@ -10,6 +10,8 @@ DEFAULT_OBJECT_DETECTIONS_PATH = (PROJECT_DIR / "data" / "objects" / "object_det
 WEIGHTS_DIR = API_DIR / "weights"
 DEFAULT_KEYFRAMES_DIR = PROJECT_DIR / "data" / "keyframes" / "keyframes"
 DEFAULT_VIDEOS_DIR = PROJECT_DIR / "data" / "video"
+DEFAULT_REPEAT_GRAPH_PATH = PROJECT_DIR / "siglip2-repeat-graph.npz"
+DEFAULT_REPEAT_GRAPH_MANIFEST_PATH = PROJECT_DIR / "siglip2-repeat-graph.manifest.json"
 
 
 class Config:
@@ -39,6 +41,10 @@ class Config:
     SIGLIP2_MODEL_ID = os.getenv("SIGLIP2_MODEL_ID", "google/siglip2-so400m-patch14-384")
     SIGLIP2_REVISION = os.getenv(
         "SIGLIP2_REVISION", "e8e487298228002f3d8a82e0cd5c8ea9c567f57f"
+    )
+    REPEAT_GRAPH_PATH = os.getenv("REPEAT_GRAPH_PATH", str(DEFAULT_REPEAT_GRAPH_PATH))
+    REPEAT_GRAPH_MANIFEST_PATH = os.getenv(
+        "REPEAT_GRAPH_MANIFEST_PATH", str(DEFAULT_REPEAT_GRAPH_MANIFEST_PATH)
     )
     DEFAULT_TOP_K = 20
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024

@@ -150,15 +150,26 @@ def _phrase_terms(clause: dict) -> dict:
     }
 
 
-def test_ocr_keywords_search_ocr_field_only():
-    """OCR defaults to the exact phrase; only `ocr_search_mode="fuzzy"` loosens it."""
+def test_ocr_keywords_default_to_all_terms_in_any_order():
+    """OCR requires every term but does not trust OCR token order."""
     client = _client([])
-    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["hd"])
+    client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["chua ba chuc"])
     must = _must(client)
     assert len(must) == 1
-    assert _phrase_terms(must[0]["bool"]["should"][0]) == {
-        "ocr_text": "hd",
-        "ocr_text.folded": "hd",
+    assert must[0]["bool"]["should"][0] == {
+        "match": {"ocr_text": {"query": "chua ba chuc", "operator": "and"}}
+    }
+
+
+def test_ocr_exact_mode_keeps_strict_phrase_matching():
+    client = _client([])
+    client.match_frames_by_keywords(
+        [("V1", 1)], ocr_keywords=["chua ba chuc"], ocr_search_mode="exact"
+    )
+    clause = _must(client)[0]["bool"]["should"][0]
+    assert _phrase_terms(clause) == {
+        "ocr_text": "chua ba chuc",
+        "ocr_text.folded": "chua ba chuc",
     }
 
 
@@ -264,9 +275,8 @@ def test_ocr_and_asr_groups_can_be_ored():
     field_group = must[0]["bool"]
     assert field_group["minimum_should_match"] == 1
     assert len(field_group["should"]) == 2
-    assert _phrase_terms(field_group["should"][0]["bool"]["should"][0]) == {
-        "ocr_text": "1172",
-        "ocr_text.folded": "1172",
+    assert field_group["should"][0]["bool"]["should"][0] == {
+        "match": {"ocr_text": {"query": "1172", "operator": "and"}}
     }
     assert _phrase_terms(field_group["should"][1]["bool"]["should"][0]) == {
         "asr_text": "chao mung",
@@ -313,18 +323,18 @@ def test_query_keywords_are_passed_to_elasticsearch_unchanged():
 def test_ocr_query_is_passed_to_elasticsearch_unchanged():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ocr_keywords=["ĐỒNG, Vietnan!"])
-    assert _phrase_terms(_must(client)[0]["bool"]["should"][0]) == {
-        "ocr_text": "ĐỒNG, Vietnan!",
-        "ocr_text.folded": "ĐỒNG, Vietnan!",
+    assert _must(client)[0]["bool"]["should"][0] == {
+        "match": {
+            "ocr_text": {"query": "ĐỒNG, Vietnan!", "operator": "and"}
+        }
     }
 
 
 def test_legacy_source_ocr_maps_to_ocr_field():
     client = _client([])
     client.match_frames_by_keywords([("V1", 1)], ["a"], source="ocr")
-    assert _phrase_terms(_must(client)[0]["bool"]["should"][0]) == {
-        "ocr_text": "a",
-        "ocr_text.folded": "a",
+    assert _must(client)[0]["bool"]["should"][0] == {
+        "match": {"ocr_text": {"query": "a", "operator": "and"}}
     }
 
 

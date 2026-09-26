@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, abort, jsonify, request, send_from_directory
@@ -9,13 +10,38 @@ from app.services.es_client import es_client
 
 videos_bp = Blueprint("videos", __name__)
 _SAFE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+_SAFE_HLS_ASSET = re.compile(r"^(?:index\.m3u8|init\.mp4|seg\d{5}\.m4s)$")
+_SOURCE_CONTENT_TYPES = {"mp4": "video/mp4", "mov": "video/quicktime"}
+_HLS_CONTENT_TYPES = {
+    "m3u8": "application/vnd.apple.mpegurl",
+    "mp4": "video/mp4",
+    "m4s": "video/iso.segment",
+}
 
 
-@videos_bp.route("/api/media/videos/<video_id>.mp4")
-def get_local_video(video_id: str) -> Any:
-    if not _SAFE_VIDEO_ID.fullmatch(video_id):
+@videos_bp.route("/api/media/videos/<video_id>.<extension>")
+def get_local_video(video_id: str, extension: str) -> Any:
+    if not _SAFE_VIDEO_ID.fullmatch(video_id) or extension not in _SOURCE_CONTENT_TYPES:
         abort(404)
-    return send_from_directory(Config.VIDEOS_DIR, f"{video_id}.mp4", conditional=True)
+    return send_from_directory(
+        Config.VIDEOS_DIR,
+        f"{video_id}.{extension}",
+        conditional=True,
+        mimetype=_SOURCE_CONTENT_TYPES[extension],
+    )
+
+
+@videos_bp.route("/api/media/videos/<video_id>/<asset>")
+def get_local_hls_asset(video_id: str, asset: str) -> Any:
+    if not _SAFE_VIDEO_ID.fullmatch(video_id) or not _SAFE_HLS_ASSET.fullmatch(asset):
+        abort(404)
+    extension = asset.rsplit(".", 1)[-1]
+    return send_from_directory(
+        Path(Config.VIDEOS_DIR) / video_id,
+        asset,
+        conditional=True,
+        mimetype=_HLS_CONTENT_TYPES[extension],
+    )
 
 
 @videos_bp.route("/api/videos")

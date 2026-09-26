@@ -5,10 +5,63 @@ from app.services.dres_client import DresError, dres_client
 
 dres_bp = Blueprint("dres", __name__)
 
+# DRES answers a submission that trips a server-side filter (for example one
+# past the team's correct-answer quota) with HTTP 404 and `status: false` — the
+# exact shape it uses for a plain duplicate. The two are only separable by
+# DRES's own wording, so that parsing lives here, once, and callers branch on
+# the resulting code instead of matching prose.
+FILTER_REJECTION_MARKER = "rejected by filter"
+
+GENERIC_FAILURE_MESSAGE = "DRES request failed"
+
+
+def verdict_code(body: object) -> str:
+    """Map a DRES response body to a stable code clients can branch on.
+
+    Returns one of `DRES_CORRECT`, `DRES_WRONG`, `DRES_REJECTED`,
+    `DRES_DUPLICATE`, or `DRES_ERROR` for transport failures and bodies that
+    carry no recognisable verdict.
+    """
+    if not isinstance(body, dict):
+        return "DRES_ERROR"
+    description = body.get("description")
+    if isinstance(description, str) and FILTER_REJECTION_MARKER in description:
+        return "DRES_REJECTED"
+    submission = body.get("submission")
+    if submission == "CORRECT":
+        return "DRES_CORRECT"
+    if submission == "WRONG":
+        return "DRES_WRONG"
+    if body.get("status") is False:
+        return "DRES_DUPLICATE"
+    return "DRES_ERROR"
+
+
+def _reason(body: object) -> str | None:
+    """DRES's own explanation of an outcome, when it sent one.
+
+    DRES speaks in two shapes: the application layer answers a submission with
+    `description`, while framework-level failures (Javalin, RFC 7807) put the
+    text in `title`. Read both so no failure degrades to a bare generic string.
+    """
+    if isinstance(body, dict):
+        for field in ("description", "title", "detail"):
+            value = body.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+    text = str(body).strip()
+    return text or None
+
 
 def _err(e: DresError):
     details = e.body if isinstance(e.body, dict) else {"description": str(e.body)}
-    return error_response("DRES_ERROR", "DRES request failed", e.status_code or 502, details)
+    return error_response(
+        verdict_code(e.body),
+        _reason(e.body) or GENERIC_FAILURE_MESSAGE,
+        e.status_code or 502,
+        details,
+    )
 
 
 @dres_bp.route("/api/dres/session", methods=["POST"])
@@ -132,6 +185,7 @@ def submit(task_type):
             result = dres_client.submit(evaluation_id, video_path, time_ms, session_id)
     except DresError as e:
         return _err(e)
+    result["code"] = verdict_code(result)
     result["evaluationId"] = evaluation_id
     result["taskType"] = task_type
     if frame_id is not None:

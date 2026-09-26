@@ -1,7 +1,7 @@
 /** Video groups available in the single-select search filter. */
 export const VIDEO_CATEGORIES = [
   { id: "news", label: "Bản tin", description: "L21, L22, M01–M10", prefixes: ["L21_V", "L22_V", "M"] },
-  { id: "cycling", label: "Đua xe đạp", description: "L23, S01", prefixes: ["L23_V", "S01_V"] },
+  { id: "cycling", label: "Đua xe đạp", description: "L23, S01", prefixes: ["L23_V", "S01-"] },
   { id: "lion-dance", label: "Múa lân", description: "L24", prefixes: ["L24_V"] },
   { id: "education", label: "Dạy học", description: "L25", prefixes: ["L25_V"] },
   { id: "cooking", label: "Nấu ăn", description: "L26", prefixes: ["L26_V"] },

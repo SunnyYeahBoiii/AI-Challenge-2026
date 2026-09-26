@@ -95,7 +95,7 @@ The client (`app/services/dres_client.py`) follows the documented 3-step flow:
 | `POST` | `/api/dres/session` | Login with `{username, password}` body, return `{sessionId, username, role}` |
 | `POST` | `/api/dres/logout` | Logout with `{sessionId}` body, best-effort (always returns `{loggedOut: true}` even if DRES errors) |
 | `GET`  | `/api/dres/evaluations?session=<sessionId>` | List active evaluations: `{evaluations: [{id, status}], total}` |
-| `GET`  | `/api/dres/media-items?session=<sessionId>` | List up to 50 media items: `{items, total}` (debugging only; unused by the frontend) |
+| `GET`  | `/api/dres/media-items?session=<sessionId>` | List up to 50 media items. **Currently broken upstream** — DRES no longer routes `GET /api/v2/client/mediaItem/list`, so this returns the Javalin 404 described below. Kept as a probe: if the endpoint ever returns, it is the only way to read the `mediaItemName` format DRES expects. |
 | `POST` | `/api/dres/submit/<task_type>` | Submit one answer; `task_type` ∈ `kis`/`qa`/`track`; body must include `sessionId` |
 
 ### Submit example
@@ -133,12 +133,61 @@ Per `CONTEXT.md`, our internal `pts_time` is in **seconds** (float). DRES requir
 
 All DRES failures bubble up as `DresError` from the client and surface as HTTP 502 (or the original DRES status code) from routes. Missing `sessionId` on `/api/dres/evaluations`, `/api/dres/media-items`, or `/api/dres/submit/<task_type>` is rejected with 400 before any DRES call is made. Network errors (DNS, timeout, refused) surface as `DRES unreachable: <reason>`.
 
+### Verdict codes
+
+`error.code` is the field to branch on — never the prose. `verdict_code()` in `routes/dres.py` maps a DRES body to one of:
+
+| Code | Meaning |
+|------|---------|
+| `DRES_CORRECT` | `submission: "CORRECT"` |
+| `DRES_WRONG` | `submission: "WRONG"` — counted, but wrong |
+| `DRES_REJECTED` | DRES evaluated the answer, then a server-side filter refused to record it |
+| `DRES_DUPLICATE` | `status: false` for a reason other than a filter |
+| `DRES_ERROR` | Transport failure, or a body with no recognisable verdict |
+
+The same code is attached to **successful** responses (top-level `code`), so the frontend classifies both paths through one function.
+
+### A filter rejection looks like a 404
+
+DRES answers a submission that trips a server-side filter with **HTTP 404** and `status: false` — byte-for-byte the same shape it uses for a plain duplicate. A real example, submitting one answer past the team's quota:
+
+```json
+{
+  "description": "Submission 9910a5d6-… was rejected by filter: Maximum number of correct submissions (1) exceeded for the team.",
+  "status": false
+}
+```
+
+Nothing is broken: the answer was evaluated and the request was well-formed. DRES simply declined to store a result past the cap. The two cases are only separable by DRES's own wording, so that matching happens once in `verdict_code()` and leaves the frontend comparing a code.
+
+Note the `description` prose is DRES's, not ours — do not match on it outside `verdict_code()`.
+
+### Two DRES response shapes
+
+DRES is a Javalin server and speaks two dialects:
+
+- **Application verdicts** — `description` carries the explanation.
+- **Framework failures** — RFC 7807 problem details, where the text is in `title`:
+
+  ```json
+  { "type": "https://javalin.io/documentation#endpointnotfound",
+    "title": "Endpoint GET /api/v2/client/mediaItem/list not found",
+    "status": 404, "details": {} }
+  ```
+
+  `title` is 404, an `int`. `_reason()` reads `description`, then `title`, then `detail` so neither dialect degrades to a bare generic string.
+
+DRES content-negotiates on `Accept`: requesting a vanished endpoint with `Accept: application/json` gets the JSON problem above, while a browser-style request falls through to the DRES Angular SPA and returns HTML with HTTP 200. `DresClient` always sends `Accept: application/json`, so it never sees the HTML.
+
 ## Files
 
 - `apps/api/app/services/dres_client.py` — stateless HTTP client (no session caching)
-- `apps/api/app/routes/dres.py` — Flask blueprint exposing 3 endpoints
+- `apps/api/app/routes/dres.py` — Flask blueprint exposing the endpoints, plus `verdict_code()` / `_reason()`
 - `apps/api/app/config.py` — env-driven config (`DRES_URL` only)
 - `apps/api/app/main.py` — registers `dres_bp`
+- `apps/web/src/lib/submit-verdict.ts` — the shared `SubmitStatus` union, badge style, and tooltip text used by every submit surface
+- `apps/web/src/lib/api.ts` — `classifyDresSubmit()` maps a response onto `SubmitStatus`
+- `apps/web/src/hooks/use-dres-submit.ts` — `readFailure()` prefers `error.details` over the generic `error.message`
 - `apps/web/src/components/dres-settings-dialog.tsx` — login UI, hands `sessionId` up to `page.tsx`
 - `apps/web/src/components/submission-confirmation-dialog.tsx` — submit UI, sends `sessionId` with every submission
 

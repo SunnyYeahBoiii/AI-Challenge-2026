@@ -90,12 +90,16 @@ def api_search_image():
     asr_keywords = (
         request.form.getlist("asr_keywords") if request.form.get("asr_keywords") else []
     )
-    ocr_search_mode = request.form.get("ocr_search_mode", "exact")
+    ocr_search_mode = request.form.get("ocr_search_mode", "unordered")
     asr_search_mode = request.form.get("asr_search_mode", "exact")
     keyword_field_mode = request.form.get("keyword_field_mode", "and")
     video_prefixes = request.form.getlist("video_prefixes")
-    if ocr_search_mode not in {"fuzzy", "exact"}:
-        return error_response("VALIDATION_ERROR", "ocr_search_mode must be fuzzy or exact", 400)
+    if ocr_search_mode not in {"unordered", "fuzzy", "exact"}:
+        return error_response(
+            "VALIDATION_ERROR",
+            "ocr_search_mode must be unordered, fuzzy, or exact",
+            400,
+        )
     if asr_search_mode not in {"fuzzy", "exact"}:
         return error_response("VALIDATION_ERROR", "asr_search_mode must be fuzzy or exact", 400)
     if keyword_field_mode not in {"asr", "ocr", "or", "and"}:
@@ -199,7 +203,7 @@ def api_frames():
 
 @search_bp.route("/api/frames/repeats", methods=["POST"])
 def api_repeat_frames():
-    """Mark visually repeated frames in one bounded displayed-result batch."""
+    """Mark displayed frames that have known visual-repeat witnesses."""
     try:
         data = RepeatFramesRequest(**request.get_json())
     except Exception as error:

@@ -1,4 +1,4 @@
-"""Tests for exact repeat detection over displayed Milvus frame embeddings."""
+"""Tests for visual repeat detection."""
 
 from __future__ import annotations
 
@@ -11,8 +11,39 @@ from app.services import repeat_detection
 
 
 @pytest.fixture(autouse=True)
-def clear_cache() -> None:
+def clear_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     repeat_detection.clear_repeat_cache()
+    monkeypatch.setattr(repeat_detection, "get_repeat_graph", lambda: None)
+
+
+def test_repeat_graph_uses_global_witnesses_without_loading_milvus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Graph:
+        cache_key = "siglip2:test"
+
+        def find_repeat_frame_details(
+            self, keys: list[tuple[str, int]]
+        ) -> dict[tuple[str, int], repeat_detection.RepeatFrameDetails]:
+            assert keys == [("V1", 1)]
+            return {
+                ("V1", 1): {
+                    "out_video_highest_duplicate": {"video_id": "V2", "frame_index": 8}
+                }
+            }
+
+    monkeypatch.setattr(repeat_detection, "get_repeat_graph", lambda: Graph())
+    monkeypatch.setattr(
+        repeat_detection.manager,
+        "active_collection_name",
+        lambda: pytest.fail("Milvus model should not be loaded when the graph is available"),
+    )
+
+    assert repeat_detection.find_repeat_frame_details([("V1", 1, 0.0)]) == {
+        ("V1", 1): {
+            "out_video_highest_duplicate": {"video_id": "V2", "frame_index": 8}
+        }
+    }
 
 
 def test_marks_every_member_of_a_near_duplicate_pair(monkeypatch: pytest.MonkeyPatch) -> None:

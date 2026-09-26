@@ -13,6 +13,7 @@ RUN uv sync --frozen --no-install-project
 
 COPY apps/api/app/ app/
 COPY data/objects/object_detections.parquet /app/data/objects/object_detections.parquet
+COPY siglip2-repeat-graph.npz siglip2-repeat-graph.manifest.json /app/
 
 ENV OBJECT_DETECTIONS_PATH=/app/data/objects/object_detections.parquet
 ENV PATH="/app/.venv/bin:$PATH"

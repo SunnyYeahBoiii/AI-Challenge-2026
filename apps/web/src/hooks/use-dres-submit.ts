@@ -8,11 +8,12 @@ import {
   submitTrakeToDres,
   type DresSubmitResult,
 } from "@/lib/api";
+import type { SubmitStatus } from "@/lib/submit-verdict";
 
-export type DresSubmitStatus = "loading" | "correct" | "wrong" | "duplicate" | "error";
+export type { SubmitStatus as DresSubmitStatus } from "@/lib/submit-verdict";
 
 export interface DresSubmitState {
-  status: DresSubmitStatus;
+  status: SubmitStatus;
   message?: string;
 }
 
@@ -36,12 +37,41 @@ interface TrakePayload {
 
 export type DresSubmitPayload = FramePayload | TrakePayload;
 
-function errorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    const body = err.response?.data as { error?: { message?: string } } | undefined;
-    return body?.error?.message ?? err.message;
+interface ApiErrorEnvelope {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: { description?: string } | string;
+  };
+}
+
+/**
+ * Turn a failed request into a verdict the badge can render.
+ *
+ * DRES explains itself in `error.details.description` — for example
+ * "Maximum number of correct submissions (1) exceeded for the team" — while
+ * `error.message` is only the API's generic wrapper, so the details win.
+ * Reading `message` alone is what made every DRES refusal look identical.
+ */
+function readFailure(err: unknown): { status: SubmitStatus; message: string } {
+  if (!isAxiosError(err)) {
+    return {
+      status: "error",
+      message: err instanceof Error ? err.message : "Submission failed",
+    };
   }
-  return err instanceof Error ? err.message : "Submission failed";
+  const error = (err.response?.data as ApiErrorEnvelope | undefined)?.error;
+  const details = error?.details;
+  const reason =
+    typeof details === "string"
+      ? details
+      : typeof details?.description === "string"
+        ? details.description
+        : undefined;
+  return {
+    status: error?.code === "DRES_REJECTED" ? "rejected" : "error",
+    message: reason ?? error?.message ?? err.message,
+  };
 }
 
 /**
@@ -114,7 +144,8 @@ export function useDresSubmit(sessionId: string | null, evaluationId: string | n
               });
         settle(key, { status: classifyDresSubmit(data) });
       } catch (err) {
-        settle(key, { status: "error", message: errorMessage(err) });
+        const failure = readFailure(err);
+        settle(key, { status: failure.status, message: failure.message });
       } finally {
         inFlightRef.current.delete(key);
       }

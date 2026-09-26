@@ -9,8 +9,18 @@ export function useDresSession() {
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
 
   useEffect(() => {
-    setSessionId(sessionStorage.getItem("dresSessionId"));
-    setUsername(sessionStorage.getItem("dresUsername"));
+    const configuredSessionId = process.env.NEXT_PUBLIC_DRES_SESSION_ID;
+    const configuredUsername = process.env.NEXT_PUBLIC_DRES_USERNAME;
+
+    if (configuredSessionId) {
+      sessionStorage.setItem("dresSessionId", configuredSessionId);
+    }
+    if (configuredUsername) {
+      sessionStorage.setItem("dresUsername", configuredUsername);
+    }
+
+    setSessionId(configuredSessionId || sessionStorage.getItem("dresSessionId"));
+    setUsername(configuredUsername || sessionStorage.getItem("dresUsername"));
     setEvaluationId(sessionStorage.getItem("dresEvaluationId"));
   }, []);
 
