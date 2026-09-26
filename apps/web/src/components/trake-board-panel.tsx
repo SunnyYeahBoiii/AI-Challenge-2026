@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "./icon";
 import type { TrakeBoardApi } from "@/hooks/use-trake-board";
+import { useTrakeAgent } from "@/hooks/use-trake-agent";
 import type { TrakeCandidate, TrakeEvent } from "@/lib/trake-types";
 import { TRAKE_FRAME_MIME } from "@/lib/trake-types";
 import {
@@ -228,6 +229,7 @@ function SortableEventCard({
 }
 
 export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoardPanelProps) {
+  const agent = useTrakeAgent();
   const [nameDraft, setNameDraft] = useState(trake.displayName);
   useEffect(() => setNameDraft(trake.displayName), [trake.displayName]);
   const [videoCandidate, setVideoCandidate] = useState<TrakeCandidate | null>(
@@ -387,6 +389,27 @@ export function TrakeBoardPanel({ trake, onSubmitTrake, submitState }: TrakeBoar
         >
           + Add Event
         </button>
+        <button
+          type="button"
+          disabled={!trake.board || agent.running}
+          onClick={() => agent.run("")}
+          className="w-full rounded border border-primary py-1.5 text-label-sm text-primary disabled:opacity-50"
+        >
+          {agent.running ? "Agent đang tìm…" : "Agent tìm candidate"}
+        </button>
+        {(agent.job || agent.error) && (
+          <div className="max-h-40 overflow-auto rounded bg-surface-container p-2 text-mono-sm text-on-surface-variant space-y-1">
+            {agent.job?.steps.map((step, i) => (
+              <div key={i} className="break-all">
+                {i + 1}. {step.tool}
+              </div>
+            ))}
+            {agent.job?.summary && (
+              <p className="whitespace-pre-wrap text-on-surface">{agent.job.summary}</p>
+            )}
+            {agent.error && <p className="text-error">{agent.error}</p>}
+          </div>
+        )}
         <button
           type="button"
           disabled={!readyPayload}

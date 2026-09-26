@@ -52,6 +52,12 @@ class Config:
     MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
     MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
     MINIO_BUCKET_KEYFRAMES = os.getenv("MINIO_BUCKET_KEYFRAMES", "keyframes")
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    AGENT_MODEL = os.getenv("AGENT_MODEL", "claude-sonnet-5")
+    AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "25"))
+    AGENT_MAX_CANDIDATES_PER_EVENT = int(os.getenv("AGENT_MAX_CANDIDATES_PER_EVENT", "5"))
+    CLOUD_API_URL = os.getenv("CLOUD_API_URL", "http://localhost:5002")
+
     MINIO_BUCKET_VIDEOS = os.getenv("MINIO_BUCKET_VIDEOS", "videos")
 
     # Keyframes are served from local disk instead of MinIO (videos stay on MinIO).

@@ -306,3 +306,26 @@ export async function setActiveModel(
   });
   return data;
 }
+
+export interface AgentStep {
+  tool: string;
+  input: unknown;
+  result: string;
+}
+
+export interface AgentJob {
+  status: "running" | "done" | "error";
+  steps: AgentStep[];
+  summary: string;
+  error: string;
+}
+
+export async function runTrakeAgent(instruction: string): Promise<string> {
+  const { data } = await api.post<{ job_id: string }>("/agent/trake/run", { instruction });
+  return data.job_id;
+}
+
+export async function getTrakeAgentJob(jobId: string): Promise<AgentJob> {
+  const { data } = await api.get<AgentJob>(`/agent/trake/${jobId}`);
+  return data;
+}

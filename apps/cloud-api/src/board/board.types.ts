@@ -1,4 +1,12 @@
-import { IsArray, IsOptional, IsString, MaxLength } from "class-validator";
+import {
+  IsArray,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from "class-validator";
 
 /** Identifies one moment in a video — the fields every TrakeBoard candidate
  * and selection carries (and the Prisma models store). */
@@ -67,4 +75,37 @@ export class ReorderBoardEventsInput {
   @IsArray()
   @IsString({ each: true })
   orderedEventIds!: string[];
+}
+
+/** REST body for adding a Candidate (the agent has no socket client). */
+export class AddCandidateBody {
+  @IsString()
+  eventId!: string;
+
+  @IsString()
+  videoId!: string;
+
+  @IsNumber()
+  @Min(0)
+  ptsTime!: number;
+
+  @IsString()
+  previewFrameId!: string;
+
+  @IsNumber()
+  @Min(0.001)
+  fps!: number;
+
+  @IsInt()
+  @Min(0)
+  frameIdx!: number;
+
+  @IsOptional()
+  @IsString()
+  thumbnailUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  addedBy?: string;
 }

@@ -170,3 +170,10 @@ class VideoIdRequest(BaseModel):
     video_id: str
     frame_index: int | None = None
     range: int = 5
+
+
+class AgentRunRequest(BaseModel):
+    """Run the TRAKE agent over the shared board (all Events when `event_ids` is empty)."""
+
+    instruction: str = Field(default="", max_length=2000)
+    event_ids: list[str] = []

@@ -26,6 +26,12 @@ export class BoardGateway implements OnGatewayDisconnect {
 
   constructor(private readonly boards: BoardService) {}
 
+  /** Push a snapshot produced outside a socket handler (REST) to the room. */
+  broadcast(snapshot: BoardSnapshot): BoardSnapshot {
+    this.server.to(snapshot.id).emit("board:state", snapshot);
+    return snapshot;
+  }
+
   private async run(
     boardId: string,
     fn: () => Promise<BoardSnapshot>,

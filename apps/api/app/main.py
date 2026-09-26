@@ -20,6 +20,7 @@ def create_app() -> Flask:
     from app.routes.submissions import submissions_bp
     from app.routes.keyframes import keyframes_bp
     from app.routes.video_stream import video_stream_bp
+    from app.routes.agent import agent_bp
 
     app.register_blueprint(search_bp)
     app.register_blueprint(videos_bp)
@@ -29,6 +30,8 @@ def create_app() -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(submissions_bp)
     app.register_blueprint(keyframes_bp)
+    app.register_blueprint(video_stream_bp)
+    app.register_blueprint(agent_bp)
 
     return app
 

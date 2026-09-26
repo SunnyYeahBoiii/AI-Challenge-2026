@@ -24,6 +24,7 @@ dependencies = [
     "fairscale>=0.4.13",
     "timm>=1.0.17",
     "minio>=7.2",
+    "anthropic>=1.8.0",
 ]
 
 [project.optional-dependencies]
